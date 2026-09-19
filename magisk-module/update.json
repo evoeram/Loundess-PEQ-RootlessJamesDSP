@@ -1,6 +1,6 @@
 {
-  "version": "v6.0",
-  "versionCode": 99,
-  "zipUrl": "https://raw.githubusercontent.com/Zackptg5/JamesDSPManager/master/install.zip",
-  "changelog": "https://raw.githubusercontent.com/Zackptg5/JamesDSPManager/master/changelog.md"
+  "version": "v6.1-peq-loudness",
+  "versionCode": 101,
+  "zipUrl": "https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases/download/v1.6.14-peq-loudness/ainur_jamesdsp-peq-loudness-v6.1.zip",
+  "changelog": "https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases/tag/v1.6.14-peq-loudness"
 }

@@ -65,7 +65,7 @@ add_library(jamesdsp_effect SHARED
         EELStdOutExtension.c
         EELStdOutExtension.h)
 
-target_compile_options(jamesdsp_effect PRIVATE -O2 -std=gnu11 -ffunction-sections -fdata-sections -DJAMESDSP_REFERENCE_IMPL)
+target_compile_options(jamesdsp_effect PRIVATE -O2 -std=gnu11 -ffunction-sections -fdata-sections -DJAMESDSP_REFERENCE_IMPL -Wno-incompatible-pointer-types -Wno-implicit-int -Wno-implicit-function-declaration)
 target_include_directories(jamesdsp_effect PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/
         ${CMAKE_CURRENT_SOURCE_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/)
