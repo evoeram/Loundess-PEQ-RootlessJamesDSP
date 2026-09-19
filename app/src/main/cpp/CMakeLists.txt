@@ -48,3 +48,27 @@ target_link_libraries( # Specifies the target library.
         # Links the target library to the log library
         # included in the NDK.
         ${log-lib})
+
+# ================================================================
+# System audio effect library (libjamesdsp.so for Magisk module)
+# Includes jamesdsp.c (AudioEffect entry point) + peq_loudness.c
+# This is the library deployed to the device's Magisk module.
+# ================================================================
+
+set(JAMESDSP_EFFECT_DIR ${CMAKE_CURRENT_LIST_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp)
+
+add_library(jamesdsp_effect SHARED
+        ${JAMESDSP_EFFECT_DIR}/jamesdsp.c
+        ${JAMESDSP_EFFECT_DIR}/peq_loudness.c
+        ${JAMESDSP_EFFECT_DIR}/peq_loudness.h
+        ${LIBJAMESDSP_SOURCE_FILES}
+        EELStdOutExtension.c
+        EELStdOutExtension.h)
+
+target_compile_options(jamesdsp_effect PRIVATE -O2 -std=gnu11 -ffunction-sections -fdata-sections -DJAMESDSP_REFERENCE_IMPL)
+target_include_directories(jamesdsp_effect PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/
+        ${CMAKE_CURRENT_SOURCE_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/)
+target_link_libraries(jamesdsp_effect ${log-lib})
+# Output as libjamesdsp_effect.so to avoid conflict with core jamesdsp target.
+# Rename to libjamesdsp.so when deploying to Magisk module.

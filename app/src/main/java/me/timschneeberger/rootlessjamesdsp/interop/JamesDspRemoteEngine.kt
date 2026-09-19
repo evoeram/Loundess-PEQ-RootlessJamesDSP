@@ -276,21 +276,45 @@ class JamesDspRemoteEngine(
     // Feature support
     override fun supportsEelVmAccess(): Boolean { return false }
     override fun supportsCustomCrossfeed(): Boolean { return false }
+    override fun supportsParametricEqCascade(): Boolean { return true }
+    override fun supportsLoudnessCorrection(): Boolean { return true }
 
-    // Time-domain parametric EQ cascade is only supported by the local engine
-    // (requires custom native code). Remote engine falls back to GEQ merge path.
+    // Time-domain parametric EQ cascade via AudioEffect parameter API.
+    // Sends band configuration to the system effect (jamesdsp.c) which
+    // applies a biquad cascade after the main JamesDSP chain.
     override fun setParametricEqCascade(
         enable: Boolean,
         sampleRate: Double,
         preampDb: Double,
         bands: List<me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand>
     ): Boolean {
-        // Not supported on remote engine; PEQ falls back to GEQ merge in syncWithPreferences
-        return false
+        // Build float array: [sampleRate, preampDb, band0(5 floats), band1(5 floats), ...]
+        // Pad to 32 bands (162 floats total) with freq<=0 to mark unused slots.
+        val maxBands = 32
+        val data = FloatArray(2 + maxBands * 5)
+        data[0] = sampleRate.toFloat()
+        data[1] = preampDb.toFloat()
+
+        val count = minOf(bands.size, maxBands)
+        for (i in 0 until count) {
+            val band = bands[i]
+            val base = 2 + i * 5
+            data[base + 0] = band.frequency.toFloat()
+            data[base + 1] = band.gain.toFloat()
+            data[base + 2] = band.q.toFloat()
+            data[base + 3] = band.filterType.code.toFloat()
+            data[base + 4] = band.channelMode.code.toFloat()
+        }
+        // Remaining slots have freq=0.0f (disabled)
+
+        val configResult = effect.setParameterFloatArray(1300, data) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1214, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
     }
 
-    // Loudness correction is only supported by the local engine (requires
-    // custom native code). Remote engine silently ignores it.
+    // Loudness correction via AudioEffect parameter API.
+    // Sends configuration to the system effect (jamesdsp.c) which applies
+    // Fletcher-Munson compensation after the main JamesDSP chain.
     override fun setLoudnessCorrection(
         enable: Boolean,
         sampleRate: Double,
@@ -299,7 +323,20 @@ class JamesDspRemoteEngine(
         attenuation: Double,
         currentVolumeDb: Double
     ): Boolean {
-        return false
+        val data = floatArrayOf(
+            sampleRate.toFloat(),
+            referenceLevel.toFloat(),
+            referenceOffset.toFloat(),
+            attenuation.toFloat(),
+            currentVolumeDb.toFloat()
+        )
+        val configResult = effect.setParameterFloatArray(1301, data) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1215, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
+    }
+
+    override fun setLoudnessCorrectionVolume(currentVolumeDb: Double): Boolean {
+        return effect.setParameterFloatArray(1302, floatArrayOf(currentVolumeDb.toFloat())) == AudioEffect.SUCCESS
     }
 
     // EEL VM utilities (unavailable)
