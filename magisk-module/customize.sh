@@ -14,6 +14,11 @@ set_perm_recursive "$MODPATH/system/vendor/lib64/soundfx" 0 0 0755 0644
 set_perm "$MODPATH/system/vendor/lib/soundfx/libjamesdsp.so" 0 0 0644
 set_perm "$MODPATH/system/vendor/lib64/soundfx/libjamesdsp.so" 0 0 0644
 
+# SELinux: audioserver requires vendor_file:s0 context for .so in /vendor/lib*/soundfx/
+# Without this, AudioFlinger fails with "No such file or directory" and the effect is not registered.
+chcon u:object_r:vendor_file:s0 "$MODPATH/system/vendor/lib/soundfx/libjamesdsp.so"
+chcon u:object_r:vendor_file:s0 "$MODPATH/system/vendor/lib64/soundfx/libjamesdsp.so"
+
 # Set permissions for audio_effects config files
 set_perm_recursive "$MODPATH/system/etc" 0 0 0755 0644
 set_perm_recursive "$MODPATH/system/odm" 0 0 0755 0644
