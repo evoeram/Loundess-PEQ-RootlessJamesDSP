@@ -35,7 +35,7 @@ abstract class JamesDspBasePlugin : KoinComponent, AutoCloseable {
     private val broadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                Constants.ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER))
+                Constants.ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ))
                 Constants.ACTION_PREFERENCES_UPDATED -> engine.syncWithPreferences()
                 Constants.ACTION_SERVICE_RELOAD_LIVEPROG -> engine.syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
             }

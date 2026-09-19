@@ -124,6 +124,10 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
                 R.id.card_reverb, PreferenceGroupFragment.newInstance(Constants.PREF_REVERB,
                     R.xml.dsp_reverb_preferences
                 ))
+            .replace(
+                R.id.card_loudness, PreferenceGroupFragment.newInstance(Constants.PREF_LOUDNESS,
+                    R.xml.dsp_loudness_preferences
+                ))
             .commit()
 
         // Load initial preferences

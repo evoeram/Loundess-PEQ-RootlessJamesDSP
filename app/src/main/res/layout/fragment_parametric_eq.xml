@@ -234,8 +234,21 @@
                             android:text="@string/peq_filter_type"
                             android:textAppearance="?attr/textAppearanceLabelLarge" />
 
+                        <Spinner
+                            android:id="@+id/filter_type_spinner"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="8dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="4dp"
+                            android:text="@string/peq_channel_mode"
+                            android:textAppearance="?attr/textAppearanceLabelLarge" />
+
                         <com.google.android.material.button.MaterialButtonToggleGroup
-                            android:id="@+id/filter_type_group"
+                            android:id="@+id/channel_mode_group"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginBottom="16dp"
@@ -243,28 +256,28 @@
                             app:selectionRequired="true">
 
                             <com.google.android.material.button.MaterialButton
-                                android:id="@+id/filter_peaking"
+                                android:id="@+id/channel_both"
                                 style="?attr/materialButtonOutlinedStyle"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:text="@string/peq_filter_type_peaking" />
+                                android:text="@string/peq_channel_both" />
 
                             <com.google.android.material.button.MaterialButton
-                                android:id="@+id/filter_low_shelf"
+                                android:id="@+id/channel_left"
                                 style="?attr/materialButtonOutlinedStyle"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:text="@string/peq_filter_type_low_shelf" />
+                                android:text="@string/peq_channel_left" />
 
                             <com.google.android.material.button.MaterialButton
-                                android:id="@+id/filter_high_shelf"
+                                android:id="@+id/channel_right"
                                 style="?attr/materialButtonOutlinedStyle"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:text="@string/peq_filter_type_high_shelf" />
+                                android:text="@string/peq_channel_right" />
                         </com.google.android.material.button.MaterialButtonToggleGroup>
                     </LinearLayout>
 
@@ -293,7 +306,8 @@
                 android:id="@+id/preview_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_margin="16dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="12dp"
                 android:text="@string/peq_preview"
                 android:textAppearance="?attr/textAppearanceTitleMedium" />
 
@@ -302,12 +316,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="16dp"
-                android:layout_marginBottom="8dp"
+                android:layout_marginBottom="4dp"
                 app:helperText="@string/peq_preamp_range"
                 app:helperTextEnabled="true"
                 app:hintText="@string/peq_preamp"
                 app:floatPrecision="1"
-                app:step="0.5"
+                app:step="0.1"
                 app:suffixText="dB"
                 app:value="0"
                 android:min="-30"
@@ -316,7 +330,9 @@
             <me.timschneeberger.rootlessjamesdsp.view.ParametricEqSurface
                 android:id="@+id/equalizer_surface"
                 android:layout_width="match_parent"
-                android:layout_height="256dp" />
+                android:layout_height="280dp"
+                android:layout_marginHorizontal="4dp"
+                android:layout_marginBottom="8dp" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 </androidx.constraintlayout.widget.ConstraintLayout>

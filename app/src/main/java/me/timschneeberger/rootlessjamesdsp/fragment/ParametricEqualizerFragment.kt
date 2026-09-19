@@ -22,6 +22,7 @@ import me.timschneeberger.rootlessjamesdsp.databinding.FragmentParametricEqBindi
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
@@ -136,7 +137,7 @@ class ParametricEqualizerFragment : Fragment() {
                 if (it) {
                     adapter.bands.deserialize(Constants.DEFAULT_PEQ)
                     binding.preampInput.value = 0f
-                    binding.equalizerSurface.setPreampDb(0.0)
+                    binding.equalizerSurface.setBands(adapter.bands, 0.0)
                     updateViewState()
                     editorDiscard()
                     save()
@@ -174,6 +175,7 @@ class ParametricEqualizerFragment : Fragment() {
             binding.gainInput.value = 0f
             binding.qInput.value = 1.41f
             setFilterTypeSelection(ParametricEqFilterType.PEAKING)
+            setChannelModeSelection(ParametricEqChannelMode.BOTH)
             updateViewState()
         }
 
@@ -189,7 +191,30 @@ class ParametricEqualizerFragment : Fragment() {
         binding.gainInput.setOnValueChangedListener { editorApply() }
         binding.qInput.setOnValueChangedListener { editorApply() }
 
-        binding.filterTypeGroup.addOnButtonCheckedListener { _, _, isChecked ->
+        // Filter type spinner
+        val filterTypeLabels = ParametricEqFilterType.entries.map { type ->
+            when (type) {
+                ParametricEqFilterType.PEAKING -> getString(R.string.peq_filter_type_peaking)
+                ParametricEqFilterType.LOW_SHELF -> getString(R.string.peq_filter_type_low_shelf)
+                ParametricEqFilterType.HIGH_SHELF -> getString(R.string.peq_filter_type_high_shelf)
+                ParametricEqFilterType.LOW_PASS -> getString(R.string.peq_filter_type_low_pass)
+                ParametricEqFilterType.HIGH_PASS -> getString(R.string.peq_filter_type_high_pass)
+                ParametricEqFilterType.BAND_PASS -> getString(R.string.peq_filter_type_band_pass)
+                ParametricEqFilterType.NOTCH -> getString(R.string.peq_filter_type_notch)
+                ParametricEqFilterType.ALL_PASS -> getString(R.string.peq_filter_type_all_pass)
+            }
+        }
+        binding.filterTypeSpinner.adapter = android.widget.ArrayAdapter(
+            requireContext(), android.R.layout.simple_spinner_dropdown_item, filterTypeLabels
+        )
+        binding.filterTypeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                editorApply()
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+
+        binding.channelModeGroup.addOnButtonCheckedListener { _, _, isChecked ->
             if (isChecked) editorApply()
         }
 
@@ -251,6 +276,7 @@ class ParametricEqualizerFragment : Fragment() {
         val preampDb = prefs?.getFloat(getString(R.string.key_peq_preamp), 0f) ?: 0f
         binding.preampInput.value = preampDb
         binding.equalizerSurface.setBands(bands, preampDb.toDouble())
+        setupClippingCallback()
 
         binding.bandList.adapter = ParametricEqBandAdapter(bands).apply {
             onItemsChanged = {
@@ -268,26 +294,48 @@ class ParametricEqualizerFragment : Fragment() {
                 binding.gainInput.value = band.gain.toFloat()
                 binding.qInput.value = band.q.toFloat()
                 setFilterTypeSelection(band.filterType)
+                setChannelModeSelection(band.channelMode)
                 updateViewState()
             }
         }
     }
 
-    private fun getSelectedFilterType(): ParametricEqFilterType {
-        return when (binding.filterTypeGroup.checkedButtonId) {
-            R.id.filter_low_shelf -> ParametricEqFilterType.LOW_SHELF
-            R.id.filter_high_shelf -> ParametricEqFilterType.HIGH_SHELF
-            else -> ParametricEqFilterType.PEAKING
+    private fun setupClippingCallback() {
+        binding.equalizerSurface.onClippingChanged = { isClipping ->
+            val inputLayout = binding.preampInput
+                .findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.inputLayout)
+            if (isClipping) {
+                inputLayout.boxBackgroundColor = android.graphics.Color.parseColor("#33FF0000")
+            } else {
+                inputLayout.boxBackgroundColor = android.graphics.Color.TRANSPARENT
+            }
         }
     }
 
+    private fun getSelectedFilterType(): ParametricEqFilterType {
+        val pos = binding.filterTypeSpinner.selectedItemPosition
+        return ParametricEqFilterType.entries.getOrElse(pos) { ParametricEqFilterType.PEAKING }
+    }
+
     private fun setFilterTypeSelection(type: ParametricEqFilterType) {
-        val buttonId = when (type) {
-            ParametricEqFilterType.PEAKING -> R.id.filter_peaking
-            ParametricEqFilterType.LOW_SHELF -> R.id.filter_low_shelf
-            ParametricEqFilterType.HIGH_SHELF -> R.id.filter_high_shelf
+        binding.filterTypeSpinner.setSelection(type.ordinal)
+    }
+
+    private fun getSelectedChannelMode(): ParametricEqChannelMode {
+        return when (binding.channelModeGroup.checkedButtonId) {
+            R.id.channel_left -> ParametricEqChannelMode.LEFT_ONLY
+            R.id.channel_right -> ParametricEqChannelMode.RIGHT_ONLY
+            else -> ParametricEqChannelMode.BOTH
         }
-        binding.filterTypeGroup.check(buttonId)
+    }
+
+    private fun setChannelModeSelection(mode: ParametricEqChannelMode) {
+        val buttonId = when (mode) {
+            ParametricEqChannelMode.BOTH -> R.id.channel_both
+            ParametricEqChannelMode.LEFT_ONLY -> R.id.channel_left
+            ParametricEqChannelMode.RIGHT_ONLY -> R.id.channel_right
+        }
+        binding.channelModeGroup.check(buttonId)
     }
 
     private fun updateViewState() {
@@ -321,19 +369,20 @@ class ParametricEqualizerFragment : Fragment() {
             val gain = binding.gainInput.value.toDouble()
             val q = binding.qInput.value.toDouble()
             val filterType = getSelectedFilterType()
+            val channelMode = getSelectedChannelMode()
 
             if (uuid == null) {
-                val band = ParametricEqBand(freq, gain, q, filterType)
+                val band = ParametricEqBand(freq, gain, q, filterType, channelMode)
                 adapter.bands.add(band)
                 editorBandUuid = band.uuid
-                Timber.d("editorApply: tracking new band $editorBandUuid for $freq Hz $gain dB Q$q $filterType")
+                Timber.d("editorApply: tracking new band $editorBandUuid for $freq Hz $gain dB Q$q $filterType $channelMode")
             } else {
                 Timber.d("editorApply: modifying band $editorBandUuid")
                 val index = adapter.bands.indexOfFirst { it.uuid == uuid }
                 if (index < 0)
                     Timber.e("editorApply: failed to find matching band UUID")
                 else
-                    adapter.bands[index] = ParametricEqBand(freq, gain, q, filterType, uuid)
+                    adapter.bands[index] = ParametricEqBand(freq, gain, q, filterType, channelMode, uuid)
             }
         }
     }

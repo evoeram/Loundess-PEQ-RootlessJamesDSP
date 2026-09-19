@@ -86,11 +86,6 @@ class NumberInputBox @JvmOverloads constructor(
         override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {}
         override fun afterTextChanged(s: Editable) {
             if (s.toString().isNotEmpty()) {
-                val input = s.toString().toFloatOrNull() ?: 0f
-                val validated = validateNumber(input)
-                if(validated != null)
-                    value = validated
-
                 onValueChangedListener?.invoke(value)
             }
         }
@@ -145,6 +140,18 @@ class NumberInputBox @JvmOverloads constructor(
             val newValue = (value - finalStep)
 
             value = validateNumber(newValue) ?: newValue
+        }
+
+        binding.input.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                if (binding.input.text.isNullOrBlank()) {
+                    value = 0f
+                }
+                val validated = validateNumber(value)
+                if (validated != null) {
+                    value = validated
+                }
+            }
         }
     }
 

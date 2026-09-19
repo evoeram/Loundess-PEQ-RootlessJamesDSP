@@ -5,10 +5,13 @@
 
 #include <string>
 #include <jni.h>
+#include <vector>
 
 #include "JamesDspWrapper.h"
 #include "JArrayList.h"
 #include "EelVmVariable.h"
+#include "biquad/ParametricEqProcessor.h"
+#include "loudness/LoudnessCorrectionProcessor.h"
 
 extern "C" {
 #include "../EELStdOutExtension.h"
@@ -87,6 +90,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_alloc(JNIEnv *e
     auto* self = new JamesDspWrapper();
     self->callbackInterface = env->NewGlobalRef(callback);
     self->env = env;
+    self->parametricEq = new ParametricEqProcessor();
+    self->loudnessCorrection = new LoudnessCorrectionProcessor();
 
     jclass callbackClass = env->GetObjectClass(callback);
     if (callbackClass == nullptr)
@@ -156,6 +161,12 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_free(JNIEnv *en
     JamesDSPFree(dsp);
     free(dsp);
     wrapper->dsp = nullptr;
+
+    delete wrapper->parametricEq;
+    wrapper->parametricEq = nullptr;
+
+    delete wrapper->loudnessCorrection;
+    wrapper->loudnessCorrection = nullptr;
 
     JamesDSPGlobalMemoryDeallocation();
 
@@ -236,6 +247,44 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
     auto input = env->GetShortArrayElements(inputObj, nullptr);
     auto output = env->GetShortArrayElements(outputObj, nullptr);
     dsp->processInt16Multiplexd(dsp, input + offset, output, inputLength / 2);
+
+    // Apply time-domain parametric EQ on int16 path via float conversion
+    if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
+    {
+        size_t frames = inputLength / 2;
+        size_t offsetIdx = (offset < 0 ? 0 : offset);
+        // Convert to float, process, convert back
+        std::vector<float> tmp(frames * 2);
+        for (size_t i = 0; i < frames * 2; ++i)
+            tmp[i] = (float)(output[offsetIdx * 2 + i]) / 32768.0f;
+        wrapper->parametricEq->processInterleaved(tmp.data(), frames);
+        if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
+            wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
+        for (size_t i = 0; i < frames * 2; ++i)
+        {
+            float v = tmp[i] * 32768.0f;
+            if (v > 32767.0f) v = 32767.0f;
+            if (v < -32768.0f) v = -32768.0f;
+            output[offsetIdx * 2 + i] = (short)v;
+        }
+    }
+    else if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
+    {
+        size_t frames = inputLength / 2;
+        size_t offsetIdx = (offset < 0 ? 0 : offset);
+        std::vector<float> tmp(frames * 2);
+        for (size_t i = 0; i < frames * 2; ++i)
+            tmp[i] = (float)(output[offsetIdx * 2 + i]) / 32768.0f;
+        wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
+        for (size_t i = 0; i < frames * 2; ++i)
+        {
+            float v = tmp[i] * 32768.0f;
+            if (v > 32767.0f) v = 32767.0f;
+            if (v < -32768.0f) v = -32768.0f;
+            output[offsetIdx * 2 + i] = (short)v;
+        }
+    }
+
     env->ReleaseShortArrayElements(inputObj, input, JNI_ABORT);
     env->ReleaseShortArrayElements(outputObj, output, 0);
 }
@@ -317,6 +366,18 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
     auto output = env->GetFloatArrayElements(outputObj, nullptr);
 
     dsp->processFloatMultiplexd(dsp, input + offset, output, inputLength / 2);
+
+    // Apply time-domain parametric EQ cascade after main DSP chain
+    if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
+    {
+        wrapper->parametricEq->processInterleaved(output + (offset < 0 ? 0 : offset * 2), inputLength / 2);
+    }
+
+    // Apply loudness correction after parametric EQ
+    if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
+    {
+        wrapper->loudnessCorrection->processInterleaved(output + (offset < 0 ? 0 : offset * 2), inputLength / 2);
+    }
 
     env->ReleaseFloatArrayElements(inputObj, input, JNI_ABORT);
     env->ReleaseFloatArrayElements(outputObj, output, 0);
@@ -745,6 +806,109 @@ void receiveLiveprogStdOut(const char *buffer, void* userData)
     }
 
     self->env->CallVoidMethod(self->callbackInterface, self->callbackOnLiveprogOutput, self->env->NewStringUTF(buffer));
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setParametricEq(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble sampleRate, jdouble preampDb,
+    jdoubleArray freqArr, jdoubleArray gainArr, jdoubleArray qArr,
+    jintArray typeArr, jintArray chanArr)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->parametricEq == nullptr)
+        return false;
+
+    if (!enable)
+    {
+        wrapper->parametricEq->setEnabled(false);
+        return true;
+    }
+
+    jsize count = env->GetArrayLength(freqArr);
+    if (count <= 0 || count != env->GetArrayLength(gainArr) ||
+        count != env->GetArrayLength(qArr) ||
+        count != env->GetArrayLength(typeArr) ||
+        count != env->GetArrayLength(chanArr))
+    {
+        LOGE("JamesDspWrapper::setParametricEq: array length mismatch or empty. count=%d", count);
+        wrapper->parametricEq->setEnabled(false);
+        return false;
+    }
+
+    auto* freqs  = env->GetDoubleArrayElements(freqArr, nullptr);
+    auto* gains  = env->GetDoubleArrayElements(gainArr, nullptr);
+    auto* qs     = env->GetDoubleArrayElements(qArr, nullptr);
+    auto* types  = env->GetIntArrayElements(typeArr, nullptr);
+    auto* chans  = env->GetIntArrayElements(chanArr, nullptr);
+
+    std::vector<ParametricEqBandConfig> bands(count);
+    for (jsize i = 0; i < count; ++i)
+    {
+        bands[i].filterType   = types[i];
+        bands[i].frequency    = freqs[i];
+        bands[i].gain         = gains[i];
+        bands[i].q            = qs[i];
+        bands[i].channelMode  = chans[i];
+        bands[i].enabled      = true;
+    }
+
+    env->ReleaseDoubleArrayElements(freqArr, freqs, JNI_ABORT);
+    env->ReleaseDoubleArrayElements(gainArr, gains, JNI_ABORT);
+    env->ReleaseDoubleArrayElements(qArr, qs, JNI_ABORT);
+    env->ReleaseIntArrayElements(typeArr, types, JNI_ABORT);
+    env->ReleaseIntArrayElements(chanArr, chans, JNI_ABORT);
+
+    wrapper->parametricEq->configure(sampleRate, bands.data(), bands.size(), preampDb);
+    wrapper->parametricEq->setEnabled(true);
+
+    LOGD("JamesDspWrapper::setParametricEq: configured %d bands, preamp=%.1f dB, sr=%.0f",
+         count, preampDb, sampleRate);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessCorrection(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble sampleRate, jdouble referenceLevel,
+    jdouble referenceOffset, jdouble attenuation, jdouble currentVolumeDb)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->loudnessCorrection == nullptr)
+        return false;
+
+    if (!enable)
+    {
+        wrapper->loudnessCorrection->setEnabled(false);
+        return true;
+    }
+
+    // Biquad coefficients depend on sample rate; applying with sr=0 produces
+    // invalid coefficients (division by zero). Skip until valid.
+    if (sampleRate <= 0.0)
+    {
+        LOGW("JamesDspWrapper::setLoudnessCorrection: skipping, sample rate not yet known (%.0f)", sampleRate);
+        return false;
+    }
+
+    wrapper->loudnessCorrection->configure(sampleRate, referenceLevel,
+                                           referenceOffset, attenuation);
+    wrapper->loudnessCorrection->setVolume(currentVolumeDb);
+    wrapper->loudnessCorrection->setEnabled(true);
+
+    LOGD("JamesDspWrapper::setLoudnessCorrection: refLevel=%.1f dB, refOffset=%.1f dB, att=%.2f, vol=%.1f dB, sr=%.0f",
+         referenceLevel, referenceOffset, attenuation, currentVolumeDb, sampleRate);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessCorrectionVolume(JNIEnv *env, jobject obj,
+    jlong self, jdouble currentVolumeDb)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->loudnessCorrection == nullptr)
+        return false;
+
+    wrapper->loudnessCorrection->setVolume(currentVolumeDb);
+    return true;
 }
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *, void *)

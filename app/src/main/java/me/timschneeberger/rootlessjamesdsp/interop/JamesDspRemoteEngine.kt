@@ -277,6 +277,31 @@ class JamesDspRemoteEngine(
     override fun supportsEelVmAccess(): Boolean { return false }
     override fun supportsCustomCrossfeed(): Boolean { return false }
 
+    // Time-domain parametric EQ cascade is only supported by the local engine
+    // (requires custom native code). Remote engine falls back to GEQ merge path.
+    override fun setParametricEqCascade(
+        enable: Boolean,
+        sampleRate: Double,
+        preampDb: Double,
+        bands: List<me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand>
+    ): Boolean {
+        // Not supported on remote engine; PEQ falls back to GEQ merge in syncWithPreferences
+        return false
+    }
+
+    // Loudness correction is only supported by the local engine (requires
+    // custom native code). Remote engine silently ignores it.
+    override fun setLoudnessCorrection(
+        enable: Boolean,
+        sampleRate: Double,
+        referenceLevel: Double,
+        referenceOffset: Double,
+        attenuation: Double,
+        currentVolumeDb: Double
+    ): Boolean {
+        return false
+    }
+
     // EEL VM utilities (unavailable)
     override fun enumerateEelVariables(): ArrayList<EelVmVariable> { return arrayListOf() }
     override fun manipulateEelVariable(name: String, value: Float): Boolean { return false }

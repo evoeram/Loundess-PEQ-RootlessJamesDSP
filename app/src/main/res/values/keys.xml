@@ -134,6 +134,13 @@
     <string name="key_liveprog_params" translatable="false">liveprog_params</string> <!-- static -->
     <string name="key_liveprog_edit" translatable="false">liveprog_edit</string> <!-- static -->
 
+    <string name="key_loudness_enable" translatable="false">loudness_enable</string>
+    <string name="key_loudness_reference_level" translatable="false">loudness_reference_level</string>
+    <string name="key_loudness_reference_offset" translatable="false">loudness_reference_offset</string>
+    <string name="key_loudness_attenuation" translatable="false">loudness_attenuation</string>
+    <string name="key_loudness_volume" translatable="false">loudness_volume</string>
+    <string name="key_loudness_auto_volume" translatable="false">loudness_auto_volume</string>
+
     <string name="key_limiter_threshold" translatable="false">limiter_threshold</string>
     <string name="key_limiter_release" translatable="false">limiter_release</string>
     <string name="key_output_postgain" translatable="false">output_postgain</string>

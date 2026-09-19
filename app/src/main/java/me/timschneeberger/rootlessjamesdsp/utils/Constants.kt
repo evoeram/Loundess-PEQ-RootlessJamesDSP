@@ -17,6 +17,7 @@ object Constants {
     const val PREF_GEQ = "dsp_graphiceq"
     const val PREF_PEQ = "dsp_parametriceq"
     const val PREF_LIVEPROG = "dsp_liveprog"
+    const val PREF_LOUDNESS = "dsp_loudness"
     const val PREF_OUTPUT = "dsp_output_control"
     const val PREF_REVERB = "dsp_reverb"
     const val PREF_STEREOWIDE = "dsp_stereowide"

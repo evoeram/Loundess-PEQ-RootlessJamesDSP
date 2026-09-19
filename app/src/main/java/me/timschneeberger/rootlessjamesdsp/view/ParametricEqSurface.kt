@@ -10,79 +10,183 @@ import android.view.View
 import androidx.core.content.withStyledAttributes
 import androidx.core.os.bundleOf
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
-import me.timschneeberger.rootlessjamesdsp.utils.BiquadUtils
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
+import me.timschneeberger.rootlessjamesdsp.utils.ParametricEqResponseCalculator
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.CompatExtensions.getParcelableAs
-import me.timschneeberger.rootlessjamesdsp.utils.extensions.prettyNumberFormat
 import kotlin.math.*
 
+/**
+ * Preview graph for the Parametric EQ showing independent L and R frequency-response curves.
+ *
+ * Features:
+ *  - Y-axis dB labels ("+3 dB", "0 dB", "-3 dB", …) on the left
+ *  - X-axis frequency labels ("20 Hz", "1 kHz", "20 kHz", …) on the bottom
+ *  - Adaptive Y-axis range: top = max(L,R) + 3 dB, bottom = min(L,R) - 3 dB
+ *  - 0 dB reference line (dashed)
+ *  - Red warning fill when curves exceed 0 dB (clipping indicator)
+ *  - All paddings computed dynamically from measured text widths — no clipping
+ *
+ * Layout:
+ *   ┌─────────────────────────────────────────────────────┐
+ *   │  PAD_TOP (legend ● L  ● R)                          │
+ *   │         ┌──────────────────────────────────────┐    │
+ *   │  dB     │ PLOT AREA (grid, curves, fills)      │    │
+ *   │  labels │                                      │ PAD_R
+ *   │  PAD_L  │                                      │    │
+ *   │         └──────────────────────────────────────┘    │
+ *   │         20 Hz  50 Hz  ...  20 kHz  (freq labels)    │
+ *   │  PAD_BOTTOM                                         │
+ *   └─────────────────────────────────────────────────────┘
+ */
 class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(context, attrs) {
 
-    private var mGridLines = Paint()
-    private var mGridThickLines = Paint()
-    private var mControlBarText = Paint()
-    private var mFrequencyResponseBg = Paint()
-    private var mFrequencyResponseHighlight = Paint()
+    // Paints
+    private val mGridLinePaint = Paint()
+    private val mZeroDbLinePaint = Paint()
+    private val mFreqLabelPaint = Paint()
+    private val mDbLabelPaint = Paint()
+    private val mLegendTextPaint = Paint()
+    private val mCurveLPaint = Paint()
+    private val mCurveRPaint = Paint()
+    private val mFillLPaint = Paint()
+    private val mFillRPaint = Paint()
+    private val mClipFillPaint = Paint()
 
-    private var mHeight = 0.0f
-    private var mWidth = 0.0f
+    // View dimensions
+    private var mViewWidth = 0f
+    private var mViewHeight = 0f
 
-    // Sampled frequency response curve
-    private var mCurveFreqs = DoubleArray(0)
-    private var mCurveGains = DoubleArray(0)
-    private var mPreampDb = 0.0
+    // Plot area (computed dynamically in onLayout)
+    private var mPadTop = 32f
+    private var mPadBottom = 24f
+    private var mPadLeft = 48f
+    private var mPadRight = 24f
+    private var mPlotLeft = 0f
+    private var mPlotTop = 0f
+    private var mPlotWidth = 0f
+    private var mPlotHeight = 0f
 
-    private val nPts = 256
+    // Response data
+    private var mFrequencies = FloatArray(0)
+    private var mLeftResponseDb = FloatArray(0)
+    private var mRightResponseDb = FloatArray(0)
+    private var mPreampDb = 0f
+    @Suppress("unused")
+    private var mChannelsDiffer = false
+
+    // Y-axis range (asymmetric)
+    private var mMaxDb = 3f
+    private var mMinDb = -3f
+
+    // Clipping state
+    private var mIsClipping = false
+
+    /** Callback invoked when clipping state changes (curves exceed 0 dB). */
+    var onClippingChanged: ((Boolean) -> Unit)? = null
+
+    // Calculator
+    private val calculator = ParametricEqResponseCalculator()
+
+    // Colors
+    private val mLeftColor: Int
+    private val mRightColor: Int
 
     init {
-        mGridLines.color = getColor(android.R.attr.colorControlHighlight)
-        mGridLines.style = Paint.Style.STROKE
-        mGridLines.strokeWidth = 4f
+        val accentColor = getColor(android.R.attr.colorAccent)
+        mLeftColor = accentColor
+        mRightColor = shiftHue(accentColor, 140f)
 
-        mGridThickLines.color = getColor(android.R.attr.colorControlHighlight)
-        mGridThickLines.style = Paint.Style.STROKE
-        mGridThickLines.strokeWidth = 8f
+        mGridLinePaint.color = getColor(android.R.attr.colorControlHighlight)
+        mGridLinePaint.style = Paint.Style.STROKE
+        mGridLinePaint.strokeWidth = 1.5f
+        mGridLinePaint.alpha = 100
 
-        mControlBarText.textAlign = Paint.Align.CENTER
-        mControlBarText.textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            11f, getContext().resources.displayMetrics
-        )
-        mControlBarText.color = getColor(android.R.attr.textColorPrimary)
-        mControlBarText.isAntiAlias = true
+        mZeroDbLinePaint.color = getColor(android.R.attr.textColorSecondary)
+        mZeroDbLinePaint.style = Paint.Style.STROKE
+        mZeroDbLinePaint.strokeWidth = 2f
+        mZeroDbLinePaint.alpha = 160
+        mZeroDbLinePaint.pathEffect = DashPathEffect(floatArrayOf(14f, 7f), 0f)
 
-        mFrequencyResponseBg.style = Paint.Style.FILL
-        mFrequencyResponseBg.alpha = 192
+        mFreqLabelPaint.textAlign = Paint.Align.CENTER
+        mFreqLabelPaint.textSize = sp(9f)
+        mFreqLabelPaint.color = getColor(android.R.attr.textColorSecondary)
+        mFreqLabelPaint.isAntiAlias = true
 
-        mFrequencyResponseHighlight.style = Paint.Style.STROKE
-        mFrequencyResponseHighlight.color = getColor(android.R.attr.colorAccent)
-        mFrequencyResponseHighlight.isAntiAlias = true
-        mFrequencyResponseHighlight.strokeWidth = 8f
+        mDbLabelPaint.textAlign = Paint.Align.RIGHT
+        mDbLabelPaint.textSize = sp(9f)
+        mDbLabelPaint.color = getColor(android.R.attr.textColorSecondary)
+        mDbLabelPaint.isAntiAlias = true
+
+        mLegendTextPaint.textAlign = Paint.Align.LEFT
+        mLegendTextPaint.textSize = sp(11f)
+        mLegendTextPaint.isAntiAlias = true
+        mLegendTextPaint.isFakeBoldText = true
+
+        mCurveLPaint.color = mLeftColor
+        mCurveLPaint.style = Paint.Style.STROKE
+        mCurveLPaint.strokeWidth = 5f
+        mCurveLPaint.isAntiAlias = true
+
+        mCurveRPaint.color = mRightColor
+        mCurveRPaint.style = Paint.Style.STROKE
+        mCurveRPaint.strokeWidth = 5f
+        mCurveRPaint.isAntiAlias = true
+
+        mFillLPaint.color = mLeftColor
+        mFillLPaint.style = Paint.Style.FILL
+        mFillLPaint.alpha = 22
+
+        mFillRPaint.color = mRightColor
+        mFillRPaint.style = Paint.Style.FILL
+        mFillRPaint.alpha = 22
+
+        mClipFillPaint.color = Color.parseColor("#FF4444")
+        mClipFillPaint.style = Paint.Style.FILL
+        mClipFillPaint.alpha = 38
     }
 
-    private fun getColor(colorAttribute: Int): Int {
-        if (isInEditMode) return Color.BLACK
+    private fun sp(value: Float): Float =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, value, getContext().resources.displayMetrics)
+
+    private fun getColor(attr: Int): Int {
+        if (isInEditMode) return Color.GRAY
         var color = 0
-        context.withStyledAttributes(TypedValue().data, intArrayOf(colorAttribute)) {
+        context.withStyledAttributes(TypedValue().data, intArrayOf(attr)) {
             color = getColor(0, 0)
         }
         return color
     }
 
-    override fun onSaveInstanceState() =
-        bundleOf(
-            "super" to super.onSaveInstanceState(),
-            STATE_FREQ to mCurveFreqs,
-            STATE_GAIN to mCurveGains,
-            STATE_PREAMP to mPreampDb
-        )
+    private fun shiftHue(color: Int, degrees: Float): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(color, hsv)
+        hsv[0] = (hsv[0] + degrees) % 360f
+        if (hsv[0] < 0f) hsv[0] += 360f
+        return Color.HSVToColor(Color.alpha(color), hsv)
+    }
+
+    // ── State save/restore ──────────────────────────────────────────
+
+    override fun onSaveInstanceState() = bundleOf(
+        "super" to super.onSaveInstanceState(),
+        STATE_FREQ to mFrequencies,
+        STATE_LEFT to mLeftResponseDb,
+        STATE_RIGHT to mRightResponseDb,
+        STATE_PREAMP to mPreampDb,
+        STATE_DIFFER to mChannelsDiffer
+    )
 
     override fun onRestoreInstanceState(state: Parcelable?) {
         super.onRestoreInstanceState((state as Bundle).getParcelableAs("super"))
-        mCurveFreqs = state.getDoubleArray(STATE_FREQ) ?: DoubleArray(0)
-        mCurveGains = state.getDoubleArray(STATE_GAIN) ?: DoubleArray(0)
-        mPreampDb = state.getDouble(STATE_PREAMP, 0.0)
+        mFrequencies = state.getFloatArray(STATE_FREQ) ?: FloatArray(0)
+        mLeftResponseDb = state.getFloatArray(STATE_LEFT) ?: FloatArray(0)
+        mRightResponseDb = state.getFloatArray(STATE_RIGHT) ?: FloatArray(0)
+        mPreampDb = state.getFloat(STATE_PREAMP, 0f)
+        mChannelsDiffer = state.getBoolean(STATE_DIFFER, false)
         updateDbRange()
     }
+
+    // ── Layout ──────────────────────────────────────────────────────
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
@@ -91,139 +195,413 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        mWidth = (right - left).toFloat()
-        mHeight = (bottom - top).toFloat()
+        mViewWidth = (right - left).toFloat()
+        mViewHeight = (bottom - top).toFloat()
 
-        val responseColors =
-            intArrayOf(getColor(android.R.attr.colorAccent), getColor(android.R.color.transparent))
-        val responsePositions = floatArrayOf(0.0f, 1f)
-        mFrequencyResponseBg.shader =
-            LinearGradient(0f, 0f, 0f, mHeight, responseColors, responsePositions, Shader.TileMode.CLAMP)
+        // ── Dynamic paddings based on measured label text widths ──
+        // Left: must fit dB labels ("+12 dB") + spacing.
+        // First freq label is left-aligned to the plot edge, so it no longer
+        // extends into this padding (avoids Hz/dB label conflict).
+        val dbLabelW = mDbLabelPaint.measureText("+12 dB")
+        mPadLeft = dbLabelW + 8f
+
+        // Right: small margin. Last freq label is right-aligned to the plot
+        // edge, so it no longer extends beyond the graph.
+        mPadRight = 4f
+
+        // Top: legend band
+        mPadTop = 30f
+        // Bottom: freq label band
+        mPadBottom = sp(9f) + 12f
+
+        mPlotLeft = mPadLeft
+        mPlotTop = mPadTop
+        mPlotWidth = (mViewWidth - mPadLeft - mPadRight).coerceAtLeast(0f)
+        mPlotHeight = (mViewHeight - mPadTop - mPadBottom).coerceAtLeast(0f)
     }
 
-    private val freqResponse = Path()
-    private val freqResponseBg = Path()
+    // ── Drawing ─────────────────────────────────────────────────────
+
+    private val mPathL = Path()
+    private val mPathR = Path()
+    private val mFillPathL = Path()
+    private val mFillPathR = Path()
+    private val mClipPathL = Path()
+    private val mClipPathR = Path()
+    private val mClipRect = RectF()
 
     override fun onDraw(canvas: Canvas) {
-        freqResponse.rewind()
-        freqResponseBg.rewind()
+        mPathL.rewind()
+        mPathR.rewind()
+        mFillPathL.rewind()
+        mFillPathR.rewind()
+        mClipPathL.rewind()
+        mClipPathR.rewind()
 
-        val zeroY = projectY(0f) * mHeight
+        val preamp = mPreampDb
+        val zeroY = mPlotTop + projectY(0f) * mPlotHeight
 
-        if (mCurveFreqs.isNotEmpty()) {
-            // Draw smooth biquad frequency response curve (offset by preamp)
-            val preamp = mPreampDb.toFloat()
-            freqResponse.moveTo(
-                projectX(mCurveFreqs[0]) * mWidth,
-                projectY(mCurveGains[0].toFloat() + preamp) * mHeight
-            )
-            for (i in 1 until mCurveFreqs.size) {
-                freqResponse.lineTo(
-                    projectX(mCurveFreqs[i]) * mWidth,
-                    projectY(mCurveGains[i].toFloat() + preamp) * mHeight
-                )
+        // ── Grid: horizontal dB lines + Y-axis labels ──
+        val step = computeDbStep()
+        var db = floor(mMinDb / step) * step
+        while (db <= mMaxDb + 0.01f) {
+            val y = mPlotTop + projectY(db) * mPlotHeight
+            if (abs(db) < 0.01f) {
+                canvas.drawLine(mPlotLeft, y, mPlotLeft + mPlotWidth, y, mZeroDbLinePaint)
+            } else {
+                canvas.drawLine(mPlotLeft, y, mPlotLeft + mPlotWidth, y, mGridLinePaint)
+            }
+            // dB label on the left, vertically centered on the grid line
+            val dbLabel = formatDbLabel(db)
+            val labelY = y - (mDbLabelPaint.descent() + mDbLabelPaint.ascent()) / 2f
+            canvas.drawText(dbLabel, mPlotLeft - 6f, labelY, mDbLabelPaint)
+            db += step
+        }
+
+        // ── Grid: vertical frequency markers + X-axis labels ──
+        val freqLabels = computeFreqLabels()
+        val freqLabelY = mPlotTop + mPlotHeight + mPadBottom * 0.72f
+        val firstFreq = freqLabels.firstOrNull()
+        val lastFreq = freqLabels.lastOrNull()
+        for (f in freqLabels) {
+            val x = mPlotLeft + projectX(f) * mPlotWidth
+            canvas.drawLine(x, mPlotTop, x, mPlotTop + mPlotHeight, mGridLinePaint)
+            val label = formatFreqLabel(f)
+            // Align extreme labels to the plot edges so they don't overflow
+            // into the dB-label zone (left) or off the graph (right).
+            when (f) {
+                firstFreq -> {
+                    mFreqLabelPaint.textAlign = Paint.Align.LEFT
+                    canvas.drawText(label, mPlotLeft, freqLabelY, mFreqLabelPaint)
+                }
+                lastFreq -> {
+                    mFreqLabelPaint.textAlign = Paint.Align.RIGHT
+                    canvas.drawText(label, mPlotLeft + mPlotWidth, freqLabelY, mFreqLabelPaint)
+                }
+                else -> {
+                    mFreqLabelPaint.textAlign = Paint.Align.CENTER
+                    canvas.drawText(label, x, freqLabelY, mFreqLabelPaint)
+                }
+            }
+        }
+        mFreqLabelPaint.textAlign = Paint.Align.CENTER
+
+        // ── Clip to plot area for curves and fills ──
+        mClipRect.set(mPlotLeft, mPlotTop, mPlotLeft + mPlotWidth, mPlotTop + mPlotHeight)
+        val saveCount = canvas.save()
+        canvas.clipRect(mClipRect)
+
+        if (mFrequencies.isNotEmpty()) {
+            buildCurvePath(mPathL, mFrequencies, mLeftResponseDb, preamp)
+            buildCurvePath(mPathR, mFrequencies, mRightResponseDb, preamp)
+
+            // Subtle fill: from curve to 0 dB line
+            if (mLeftResponseDb.isNotEmpty()) {
+                buildFillPath(mFillPathL, mPathL, mFrequencies, zeroY)
+                canvas.drawPath(mFillPathL, mFillLPaint)
+            }
+            if (mRightResponseDb.isNotEmpty()) {
+                buildFillPath(mFillPathR, mPathR, mFrequencies, zeroY)
+                canvas.drawPath(mFillPathR, mFillRPaint)
+            }
+
+            // Red clipping fill: area between curve and 0 dB WHERE curve > 0 dB
+            if (mIsClipping) {
+                if (mLeftResponseDb.isNotEmpty()) {
+                    buildClipFillPath(mClipPathL, mFrequencies, mLeftResponseDb, preamp, zeroY)
+                    canvas.drawPath(mClipPathL, mClipFillPaint)
+                }
+                if (mRightResponseDb.isNotEmpty()) {
+                    buildClipFillPath(mClipPathR, mFrequencies, mRightResponseDb, preamp, zeroY)
+                    canvas.drawPath(mClipPathR, mClipFillPaint)
+                }
+            }
+
+            // Curve strokes (R first, then L on top)
+            if (mRightResponseDb.isNotEmpty()) {
+                canvas.drawPath(mPathR, mCurveRPaint)
+            }
+            if (mLeftResponseDb.isNotEmpty()) {
+                canvas.drawPath(mPathL, mCurveLPaint)
             }
         } else {
-            // Flat line at 0dB (or at preamp level)
-            val preampY = projectY(mPreampDb.toFloat()) * mHeight
-            freqResponse.moveTo(0f, preampY)
-            freqResponse.lineTo(mWidth, preampY)
-        }
+            // No bands: flat line at 0 dB (with preamp offset) for both L and R
+            val flatY = mPlotTop + projectY(preamp) * mPlotHeight
+            canvas.drawLine(mPlotLeft, flatY, mPlotLeft + mPlotWidth, flatY, mCurveRPaint)
+            canvas.drawLine(mPlotLeft, flatY, mPlotLeft + mPlotWidth, flatY, mCurveLPaint)
 
-        // Frequency scale labels
-        for (scale in FreqScale) {
-            val x = projectX(scale) * mWidth
-            canvas.drawText(scale.prettyNumberFormat(), x, mHeight - 16, mControlBarText)
-        }
-
-        // Draw horizontal dB grid lines
-        var dB = minDb + 3
-        while (dB <= maxDb - 3) {
-            val y = projectY(dB.toFloat()) * mHeight
-            if (dB == 0)
-                canvas.drawLine(0f, y, mWidth, y, mGridThickLines)
-            else
-                canvas.drawLine(0f, y, mWidth, y, mGridLines)
-            dB += 3
-        }
-
-        // Fill under curve
-        with(freqResponseBg) {
-            addPath(freqResponse)
-            offset(0f, -4f)
-            if (mCurveFreqs.isNotEmpty()) {
-                lineTo(projectX(mCurveFreqs.last()) * mWidth, mHeight)
-                lineTo(projectX(mCurveFreqs.first()) * mWidth, mHeight)
-            } else {
-                lineTo(mWidth, mHeight)
-                lineTo(0f, mHeight)
+            if (preamp > 0f && mIsClipping) {
+                canvas.drawRect(mPlotLeft, flatY, mPlotLeft + mPlotWidth, zeroY, mClipFillPaint)
             }
-            close()
         }
-        canvas.drawPath(freqResponseBg, mFrequencyResponseBg)
-        canvas.drawPath(freqResponse, mFrequencyResponseHighlight)
+
+        canvas.restoreToCount(saveCount)
+
+        // ── Legend (outside clip, in top padding band) ──
+        drawLegend(canvas)
     }
 
-    fun setBands(bands: ParametricEqBandList, preampDb: Double = mPreampDb) {
-        mPreampDb = preampDb
-        if (bands.isEmpty()) {
-            mCurveFreqs = DoubleArray(0)
-            mCurveGains = DoubleArray(0)
-        } else {
-            val response = BiquadUtils.computeCombinedResponse(
-                bands,
-                numPoints = nPts,
-                minFreq = MIN_FREQ,
-                maxFreq = MAX_FREQ
+    /** Build a curve Path from frequency/response arrays. */
+    private fun buildCurvePath(path: Path, freqs: FloatArray, response: FloatArray, preamp: Float) {
+        if (freqs.isEmpty() || response.isEmpty()) return
+        path.moveTo(
+            mPlotLeft + projectX(freqs[0].toDouble()) * mPlotWidth,
+            mPlotTop + projectY(response[0] + preamp) * mPlotHeight
+        )
+        for (i in 1 until freqs.size) {
+            path.lineTo(
+                mPlotLeft + projectX(freqs[i].toDouble()) * mPlotWidth,
+                mPlotTop + projectY(response[i] + preamp) * mPlotHeight
             )
-            mCurveFreqs = DoubleArray(response.size) { response[it].first }
-            mCurveGains = DoubleArray(response.size) { response[it].second }
         }
+    }
+
+    /** Build a fill path from the curve to the 0 dB line. */
+    private fun buildFillPath(fillPath: Path, curvePath: Path, freqs: FloatArray, zeroY: Float) {
+        fillPath.addPath(curvePath)
+        val lastX = mPlotLeft + projectX(freqs.last().toDouble()) * mPlotWidth
+        val firstX = mPlotLeft + projectX(freqs.first().toDouble()) * mPlotWidth
+        fillPath.lineTo(lastX, zeroY)
+        fillPath.lineTo(firstX, zeroY)
+        fillPath.close()
+    }
+
+    /**
+     * Build a red clipping fill path: only the segments where the curve exceeds 0 dB.
+     * Fills between the curve and the 0 dB line for portions where curve > 0.
+     */
+    private fun buildClipFillPath(
+        clipPath: Path, freqs: FloatArray, response: FloatArray,
+        preamp: Float, zeroY: Float
+    ) {
+        var inClip = false
+        for (i in freqs.indices) {
+            val x = mPlotLeft + projectX(freqs[i].toDouble()) * mPlotWidth
+            val y = mPlotTop + projectY(response[i] + preamp) * mPlotHeight
+            val aboveZero = response[i] + preamp > 0f
+
+            if (aboveZero && !inClip) {
+                clipPath.moveTo(x, zeroY)
+                clipPath.lineTo(x, y)
+                inClip = true
+            } else if (aboveZero && inClip) {
+                clipPath.lineTo(x, y)
+            } else if (!aboveZero && inClip) {
+                clipPath.lineTo(x, zeroY)
+                clipPath.close()
+                inClip = false
+            }
+        }
+        if (inClip) {
+            val lastX = mPlotLeft + projectX(freqs.last().toDouble()) * mPlotWidth
+            clipPath.lineTo(lastX, zeroY)
+            clipPath.close()
+        }
+    }
+
+    /** Draw legend with small colored dots + L/R labels in the top padding band. */
+    private fun drawLegend(canvas: Canvas) {
+        val dotRadius = 4f
+        val textH = mLegendTextPaint.textSize
+        val legendY = mPadTop * 0.5f + textH / 3f
+        val labelGap = 6f
+        val itemGap = 20f
+        var x = mPlotLeft
+
+        // L dot + label
+        mLegendTextPaint.color = mLeftColor
+        canvas.drawCircle(x + dotRadius, legendY - dotRadius * 0.5f, dotRadius, mLegendTextPaint)
+        canvas.drawText("L", x + dotRadius * 2 + labelGap, legendY, mLegendTextPaint)
+        x += dotRadius * 2 + labelGap + mLegendTextPaint.measureText("L") + itemGap
+
+        // R dot + label
+        mLegendTextPaint.color = mRightColor
+        canvas.drawCircle(x + dotRadius, legendY - dotRadius * 0.5f, dotRadius, mLegendTextPaint)
+        canvas.drawText("R", x + dotRadius * 2 + labelGap, legendY, mLegendTextPaint)
+    }
+
+    // ── Label formatting ────────────────────────────────────────────
+
+    /** Format a dB value as "+3 dB", "0 dB", "-3 dB", etc. */
+    private fun formatDbLabel(db: Float): String {
+        val dbInt = db.roundToInt()
+        return if (dbInt > 0) "+$dbInt dB" else "$dbInt dB"
+    }
+
+    /** Format a frequency as "20 Hz", "1 kHz", "20 kHz", etc. */
+    private fun formatFreqLabel(freq: Double): String {
+        return if (freq < 1000.0) {
+            "${freq.toInt()} Hz"
+        } else {
+            "${(freq / 1000.0).roundToInt()} kHz"
+        }
+    }
+
+    // ── Label selection ─────────────────────────────────────────────
+
+    /** Choose which frequency labels to show based on plot width. */
+    private fun computeFreqLabels(): DoubleArray {
+        val allLabels = doubleArrayOf(20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0)
+
+        // Measure the widest label to determine minimum spacing
+        val widestLabel = mFreqLabelPaint.measureText("20 kHz")
+        val minSpacing = widestLabel + 12f
+        val maxLabels = (mPlotWidth / minSpacing).toInt().coerceAtLeast(4)
+
+        val selected: MutableList<Double> = if (allLabels.size <= maxLabels) {
+            allLabels.toMutableList()
+        } else {
+            // Subsample evenly, always including first and last
+            val step = ceil(allLabels.size.toFloat() / maxLabels).toInt()
+            val result = mutableListOf<Double>()
+            var i = 0
+            while (i < allLabels.size) {
+                result.add(allLabels[i])
+                i += step
+            }
+            // Ensure last label is always included
+            if (result.last() != allLabels.last()) {
+                result.add(allLabels.last())
+            }
+            result
+        }
+
+        // Remove overlaps accounting for edge alignments:
+        // first = LEFT, last = RIGHT, others = CENTER.
+        return removeOverlappingFreqLabels(selected).toDoubleArray()
+    }
+
+    /**
+     * Greedily drop middle frequency labels whose rendered bounds overlap a
+     * kept neighbor. First and last labels are always kept.
+     */
+    private fun removeOverlappingFreqLabels(labels: MutableList<Double>): List<Double> {
+        if (labels.size <= 2) return labels
+        val n = labels.size
+        val gap = 4f
+
+        val xs = FloatArray(n) { mPlotLeft + projectX(labels[it]) * mPlotWidth }
+        val ws = FloatArray(n) { mFreqLabelPaint.measureText(formatFreqLabel(labels[it])) }
+
+        fun leftEdge(i: Int) = when (i) {
+            0 -> xs[i]                       // LEFT aligned
+            n - 1 -> xs[i] - ws[i]           // RIGHT aligned
+            else -> xs[i] - ws[i] / 2f       // CENTER aligned
+        }
+        fun rightEdge(i: Int) = when (i) {
+            0 -> xs[i] + ws[i]               // LEFT aligned
+            n - 1 -> xs[i]                   // RIGHT aligned
+            else -> xs[i] + ws[i] / 2f       // CENTER aligned
+        }
+
+        val kept = mutableListOf(0)
+        for (i in 1 until n - 1) {
+            if (leftEdge(i) >= rightEdge(kept.last()) + gap) kept.add(i)
+        }
+        // Drop middle labels from the tail until the last label fits without overlap
+        while (kept.size > 1 && leftEdge(n - 1) < rightEdge(kept.last()) + gap) {
+            kept.removeAt(kept.size - 1)
+        }
+        kept.add(n - 1)
+        return kept.map { labels[it] }
+    }
+
+    /** Compute a nice step size for dB grid lines based on the range. */
+    private fun computeDbStep(): Float {
+        val range = mMaxDb - mMinDb
+        return when {
+            range <= 12f -> 3f
+            range <= 24f -> 3f
+            range <= 48f -> 6f
+            else -> 12f
+        }
+    }
+
+    // ── Public API ──────────────────────────────────────────────────
+
+    fun setBands(bands: ParametricEqBandList, preampDb: Double = mPreampDb.toDouble()) {
+        mPreampDb = preampDb.toFloat()
+        mChannelsDiffer = bands.any { it.channelMode != ParametricEqChannelMode.BOTH }
+
+        val response = calculator.compute(bands.toList(), preampDb)
+        mFrequencies = response.frequencies.map { it.toFloat() }.toFloatArray()
+        mLeftResponseDb = response.leftResponseDb.map { it.toFloat() }.toFloatArray()
+        mRightResponseDb = response.rightResponseDb.map { it.toFloat() }.toFloatArray()
 
         updateDbRange()
         postInvalidate()
     }
 
     fun setPreampDb(preampDb: Double) {
-        mPreampDb = preampDb
+        mPreampDb = preampDb.toFloat()
         updateDbRange()
         postInvalidate()
     }
 
+    // ── Scaling ─────────────────────────────────────────────────────
+
+    /**
+     * Compute adaptive Y-axis range.
+     * Top = max(L, R) + 3 dB headroom (at least +3)
+     * Bottom = min(L, R) - 3 dB headroom (at most -3)
+     * 0 dB is always visible within the range.
+     */
     private fun updateDbRange() {
         val preamp = mPreampDb
-        val minGain = (mCurveGains.minOrNull() ?: 0.0) + preamp
-        val maxGain = (mCurveGains.maxOrNull() ?: 0.0) + preamp
-        minDb = floor(minOf(minGain, -15.0)).toInt()
-        maxDb = ceil(maxOf(maxGain, 15.0)).toInt()
+        val allGains = (mLeftResponseDb.toList() + mRightResponseDb.toList())
+            .map { it + preamp }
+
+        if (allGains.isEmpty()) {
+            mMaxDb = 3f
+            mMinDb = -3f
+            updateClipping(false)
+            return
+        }
+
+        val maxVal = allGains.maxOrNull() ?: 0f
+        val minVal = allGains.minOrNull() ?: 0f
+
+        mMaxDb = ceil((maxVal + 3f) / 3f) * 3f
+        if (mMaxDb < 3f) mMaxDb = 3f
+
+        mMinDb = floor((minVal - 3f) / 3f) * 3f
+        if (mMinDb > -3f) mMinDb = -3f
+
+        val clipping = allGains.any { it > 0.01f } || preamp > 0.01f
+        updateClipping(clipping)
     }
 
+    private fun updateClipping(clipping: Boolean) {
+        if (mIsClipping != clipping) {
+            mIsClipping = clipping
+            onClippingChanged?.invoke(clipping)
+        }
+    }
+
+    /** Logarithmic X projection: log10(f) normalized to [0, 1]. */
     private fun projectX(frequency: Double): Float {
-        val position = ln(frequency)
-        val minimumPosition = ln(MIN_FREQ)
-        val maximumPosition = ln(MAX_FREQ)
-        return ((position - minimumPosition) / (maximumPosition - minimumPosition)).toFloat()
+        val logMin = log10(MIN_FREQ)
+        val logMax = log10(MAX_FREQ)
+        val logF = log10(frequency.coerceIn(MIN_FREQ, MAX_FREQ))
+        return ((logF - logMin) / (logMax - logMin)).toFloat()
     }
 
-    private fun projectY(dB: Float): Float {
-        val pos = (dB - minDb) / (maxDb - minDb)
+    /** Linear Y projection: 0 dB at its proportional position between min and max. */
+    private fun projectY(db: Float): Float {
+        val range = mMaxDb - mMinDb
+        if (range <= 0f) return 0.5f
+        val pos = (db - mMinDb) / range
         return 1.0f - pos
     }
 
-    private var minDb = -15
-    private var maxDb = 15
-
     companion object {
         private const val STATE_FREQ = "peq_curve_freq"
-        private const val STATE_GAIN = "peq_curve_gain"
+        private const val STATE_LEFT = "peq_curve_left"
+        private const val STATE_RIGHT = "peq_curve_right"
         private const val STATE_PREAMP = "peq_curve_preamp"
+        private const val STATE_DIFFER = "peq_curve_differ"
 
         private const val MIN_FREQ = 20.0
         private const val MAX_FREQ = 20000.0
-
-        private val FreqScale = doubleArrayOf(
-            25.0, 40.0, 63.0, 100.0, 160.0, 250.0, 400.0, 630.0,
-            1000.0, 1600.0, 2500.0, 4000.0, 6300.0, 10000.0, 16000.0
-        )
     }
 }

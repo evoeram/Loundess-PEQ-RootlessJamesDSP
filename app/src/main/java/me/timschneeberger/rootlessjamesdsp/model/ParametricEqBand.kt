@@ -6,7 +6,12 @@ import java.util.*
 enum class ParametricEqFilterType(val code: Int, val apoLabel: String, val displayLabel: String) {
     PEAKING(0, "PK", "PK"),
     LOW_SHELF(1, "LSC", "LS"),
-    HIGH_SHELF(2, "HSC", "HS");
+    HIGH_SHELF(2, "HSC", "HS"),
+    LOW_PASS(3, "LP", "LP"),
+    HIGH_PASS(4, "HP", "HP"),
+    BAND_PASS(5, "BP", "BP"),
+    NOTCH(6, "NO", "NO"),
+    ALL_PASS(7, "AP", "AP");
 
     companion object {
         fun fromCode(code: Int) = entries.firstOrNull { it.code == code } ?: PEAKING
@@ -14,8 +19,30 @@ enum class ParametricEqFilterType(val code: Int, val apoLabel: String, val displ
             "PK" -> PEAKING
             "LSC", "LS" -> LOW_SHELF
             "HSC", "HS" -> HIGH_SHELF
+            "LP" -> LOW_PASS
+            "HP" -> HIGH_PASS
+            "BP" -> BAND_PASS
+            "NO" -> NOTCH
+            "AP" -> ALL_PASS
             else -> null
         }
+    }
+}
+
+/**
+ * Channel routing mode for a parametric EQ band.
+ * Controls which channels the filter is applied to.
+ */
+enum class ParametricEqChannelMode(val code: Int, val displayLabel: String) {
+    /** Apply to both L and R channels */
+    BOTH(0, "L+R"),
+    /** Apply to left channel only; right passes through */
+    LEFT_ONLY(1, "L"),
+    /** Apply to right channel only; left passes through */
+    RIGHT_ONLY(2, "R");
+
+    companion object {
+        fun fromCode(code: Int) = entries.firstOrNull { it.code == code } ?: BOTH
     }
 }
 
@@ -24,12 +51,15 @@ enum class ParametricEqFilterType(val code: Int, val apoLabel: String, val displ
  *
  * [uuid] is excluded from equals/hashCode so that two bands with the
  * same audio parameters compare as equal regardless of identity.
+ *
+ * @param channelMode controls which channels (L+R, L, R) this band applies to
  */
 class ParametricEqBand(
     val frequency: Double,
     val gain: Double,
     val q: Double,
     val filterType: ParametricEqFilterType = ParametricEqFilterType.PEAKING,
+    val channelMode: ParametricEqChannelMode = ParametricEqChannelMode.BOTH,
     val uuid: UUID = UUID.randomUUID()
 ) : Serializable {
 
@@ -39,7 +69,8 @@ class ParametricEqBand(
         return frequency == other.frequency &&
                 gain == other.gain &&
                 q == other.q &&
-                filterType == other.filterType
+                filterType == other.filterType &&
+                channelMode == other.channelMode
     }
 
     override fun hashCode(): Int {
@@ -47,9 +78,10 @@ class ParametricEqBand(
         result = 31 * result + gain.hashCode()
         result = 31 * result + q.hashCode()
         result = 31 * result + filterType.hashCode()
+        result = 31 * result + channelMode.hashCode()
         return result
     }
 
     override fun toString(): String =
-        "ParametricEqBand(frequency=$frequency, gain=$gain, q=$q, filterType=$filterType, uuid=$uuid)"
+        "ParametricEqBand(frequency=$frequency, gain=$gain, q=$q, filterType=$filterType, channelMode=$channelMode, uuid=$uuid)"
 }

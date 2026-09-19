@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.*
@@ -111,7 +112,7 @@ class ParametricEqBandAdapter(var bands: ParametricEqBandList) :
         viewHolder.deleteButton.isEnabled = true
 
         val band = bands[position]
-        viewHolder.filterType.text = band.filterType.displayLabel
+        viewHolder.filterType.text = "${band.filterType.displayLabel} ${band.channelMode.displayLabel}"
         viewHolder.freq.text = "${dfFreq.format(band.frequency)}Hz"
         viewHolder.gain.text = "${dfGain.format(band.gain)}dB"
         viewHolder.qFactor.text = "Q${dfQ.format(band.q)}"

@@ -237,8 +237,15 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         // Unregister receivers and release resources
         unregisterLocalReceiver(broadcastReceiver)
+
+        // Stop and release MediaProjection to prevent memory leak.
+        // AudioPolicy held by MediaProjection is rooted in native code;
+        // without explicit stop() the native GC root keeps the AudioPolicy
+        // alive, which retains MediaProjection → ContextImpl → this Service.
         mediaProjection?.unregisterCallback(projectionCallback)
+        mediaProjection?.stop()
         mediaProjection = null
+        mediaProjectionStartIntent = null
 
         sessionManager.sessionPolicyDatabase.unregisterOnRestrictedSessionChangeListener(onSessionPolicyChangeListener)
         sessionManager.sessionDatabase.unregisterOnSessionChangeListener(onSessionChangeListener)
@@ -285,7 +292,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     private val broadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER))
+                ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ))
                 ACTION_PREFERENCES_UPDATED -> engine.syncWithPreferences()
                 ACTION_SERVICE_RELOAD_LIVEPROG -> engine.syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
                 ACTION_SERVICE_HARD_REBOOT_CORE -> restartRecording()

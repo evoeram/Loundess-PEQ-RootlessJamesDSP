@@ -41,6 +41,37 @@ object JamesDspWrapper {
     external fun setVacuumTube(self: JamesDspHandle, enable: Boolean, level: Float): Boolean
     external fun setLiveprog(self: JamesDspHandle, enable: Boolean, id: String, liveprogContent: String): Boolean
 
+    // Time-domain parametric EQ (biquad cascade)
+    external fun setParametricEq(
+        self: JamesDspHandle,
+        enable: Boolean,
+        sampleRate: Double,
+        preampDb: Double,
+        freq: DoubleArray,
+        gain: DoubleArray,
+        q: DoubleArray,
+        filterType: IntArray,
+        channelMode: IntArray
+    ): Boolean
+
+    // Loudness correction (Fletcher-Munson compensation, ported from EqualizerAPO)
+    external fun setLoudnessCorrection(
+        self: JamesDspHandle,
+        enable: Boolean,
+        sampleRate: Double,
+        referenceLevel: Double,
+        referenceOffset: Double,
+        attenuation: Double,
+        currentVolumeDb: Double
+    ): Boolean
+
+    // Update only the current playback volume (dB) without reconfiguring.
+    // Lightweight — can be called frequently when system volume changes.
+    external fun setLoudnessCorrectionVolume(
+        self: JamesDspHandle,
+        currentVolumeDb: Double
+    ): Boolean
+
     // EEL VM utilities
     external fun enumerateEelVariables(self: JamesDspHandle): ArrayList<EelVmVariable>
     external fun manipulateEelVariable(self: JamesDspHandle, name: String, value: Float): Boolean

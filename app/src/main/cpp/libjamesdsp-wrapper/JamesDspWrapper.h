@@ -3,6 +3,10 @@
 
 #include <jni.h>
 
+// Forward declaration (opaque pointer for C interop)
+class ParametricEqProcessor;
+class LoudnessCorrectionProcessor;
+
 typedef struct
 {
     void* dsp;
@@ -12,6 +16,8 @@ typedef struct
     jmethodID callbackOnLiveprogExec;
     jmethodID callbackOnLiveprogResult;
     jmethodID callbackOnVdcParseError;
+    ParametricEqProcessor* parametricEq;
+    LoudnessCorrectionProcessor* loudnessCorrection;
 } JamesDspWrapper;
 
 /* C interop function */

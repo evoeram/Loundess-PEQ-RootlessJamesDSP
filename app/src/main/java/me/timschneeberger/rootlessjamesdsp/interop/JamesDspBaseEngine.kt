@@ -115,6 +115,14 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val liveProgEnabled = cache.get(R.string.key_liveprog_enable, false)
             val liveprogFile = cache.get(R.string.key_liveprog_file, "")
 
+            cache.select(Constants.PREF_LOUDNESS)
+            val loudnessEnabled = cache.get(R.string.key_loudness_enable, false)
+            val loudnessRefLevel = cache.get(R.string.key_loudness_reference_level, 0f)
+            val loudnessRefOffset = cache.get(R.string.key_loudness_reference_offset, 0f)
+            val loudnessAttenuation = cache.get(R.string.key_loudness_attenuation, 100f) / 100f
+            val loudnessVolume = cache.get(R.string.key_loudness_volume, 0f)
+            val loudnessAutoVolume = cache.get(R.string.key_loudness_auto_volume, false)
+
             cache.select(Constants.PREF_CONVOLVER)
             val convolverEnabled = cache.get(R.string.key_convolver_enable, false)
             val convolverFile = cache.get(R.string.key_convolver_file, "")
@@ -131,14 +139,49 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                     Constants.PREF_COMPANDER -> setCompander(compEnabled, compTimeConst, compGranularity, compTfTransforms, compResponse)
                     Constants.PREF_BASS -> setBassBoost(bassEnabled, bassMaxGain)
                     Constants.PREF_EQ -> setMultiEqualizer(eqEnabled, eqFilterType, eqInterpolationMode, eqBands)
-                    Constants.PREF_GEQ -> setGraphicEqCombined(geqEnabled, geqBands, peqEnabled, peqBandsStr, peqPreamp)
-                    Constants.PREF_PEQ -> setGraphicEqCombined(geqEnabled, geqBands, peqEnabled, peqBandsStr, peqPreamp)
+                    Constants.PREF_GEQ -> {
+                        // GEQ and PEQ are now independent: GEQ uses frequency-domain,
+                        // PEQ uses time-domain biquad cascade (if supported).
+                        // For engines without native PEQ support, fall back to GEQ+PEQ merge.
+                        if (supportsParametricEqCascade()) {
+                            setGraphicEq(geqEnabled, geqBands)
+                        } else {
+                            setGraphicEqCombined(geqEnabled, geqBands, peqEnabled, peqBandsStr, peqPreamp)
+                        }
+                    }
+                    Constants.PREF_PEQ -> {
+                        if (supportsParametricEqCascade()) {
+                            // Time-domain biquad cascade (all 8 filter types, L+R/L/R per band)
+                            val peqBands = ParametricEqBandList()
+                            peqBands.deserialize(peqBandsStr)
+                            setParametricEqCascade(peqEnabled, sampleRate.toDouble(), peqPreamp.toDouble(), peqBands.toList())
+                        } else {
+                            // Fallback: merge PEQ into GraphicEQ for engines without native PEQ
+                            setGraphicEqCombined(geqEnabled, geqBands, peqEnabled, peqBandsStr, peqPreamp)
+                        }
+                    }
                     Constants.PREF_REVERB -> setReverb(reverbEnabled, reverbPreset)
                     Constants.PREF_STEREOWIDE -> setStereoEnhancement(swEnabled, swMode)
                     Constants.PREF_CROSSFEED -> setCrossfeed(crossfeedEnabled, crossfeedMode)
                     Constants.PREF_TUBE -> setVacuumTube(tubeEnabled, tubeDrive)
                     Constants.PREF_DDC -> setVdc(ddcEnabled, ddcFile)
                     Constants.PREF_LIVEPROG -> setLiveprog(liveProgEnabled, liveprogFile)
+                    Constants.PREF_LOUDNESS -> {
+                        if (supportsLoudnessCorrection()) {
+                            // Enable/disable system volume tracking
+                            setLoudnessAutoVolume(loudnessEnabled && loudnessAutoVolume)
+                            // Determine the effective volume: auto-tracked or manual
+                            val effectiveVolume = if (loudnessEnabled && loudnessAutoVolume)
+                                getCurrentMediaVolumeDb() else loudnessVolume.toDouble()
+                            setLoudnessCorrection(
+                                loudnessEnabled, sampleRate.toDouble(),
+                                loudnessRefLevel.toDouble(), loudnessRefOffset.toDouble(),
+                                loudnessAttenuation.toDouble(), effectiveVolume
+                            )
+                        } else {
+                            true
+                        }
+                    }
                     Constants.PREF_CONVOLVER -> {
                         val mappedFile = ConvolverSampleRateFiles.resolve(
                             convolverSampleRateFiles,
@@ -422,9 +465,42 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
     protected abstract fun setGraphicEqInternal(enable: Boolean, bands: String): Boolean
     protected abstract fun setLiveprogInternal(enable: Boolean, name: String, script: String): Boolean
 
+    // Time-domain parametric EQ (biquad cascade, all 8 filter types, L+R/L/R per band)
+    abstract fun setParametricEqCascade(
+        enable: Boolean,
+        sampleRate: Double,
+        preampDb: Double,
+        bands: List<me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand>
+    ): Boolean
+
+    // Loudness correction (Fletcher-Munson compensation, local engine only)
+    abstract fun setLoudnessCorrection(
+        enable: Boolean,
+        sampleRate: Double,
+        referenceLevel: Double,
+        referenceOffset: Double,
+        attenuation: Double,
+        currentVolumeDb: Double
+    ): Boolean
+
+    // Push a volume-only update without full reconfiguration.
+    open fun setLoudnessCorrectionVolume(currentVolumeDb: Double): Boolean = false
+
+    // Enable/disable automatic system media volume tracking for loudness correction.
+    open fun setLoudnessAutoVolume(enable: Boolean) {}
+
+    // Get the current system media volume in dB (for auto-volume mode).
+    open fun getCurrentMediaVolumeDb(): Double = 0.0
+
     // Feature support
     abstract fun supportsEelVmAccess(): Boolean
     abstract fun supportsCustomCrossfeed(): Boolean
+
+    /** Whether this engine supports the time-domain parametric EQ biquad cascade */
+    open fun supportsParametricEqCascade(): Boolean = false
+
+    /** Whether this engine supports loudness correction */
+    open fun supportsLoudnessCorrection(): Boolean = false
 
     // EEL VM utilities
     abstract fun enumerateEelVariables(): ArrayList<EelVmVariable>

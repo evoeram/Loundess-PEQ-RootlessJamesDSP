@@ -2,6 +2,7 @@ package me.timschneeberger.rootlessjamesdsp.utils
 
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.*
@@ -41,10 +42,10 @@ object BiquadUtils {
         val omega = 2.0 * PI * frequency / sampleRate
         val sinOmega = sin(omega)
         val cosOmega = cos(omega)
+        val alpha = sinOmega / (2.0 * q)
 
         return when (filterType) {
             ParametricEqFilterType.PEAKING -> {
-                val alpha = sinOmega / (2.0 * q)
                 BiquadCoefficients(
                     b0 = 1.0 + alpha * A,
                     b1 = -2.0 * cosOmega,
@@ -55,7 +56,6 @@ object BiquadUtils {
                 )
             }
             ParametricEqFilterType.LOW_SHELF -> {
-                val alpha = sinOmega / (2.0 * q)
                 val sqrtA = sqrt(A)
                 val twoSqrtAAlpha = 2.0 * sqrtA * alpha
                 BiquadCoefficients(
@@ -68,7 +68,6 @@ object BiquadUtils {
                 )
             }
             ParametricEqFilterType.HIGH_SHELF -> {
-                val alpha = sinOmega / (2.0 * q)
                 val sqrtA = sqrt(A)
                 val twoSqrtAAlpha = 2.0 * sqrtA * alpha
                 BiquadCoefficients(
@@ -78,6 +77,56 @@ object BiquadUtils {
                     a0 = (A + 1.0) - (A - 1.0) * cosOmega + twoSqrtAAlpha,
                     a1 = 2.0 * ((A - 1.0) - (A + 1.0) * cosOmega),
                     a2 = (A + 1.0) - (A - 1.0) * cosOmega - twoSqrtAAlpha
+                )
+            }
+            ParametricEqFilterType.LOW_PASS -> {
+                BiquadCoefficients(
+                    b0 = (1.0 - cosOmega) / 2.0,
+                    b1 = 1.0 - cosOmega,
+                    b2 = (1.0 - cosOmega) / 2.0,
+                    a0 = 1.0 + alpha,
+                    a1 = -2.0 * cosOmega,
+                    a2 = 1.0 - alpha
+                )
+            }
+            ParametricEqFilterType.HIGH_PASS -> {
+                BiquadCoefficients(
+                    b0 = (1.0 + cosOmega) / 2.0,
+                    b1 = -(1.0 + cosOmega),
+                    b2 = (1.0 + cosOmega) / 2.0,
+                    a0 = 1.0 + alpha,
+                    a1 = -2.0 * cosOmega,
+                    a2 = 1.0 - alpha
+                )
+            }
+            ParametricEqFilterType.BAND_PASS -> {
+                BiquadCoefficients(
+                    b0 = alpha,
+                    b1 = 0.0,
+                    b2 = -alpha,
+                    a0 = 1.0 + alpha,
+                    a1 = -2.0 * cosOmega,
+                    a2 = 1.0 - alpha
+                )
+            }
+            ParametricEqFilterType.NOTCH -> {
+                BiquadCoefficients(
+                    b0 = 1.0,
+                    b1 = -2.0 * cosOmega,
+                    b2 = 1.0,
+                    a0 = 1.0 + alpha,
+                    a1 = -2.0 * cosOmega,
+                    a2 = 1.0 - alpha
+                )
+            }
+            ParametricEqFilterType.ALL_PASS -> {
+                BiquadCoefficients(
+                    b0 = 1.0 - alpha,
+                    b1 = -2.0 * cosOmega,
+                    b2 = 1.0 + alpha,
+                    a0 = 1.0 + alpha,
+                    a1 = -2.0 * cosOmega,
+                    a2 = 1.0 - alpha
                 )
             }
         }
@@ -160,6 +209,43 @@ object BiquadUtils {
         }
 
         return result
+    }
+
+    /**
+     * Compute the combined magnitude response for a specific channel (L or R),
+     * considering each band's channelMode.
+     *
+     * - BOTH bands are included on both channels
+     * - LEFT_ONLY bands are included only on the left channel
+     * - RIGHT_ONLY bands are included only on the right channel
+     *
+     * @param bands List of parametric EQ bands
+     * @param channel Which channel to compute (LEFT or RIGHT)
+     * @param numPoints Number of sample points
+     * @param minFreq Minimum frequency in Hz
+     * @param maxFreq Maximum frequency in Hz
+     * @param sampleRate Sample rate for coefficient computation
+     * @return List of (frequency, totalGainDb) pairs
+     */
+    fun computeChannelResponse(
+        bands: List<ParametricEqBand>,
+        channel: ParametricEqChannelMode,
+        numPoints: Int = 512,
+        minFreq: Double = 20.0,
+        maxFreq: Double = 20000.0,
+        sampleRate: Double = 48000.0
+    ): List<Pair<Double, Double>> {
+        // Filter bands that affect this channel
+        val channelBands = bands.filter { band ->
+            when (band.channelMode) {
+                ParametricEqChannelMode.BOTH -> true
+                ParametricEqChannelMode.LEFT_ONLY -> channel == ParametricEqChannelMode.LEFT_ONLY
+                ParametricEqChannelMode.RIGHT_ONLY -> channel == ParametricEqChannelMode.RIGHT_ONLY
+            }
+        }
+
+        if (channelBands.isEmpty()) return emptyList()
+        return computeCombinedResponse(channelBands, numPoints, minFreq, maxFreq, sampleRate)
     }
 
     private val dfFreq = DecimalFormat("0.00", DecimalFormatSymbols.getInstance(Locale.ENGLISH))
