@@ -726,6 +726,77 @@
     <string name="version_mismatch_root_description">The JamesDSP magisk package installed on your device is outdated and not supported by this app anymore.\n\nPlease retrieve the latest JamesDSP magisk package ZIP and install it via Magisk.\nNote that the magisk package may replace this app with the official JamesDSP app.\n\nDo you want to visit the download website for the Magisk packages now?</string>
     <string name="version_mismatch_root_toast">Failed to start. The installed JamesDSP magisk package is too old and not supported by this app anymore.</string>
 
+    <!-- 🐱 MEOW — Measurement, Equalization & Optimization Wizard -->
+    <string name="measurement_title">🐱 MEOW — Measurement, Equalization &amp; Optimization Wizard</string>
+    <string name="measurement_summary">Measure frequency response with a log sweep and auto-equalize your headphones</string>
+    <string name="key_measurement_enable">measurement_enable</string>
+    <string name="key_measurement_open">measurement_open</string>
+    <string name="title_activity_measurement">🐱 MEOW</string>
+    <string name="measurement_start">🐱 MEOW!</string>
+    <string name="measurement_stop">Stop</string>
+    <string name="measurement_in_progress">🐱 MEOW is measuring…</string>
+    <string name="measurement_playing_sweep">Playing sweep signal…</string>
+    <string name="measurement_recording">Recording microphone…</string>
+    <string name="measurement_deconvolving">Deconvolving impulse response…</string>
+    <string name="measurement_computing_spl">Computing frequency response…</string>
+    <string name="measurement_running_autoeq">Running Auto-EQ…</string>
+    <string name="measurement_done">🐱 MEOW complete!</string>
+    <string name="measurement_failed">🐱 MEOW failed: %1$s</string>
+    <string name="measurement_no_result">No measurement data available</string>
+    <string name="measurement_apply_autoeq">Apply to Parametric EQ</string>
+    <string name="measurement_apply_autoeq_success">Auto-EQ applied to parametric equalizer (%1$d bands, preamp %2$.1f dB)</string>
+    <string name="measurement_save_ir">Save impulse response</string>
+    <string name="measurement_save_ir_success">Impulse response saved to %1$s</string>
+    <string name="measurement_save_ir_failed">Failed to save impulse response</string>
+
+    <!-- Target curve -->
+    <string name="target_curve">Target curve</string>
+    <string name="target_curve_flat">Flat</string>
+    <string name="target_curve_harman">Harman</string>
+    <string name="target_curve_custom">Custom</string>
+    <string name="target_curve_editor">Target curve editor</string>
+    <string name="target_curve_add_point">Add point</string>
+    <string name="target_curve_frequency">Frequency (Hz)</string>
+    <string name="target_curve_gain">Gain (dB)</string>
+    <string name="target_curve_points">Control points</string>
+    <string name="target_curve_reset">Reset to default</string>
+
+    <!-- Mic calibration -->
+    <string name="mic_calibration">Microphone calibration</string>
+    <string name="mic_calibration_none">No calibration</string>
+    <string name="mic_calibration_load">Load calibration file</string>
+    <string name="mic_calibration_loaded">Calibration loaded: %1$s (%2$d points)</string>
+    <string name="mic_calibration_load_failed">Failed to load calibration file</string>
+
+    <!-- Auto-EQ config -->
+    <string name="autoeq_config">Auto-EQ configuration</string>
+    <string name="autoeq_max_bands">Max bands</string>
+    <string name="autoeq_max_boost">Max boost (dB)</string>
+    <string name="autoeq_flatness_target">Flatness target (dB)</string>
+    <string name="autoeq_match_range_start">Match range start (Hz)</string>
+    <string name="autoeq_match_range_end">Match range end (Hz)</string>
+    <string name="autoeq_result_bands">%1$d bands generated</string>
+    <string name="autoeq_result_deviation">Max deviation: %1$.2f dB</string>
+    <string name="autoeq_result_preamp">Preamp: %1$.1f dB</string>
+    <string name="autoeq_result_target_met">Target met</string>
+    <string name="autoeq_result_target_not_met">Target not fully met</string>
+
+    <!-- Measurement graph -->
+    <string name="measurement_graph_measured">Measured SPL</string>
+    <string name="measurement_graph_target">Target</string>
+    <string name="measurement_graph_filter">Filter response</string>
+    <string name="measurement_show_measured">Show measured</string>
+    <string name="measurement_show_target">Show target</string>
+    <string name="measurement_show_filter">Show filter</string>
+    <string name="measurement_warning">🐱 MEOW wizard: Keep the room quiet during measurement. Use a measurement microphone (e.g. UMIK-1) for best results.</string>
+    <string name="measurement_input_signal">Input signal</string>
+    <string name="measurement_input_idle">Idle</string>
+    <string name="measurement_input_recording">Recording…</string>
+    <string name="measurement_input_level">Level: %1$.1f dB</string>
+    <string name="measurement_input_clipping">CLIPPING!</string>
+    <string name="measurement_mic_default">Mic: Auto</string>
+    <string name="measurement_mic_select">Select microphone</string>
+
     <!-- Android 15 screenshare restriction warning -->
     <string name="android_15_screenshare_warning_title">Android 15 compatibility notice</string>
     <string name="android_15_screenshare_warning">Android 15 introduces a new screen recording restriction that will redact all sensitive information (e.g. in your notifications) while an app is using the screen record permission.

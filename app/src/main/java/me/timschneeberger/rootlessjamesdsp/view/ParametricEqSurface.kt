@@ -84,8 +84,52 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
     /** Callback invoked when clipping state changes (curves exceed 0 dB). */
     var onClippingChanged: ((Boolean) -> Unit)? = null
 
+    // ── Measurement data (опциональные слои) ──
+    // Измеренная АЧХ (raw или calibrated SPL) — основной канал
+    private var mMeasurementFreqs = FloatArray(0)
+    private var mMeasurementSpl = FloatArray(0)
+    private var mHasMeasurement = false
+
+    // Второй канал измерения (для режима L/R: правый канал)
+    private var mMeasurementRFreqs = FloatArray(0)
+    private var mMeasurementRSpl = FloatArray(0)
+    private var mHasMeasurementR = false
+
+    // Целевая кривая (target curve)
+    private var mTargetFreqs = FloatArray(0)
+    private var mTargetSpl = FloatArray(0)
+    private var mHasTarget = false
+
+    // Paints для measurement и target слоёв
+    private val mMeasurementPaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        isAntiAlias = true
+        color = Color.parseColor("#4CAF50") // зелёный
+        alpha = 200
+        pathEffect = DashPathEffect(floatArrayOf(8f, 4f), 0f)
+    }
+    private val mMeasurementRPaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        isAntiAlias = true
+        color = Color.parseColor("#2196F3") // синий
+        alpha = 200
+        pathEffect = DashPathEffect(floatArrayOf(8f, 4f), 0f)
+    }
+    private val mTargetPaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f
+        isAntiAlias = true
+        color = Color.parseColor("#FF9800") // оранжевый
+        alpha = 180
+    }
+
     // Calculator
     private val calculator = ParametricEqResponseCalculator()
+
+    // Флаг: есть ли PEQ-полосы (для скрытия L/R в легенде)
+    private var mHasBands = false
 
     // Colors
     private val mLeftColor: Int
@@ -291,7 +335,55 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
         val saveCount = canvas.save()
         canvas.clipRect(mClipRect)
 
-        if (mFrequencies.isNotEmpty()) {
+        // ── Measurement curve (зелёный пунктир, под filter curves) ──
+        if (mHasMeasurement && mMeasurementFreqs.isNotEmpty()) {
+            val measPath = Path()
+            measPath.moveTo(
+                mPlotLeft + projectX(mMeasurementFreqs[0].toDouble()) * mPlotWidth,
+                mPlotTop + projectY(mMeasurementSpl[0]) * mPlotHeight
+            )
+            for (i in 1 until mMeasurementFreqs.size) {
+                measPath.lineTo(
+                    mPlotLeft + projectX(mMeasurementFreqs[i].toDouble()) * mPlotWidth,
+                    mPlotTop + projectY(mMeasurementSpl[i]) * mPlotHeight
+                )
+            }
+            canvas.drawPath(measPath, mMeasurementPaint)
+        }
+
+        // ── Measurement R curve (синий пунктир, второй канал L/R) ──
+        if (mHasMeasurementR && mMeasurementRFreqs.isNotEmpty()) {
+            val measRPath = Path()
+            measRPath.moveTo(
+                mPlotLeft + projectX(mMeasurementRFreqs[0].toDouble()) * mPlotWidth,
+                mPlotTop + projectY(mMeasurementRSpl[0]) * mPlotHeight
+            )
+            for (i in 1 until mMeasurementRFreqs.size) {
+                measRPath.lineTo(
+                    mPlotLeft + projectX(mMeasurementRFreqs[i].toDouble()) * mPlotWidth,
+                    mPlotTop + projectY(mMeasurementRSpl[i]) * mPlotHeight
+                )
+            }
+            canvas.drawPath(measRPath, mMeasurementRPaint)
+        }
+
+        // ── Target curve (оранжевый, под filter curves) ──
+        if (mHasTarget && mTargetFreqs.isNotEmpty()) {
+            val targetPath = Path()
+            targetPath.moveTo(
+                mPlotLeft + projectX(mTargetFreqs[0].toDouble()) * mPlotWidth,
+                mPlotTop + projectY(mTargetSpl[0]) * mPlotHeight
+            )
+            for (i in 1 until mTargetFreqs.size) {
+                targetPath.lineTo(
+                    mPlotLeft + projectX(mTargetFreqs[i].toDouble()) * mPlotWidth,
+                    mPlotTop + projectY(mTargetSpl[i]) * mPlotHeight
+                )
+            }
+            canvas.drawPath(targetPath, mTargetPaint)
+        }
+
+        if (mFrequencies.isNotEmpty() && mHasBands) {
             buildCurvePath(mPathL, mFrequencies, mLeftResponseDb, preamp)
             buildCurvePath(mPathR, mFrequencies, mRightResponseDb, preamp)
 
@@ -323,15 +415,6 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
             }
             if (mLeftResponseDb.isNotEmpty()) {
                 canvas.drawPath(mPathL, mCurveLPaint)
-            }
-        } else {
-            // No bands: flat line at 0 dB (with preamp offset) for both L and R
-            val flatY = mPlotTop + projectY(preamp) * mPlotHeight
-            canvas.drawLine(mPlotLeft, flatY, mPlotLeft + mPlotWidth, flatY, mCurveRPaint)
-            canvas.drawLine(mPlotLeft, flatY, mPlotLeft + mPlotWidth, flatY, mCurveLPaint)
-
-            if (preamp > 0f && mIsClipping) {
-                canvas.drawRect(mPlotLeft, flatY, mPlotLeft + mPlotWidth, zeroY, mClipFillPaint)
             }
         }
 
@@ -408,16 +491,42 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
         val itemGap = 20f
         var x = mPlotLeft
 
-        // L dot + label
-        mLegendTextPaint.color = mLeftColor
-        canvas.drawCircle(x + dotRadius, legendY - dotRadius * 0.5f, dotRadius, mLegendTextPaint)
-        canvas.drawText("L", x + dotRadius * 2 + labelGap, legendY, mLegendTextPaint)
-        x += dotRadius * 2 + labelGap + mLegendTextPaint.measureText("L") + itemGap
+        // L dot + label (только если есть PEQ-полосы)
+        if (mHasBands) {
+            mLegendTextPaint.color = mLeftColor
+            canvas.drawCircle(x + dotRadius, legendY - dotRadius * 0.5f, dotRadius, mLegendTextPaint)
+            canvas.drawText("L", x + dotRadius * 2 + labelGap, legendY, mLegendTextPaint)
+            x += dotRadius * 2 + labelGap + mLegendTextPaint.measureText("L") + itemGap
 
-        // R dot + label
-        mLegendTextPaint.color = mRightColor
-        canvas.drawCircle(x + dotRadius, legendY - dotRadius * 0.5f, dotRadius, mLegendTextPaint)
-        canvas.drawText("R", x + dotRadius * 2 + labelGap, legendY, mLegendTextPaint)
+            // R dot + label
+            mLegendTextPaint.color = mRightColor
+            canvas.drawCircle(x + dotRadius, legendY - dotRadius * 0.5f, dotRadius, mLegendTextPaint)
+            canvas.drawText("R", x + dotRadius * 2 + labelGap, legendY, mLegendTextPaint)
+            x += dotRadius * 2 + labelGap + mLegendTextPaint.measureText("R") + itemGap
+        }
+
+        // Measurement dot + label (если есть)
+        if (mHasMeasurement) {
+            mLegendTextPaint.color = mMeasurementPaint.color
+            canvas.drawCircle(x + dotRadius, legendY - dotRadius * 0.5f, dotRadius, mLegendTextPaint)
+            canvas.drawText("Meas L", x + dotRadius * 2 + labelGap, legendY, mLegendTextPaint)
+            x += dotRadius * 2 + labelGap + mLegendTextPaint.measureText("Meas L") + itemGap
+        }
+
+        // Measurement R dot + label (если есть)
+        if (mHasMeasurementR) {
+            mLegendTextPaint.color = mMeasurementRPaint.color
+            canvas.drawCircle(x + dotRadius, legendY - dotRadius * 0.5f, dotRadius, mLegendTextPaint)
+            canvas.drawText("Meas R", x + dotRadius * 2 + labelGap, legendY, mLegendTextPaint)
+            x += dotRadius * 2 + labelGap + mLegendTextPaint.measureText("Meas R") + itemGap
+        }
+
+        // Target dot + label (если есть)
+        if (mHasTarget) {
+            mLegendTextPaint.color = mTargetPaint.color
+            canvas.drawCircle(x + dotRadius, legendY - dotRadius * 0.5f, dotRadius, mLegendTextPaint)
+            canvas.drawText("Target", x + dotRadius * 2 + labelGap, legendY, mLegendTextPaint)
+        }
     }
 
     // ── Label formatting ────────────────────────────────────────────
@@ -522,20 +631,144 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
     fun setBands(bands: ParametricEqBandList, preampDb: Double = mPreampDb.toDouble()) {
         mPreampDb = preampDb.toFloat()
         mChannelsDiffer = bands.any { it.channelMode != ParametricEqChannelMode.BOTH }
+        mHasBands = bands.isNotEmpty()
 
         val response = calculator.compute(bands.toList(), preampDb)
         mFrequencies = response.frequencies.map { it.toFloat() }.toFloatArray()
         mLeftResponseDb = response.leftResponseDb.map { it.toFloat() }.toFloatArray()
         mRightResponseDb = response.rightResponseDb.map { it.toFloat() }.toFloatArray()
 
-        updateDbRange()
+        updateDbRangeWithMeasurement()
         postInvalidate()
     }
 
     fun setPreampDb(preampDb: Double) {
         mPreampDb = preampDb.toFloat()
-        updateDbRange()
+        updateDbRangeWithMeasurement()
         postInvalidate()
+    }
+
+    // ── Measurement / Target API ─────────────────────────────────
+
+    /**
+     * Установить измеренную АЧХ для отображения поверх кривых фильтров.
+     * @param freqs массив частот (Гц)
+     * @param spl массив SPL (дБ)
+     */
+    fun setMeasurementData(freqs: FloatArray, spl: FloatArray) {
+        require(freqs.size == spl.size) { "freqs and spl must have same size" }
+        mMeasurementFreqs = freqs
+        mMeasurementSpl = spl
+        mHasMeasurement = freqs.isNotEmpty()
+        updateDbRangeWithMeasurement()
+        postInvalidate()
+    }
+
+    /** Очистить измеренную АЧХ. */
+    fun clearMeasurementData() {
+        mHasMeasurement = false
+        mMeasurementFreqs = FloatArray(0)
+        mMeasurementSpl = FloatArray(0)
+        updateDbRangeWithMeasurement()
+        postInvalidate()
+    }
+
+    /**
+     * Установить измеренную АЧХ второго канала (R) для отображения.
+     * Используется в режиме L/R для показа двух графиков одновременно.
+     * @param freqs массив частот (Гц)
+     * @param spl массив SPL (дБ)
+     */
+    fun setMeasurementDataR(freqs: FloatArray, spl: FloatArray) {
+        require(freqs.size == spl.size) { "freqs and spl must have same size" }
+        mMeasurementRFreqs = freqs
+        mMeasurementRSpl = spl
+        mHasMeasurementR = freqs.isNotEmpty()
+        updateDbRangeWithMeasurement()
+        postInvalidate()
+    }
+
+    /** Очистить измеренную АЧХ второго канала (R). */
+    fun clearMeasurementDataR() {
+        mHasMeasurementR = false
+        mMeasurementRFreqs = FloatArray(0)
+        mMeasurementRSpl = FloatArray(0)
+        updateDbRangeWithMeasurement()
+        postInvalidate()
+    }
+
+    /**
+     * Установить целевую кривую для отображения.
+     * @param freqs массив частот (Гц)
+     * @param targetDb массив целевых усилений (дБ)
+     */
+    fun setTargetCurve(freqs: FloatArray, targetDb: FloatArray) {
+        require(freqs.size == targetDb.size) { "freqs and targetDb must have same size" }
+        mTargetFreqs = freqs
+        mTargetSpl = targetDb
+        mHasTarget = freqs.isNotEmpty()
+        updateDbRangeWithMeasurement()
+        postInvalidate()
+    }
+
+    /** Очистить целевую кривую. */
+    fun clearTargetCurve() {
+        mHasTarget = false
+        mTargetFreqs = FloatArray(0)
+        mTargetSpl = FloatArray(0)
+        updateDbRangeWithMeasurement()
+        postInvalidate()
+    }
+
+    /**
+     * Пересчитать Y-axis диапазон с учётом ВСЕХ видимых графиков:
+     * measurement (L+R), target curve и PEQ-фильтр.
+     * Берёт max/min по всем трём, добавляет ±3 dB запас сверху и снизу.
+     * Округляет до кратного 3 dB.
+     */
+    private fun updateDbRangeWithMeasurement() {
+        val allValues = mutableListOf<Float>()
+
+        // PEQ-кривые (L+R с preamp)
+        val preamp = mPreampDb
+        for (v in mLeftResponseDb) allValues.add(v + preamp)
+        for (v in mRightResponseDb) allValues.add(v + preamp)
+
+        // Measurement данные (L)
+        if (mHasMeasurement && mMeasurementSpl.isNotEmpty()) {
+            for (v in mMeasurementSpl) allValues.add(v)
+        }
+        // Measurement данные (R)
+        if (mHasMeasurementR && mMeasurementRSpl.isNotEmpty()) {
+            for (v in mMeasurementRSpl) allValues.add(v)
+        }
+
+        // Target curve
+        if (mHasTarget && mTargetSpl.isNotEmpty()) {
+            for (v in mTargetSpl) allValues.add(v)
+        }
+
+        if (allValues.isEmpty()) {
+            mMaxDb = 3f
+            mMinDb = -3f
+            updateClipping(false)
+            return
+        }
+
+        val maxVal = allValues.maxOrNull() ?: 0f
+        val minVal = allValues.minOrNull() ?: 0f
+
+        // ±3 dB запас, округление до кратного 3 dB
+        mMaxDb = ceil((maxVal + 3f) / 3f) * 3f
+        if (mMaxDb < 3f) mMaxDb = 3f
+
+        mMinDb = floor((minVal - 3f) / 3f) * 3f
+        if (mMinDb > -3f) mMinDb = -3f
+
+        // Clipping: PEQ-кривая превышает 0 dB
+        val peqGains = (mLeftResponseDb.toList() + mRightResponseDb.toList()).map { it + preamp }
+        val clipping = peqGains.any { it > 0.01f } || preamp > 0.01f
+        updateClipping(clipping)
     }
 
     // ── Scaling ─────────────────────────────────────────────────────

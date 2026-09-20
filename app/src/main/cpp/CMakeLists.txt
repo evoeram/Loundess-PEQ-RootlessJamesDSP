@@ -72,3 +72,31 @@ target_include_directories(jamesdsp_effect PUBLIC
 target_link_libraries(jamesdsp_effect ${log-lib})
 # Output as libjamesdsp_effect.so to avoid conflict with core jamesdsp target.
 # Rename to libjamesdsp.so when deploying to Magisk module.
+
+# ================================================================
+# Measurement engine (libmeasurement.so)
+# C/NDK measurement pipeline: sweep generation, Farina deconvolution,
+# IR windowing, SPL response computation. Uses kissfft (in-repo).
+# ================================================================
+
+# kissfft source files (already in repository)
+set(KISSFFT_DIR ${CMAKE_CURRENT_LIST_DIR}/libjamesdsp/VeryOldOpen_source_edition/DSPManager_Free_BitPerfect/jni/main/kissfft)
+
+add_library(measurement SHARED
+        measurement/sweep_generator.c
+        measurement/sweep_generator.h
+        measurement/farina_deconv.c
+        measurement/farina_deconv.h
+        measurement/ir_windowing.c
+        measurement/ir_windowing.h
+        measurement/spl_response.c
+        measurement/spl_response.h
+        measurement/measurement_jni.c
+        ${KISSFFT_DIR}/kiss_fft.c
+        ${KISSFFT_DIR}/kiss_fftr.c)
+
+target_compile_options(measurement PRIVATE -O2 -std=gnu11 -ffunction-sections -fdata-sections)
+target_include_directories(measurement PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/measurement/
+        ${KISSFFT_DIR})
+target_link_libraries(measurement ${log-lib})

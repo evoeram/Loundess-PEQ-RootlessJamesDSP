@@ -186,6 +186,16 @@
         </activity>
 
         <activity
+            android:name=".activity.MeasurementActivity"
+            android:exported="false"
+            android:label="@string/title_activity_measurement"
+            android:theme="@style/Theme.RootlessJamesDSP">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".activity.MainActivity" />
+        </activity>
+
+        <activity
             android:name=".activity.AeqSelectorActivity"
             android:exported="false"
             android:theme="@style/Theme.RootlessJamesDSP"

@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:layout_marginTop="4dp"
+    android:animateLayoutChanges="true">
+
+    <HorizontalScrollView
+        android:id="@+id/toolbar_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbarDefaultDelayBeforeFade="0"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <com.google.android.material.chip.ChipGroup
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
+            app:singleLine="true">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_start"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/measurement_start"
+                app:chipIcon="@drawable/ic_baseline_play_arrow_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_stop"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/measurement_stop"
+                android:visibility="gone"
+                app:chipIcon="@drawable/ic_close_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_mic_select"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/measurement_mic_default"
+                app:chipIcon="@drawable/ic_twotone_mic_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_mode_select"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="L+R"
+                app:chipIcon="@drawable/ic_tune_vertical_variant_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_smoothing_select"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Psychoacoustic"
+                app:chipIcon="@drawable/ic_tune_vertical_variant_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_lr_mode"
+                style="@style/Widget.Material3.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Abs"
+                android:visibility="gone" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_target_curve"
+                style="@style/Widget.Material3.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/target_curve"
+                app:chipIcon="@drawable/ic_tune_vertical_variant_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_mic_cal"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/mic_calibration_load"
+                app:chipIcon="@drawable/ic_twotone_mic_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_autoeq_config"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/autoeq_config"
+                app:chipIcon="@drawable/ic_twotone_settings_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_apply"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/measurement_apply_autoeq"
+                android:visibility="gone"
+                app:chipIcon="@drawable/ic_twotone_check_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_save_ir"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/measurement_save_ir"
+                android:visibility="gone"
+                app:chipIcon="@drawable/ic_twotone_save_24dp" />
+        </com.google.android.material.chip.ChipGroup>
+    </HorizontalScrollView>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/graph_card"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginHorizontal="16dp"
+        app:layout_constraintTop_toBottomOf="@id/toolbar_scroll"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/status_card">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:animateLayoutChanges="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center_vertical"
+                    android:text="@string/peq_preview"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/layer_toggle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    app:singleSelection="false">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/toggle_measured"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="12dp"
+                        android:text="@string/measurement_graph_measured" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/toggle_target"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="12dp"
+                        android:text="@string/measurement_graph_target" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/toggle_filter"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="12dp"
+                        android:text="@string/measurement_graph_filter" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+            </LinearLayout>
+
+            <me.timschneeberger.rootlessjamesdsp.view.ParametricEqSurface
+                android:id="@+id/equalizer_surface"
+                android:layout_width="match_parent"
+                android:layout_height="280dp"
+                android:layout_marginHorizontal="4dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="8dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Визуализация входящего сигнала (осциллограмма в реальном времени) -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/waveform_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/graph_card"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/status_card">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:text="@string/measurement_input_signal"
+                    android:textAppearance="?attr/textAppearanceLabelSmall" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:id="@+id/input_level_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceLabelSmall"
+                    android:text="@string/measurement_input_idle" />
+            </LinearLayout>
+
+            <me.timschneeberger.rootlessjamesdsp.view.WaveformView
+                android:id="@+id/waveform_view"
+                android:layout_width="match_parent"
+                android:layout_height="80dp"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/status_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="12dp"
+            android:animateLayoutChanges="true">
+
+            <TextView
+                android:id="@+id/status_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/measurement_warning"
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+            <ProgressBar
+                android:id="@+id/progress_bar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:visibility="gone"
+                android:indeterminate="true" />
+
+            <TextView
+                android:id="@+id/result_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:visibility="gone"
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+</androidx.constraintlayout.widget.ConstraintLayout>

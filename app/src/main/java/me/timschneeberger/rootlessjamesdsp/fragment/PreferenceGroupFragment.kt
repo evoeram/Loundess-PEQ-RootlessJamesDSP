@@ -20,6 +20,7 @@ import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.activity.GraphicEqualizerActivity
 import me.timschneeberger.rootlessjamesdsp.activity.LiveprogEditorActivity
 import me.timschneeberger.rootlessjamesdsp.activity.ParametricEqualizerActivity
+import me.timschneeberger.rootlessjamesdsp.activity.MeasurementActivity
 import me.timschneeberger.rootlessjamesdsp.activity.LiveprogParamsActivity
 import me.timschneeberger.rootlessjamesdsp.adapter.RoundedRipplePreferenceGroupAdapter
 import me.timschneeberger.rootlessjamesdsp.liveprog.EelParser
@@ -208,6 +209,13 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             R.xml.dsp_parametriceq_preferences -> {
                 findPreference<Preference>(getString(R.string.key_peq_bands))?.setOnPreferenceClickListener {
                     val intent = Intent(requireContext(), ParametricEqualizerActivity::class.java)
+                    startActivity(intent)
+                    true
+                }
+            }
+            R.xml.dsp_measurement_preferences -> {
+                findPreference<Preference>(getString(R.string.key_measurement_open))?.setOnPreferenceClickListener {
+                    val intent = Intent(requireContext(), MeasurementActivity::class.java)
                     startActivity(intent)
                     true
                 }

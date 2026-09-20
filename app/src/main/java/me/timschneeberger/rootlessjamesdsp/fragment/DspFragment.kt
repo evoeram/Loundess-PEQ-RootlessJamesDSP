@@ -89,6 +89,10 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
                     R.xml.dsp_equalizer_preferences
                 ))
             .replace(
+                R.id.card_measurement, PreferenceGroupFragment.newInstance(Constants.PREF_MEASUREMENT,
+                    R.xml.dsp_measurement_preferences
+                ))
+            .replace(
                 R.id.card_peq, PreferenceGroupFragment.newInstance(Constants.PREF_PEQ,
                     R.xml.dsp_parametriceq_preferences
                 ))
