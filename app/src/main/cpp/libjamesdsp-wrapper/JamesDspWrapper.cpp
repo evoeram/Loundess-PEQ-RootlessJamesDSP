@@ -797,11 +797,13 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_eelErrorCodeToS
 
 void receiveLiveprogStdOut(const char *buffer, void* userData)
 {
+    // Логирование в logcat (аналог fwrite(stdout) в Linux-версии)
+    __android_log_print(ANDROID_LOG_INFO, "LiveProg", "%s", buffer);
+
     auto* self = static_cast<JamesDspWrapper*>(userData);
     if(self == nullptr)
     {
         LOGE("JamesDspWrapper::receiveLiveprogStdOut: Self reference is NULL");
-        LOGE("JamesDspWrapper::receiveLiveprogStdOut: Unhandled output: %s", buffer);
         return;
     }
 

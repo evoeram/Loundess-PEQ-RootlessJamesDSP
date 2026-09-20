@@ -648,7 +648,11 @@ class MainActivity : BaseActivity() {
                         makeSnackbar(getString(it)).show()
                     }
                 }
-                ProcessorMessage.Type.LiveprogOutput -> {}
+                ProcessorMessage.Type.LiveprogOutput -> {
+                    val msg = intent.getStringExtra(ProcessorMessage.Param.LiveprogStdout.name) ?: ""
+                    if(msg.isNotBlank())
+                        Timber.i("LiveProg: $msg")
+                }
                 ProcessorMessage.Type.LiveprogExec -> {}
                 ProcessorMessage.Type.LiveprogResult -> {
                     val ret = intent.getIntExtra(ProcessorMessage.Param.LiveprogResultCode.name, 1)
