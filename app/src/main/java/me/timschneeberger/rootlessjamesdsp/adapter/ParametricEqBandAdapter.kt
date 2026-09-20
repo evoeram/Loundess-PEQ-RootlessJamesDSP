@@ -113,9 +113,17 @@ class ParametricEqBandAdapter(var bands: ParametricEqBandList) :
 
         val band = bands[position]
         viewHolder.filterType.text = "${band.filterType.displayLabel} ${band.channelMode.displayLabel}"
-        viewHolder.freq.text = "${dfFreq.format(band.frequency)}Hz"
-        viewHolder.gain.text = "${dfGain.format(band.gain)}dB"
-        viewHolder.qFactor.text = "Q${dfQ.format(band.q)}"
+
+        if (band.filterType.isFlatGain) {
+            // Preamp bands: flat gain, frequency and Q are irrelevant
+            viewHolder.freq.text = ""
+            viewHolder.gain.text = "${dfGain.format(band.gain)}dB"
+            viewHolder.qFactor.text = ""
+        } else {
+            viewHolder.freq.text = "${dfFreq.format(band.frequency)}Hz"
+            viewHolder.gain.text = "${dfGain.format(band.gain)}dB"
+            viewHolder.qFactor.text = "Q${dfQ.format(band.q)}"
+        }
 
         viewHolder.deleteButton.setOnClickListener {
             viewHolder.bindingAdapterPosition.let { pos ->

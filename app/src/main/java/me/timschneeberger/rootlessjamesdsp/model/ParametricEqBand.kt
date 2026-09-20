@@ -11,7 +11,11 @@ enum class ParametricEqFilterType(val code: Int, val apoLabel: String, val displ
     HIGH_PASS(4, "HP", "HP"),
     BAND_PASS(5, "BP", "BP"),
     NOTCH(6, "NO", "NO"),
-    ALL_PASS(7, "AP", "AP");
+    ALL_PASS(7, "AP", "AP"),
+    PREAMP(8, "PRE", "Pre");
+
+    /** Whether this filter type is a flat gain stage with no frequency/Q dependence. */
+    val isFlatGain: Boolean get() = this == PREAMP
 
     companion object {
         fun fromCode(code: Int) = entries.firstOrNull { it.code == code } ?: PEAKING
@@ -24,6 +28,7 @@ enum class ParametricEqFilterType(val code: Int, val apoLabel: String, val displ
             "BP" -> BAND_PASS
             "NO" -> NOTCH
             "AP" -> ALL_PASS
+            "PRE" -> PREAMP
             else -> null
         }
     }

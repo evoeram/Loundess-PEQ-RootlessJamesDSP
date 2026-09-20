@@ -176,6 +176,7 @@ class ParametricEqualizerFragment : Fragment() {
             binding.qInput.value = 1.41f
             setFilterTypeSelection(ParametricEqFilterType.PEAKING)
             setChannelModeSelection(ParametricEqChannelMode.BOTH)
+            updateEditorInputsVisibility()
             updateViewState()
         }
 
@@ -202,6 +203,7 @@ class ParametricEqualizerFragment : Fragment() {
                 ParametricEqFilterType.BAND_PASS -> getString(R.string.peq_filter_type_band_pass)
                 ParametricEqFilterType.NOTCH -> getString(R.string.peq_filter_type_notch)
                 ParametricEqFilterType.ALL_PASS -> getString(R.string.peq_filter_type_all_pass)
+                ParametricEqFilterType.PREAMP -> getString(R.string.peq_filter_type_preamp)
             }
         }
         binding.filterTypeSpinner.adapter = android.widget.ArrayAdapter(
@@ -209,6 +211,7 @@ class ParametricEqualizerFragment : Fragment() {
         )
         binding.filterTypeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                updateEditorInputsVisibility()
                 editorApply()
             }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
@@ -295,6 +298,7 @@ class ParametricEqualizerFragment : Fragment() {
                 binding.qInput.value = band.q.toFloat()
                 setFilterTypeSelection(band.filterType)
                 setChannelModeSelection(band.channelMode)
+                updateEditorInputsVisibility()
                 updateViewState()
             }
         }
@@ -319,6 +323,17 @@ class ParametricEqualizerFragment : Fragment() {
 
     private fun setFilterTypeSelection(type: ParametricEqFilterType) {
         binding.filterTypeSpinner.setSelection(type.ordinal)
+    }
+
+    /**
+     * Show/hide editor inputs that are irrelevant for the selected filter type.
+     * Preamp is a flat frequency-independent gain stage, so frequency and Q
+     * have no effect and are hidden to avoid confusing the user.
+     */
+    private fun updateEditorInputsVisibility() {
+        val flatGain = getSelectedFilterType().isFlatGain
+        binding.freqInput.visibility = if (flatGain) View.GONE else View.VISIBLE
+        binding.qInput.visibility = if (flatGain) View.GONE else View.VISIBLE
     }
 
     private fun getSelectedChannelMode(): ParametricEqChannelMode {

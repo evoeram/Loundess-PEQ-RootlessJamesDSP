@@ -153,6 +153,7 @@
     <string name="peq_filter_type_band_pass">Band pass</string>
     <string name="peq_filter_type_notch">Notch</string>
     <string name="peq_filter_type_all_pass">All pass</string>
+    <string name="peq_filter_type_preamp">Preamp</string>
     <string name="peq_channel_mode">Channel</string>
     <string name="peq_channel_both">L+R</string>
     <string name="peq_channel_left">L</string>

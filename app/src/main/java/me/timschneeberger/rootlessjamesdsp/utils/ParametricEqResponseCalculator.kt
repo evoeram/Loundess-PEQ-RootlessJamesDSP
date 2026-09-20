@@ -152,6 +152,12 @@ class ParametricEqResponseCalculator(
         val alpha = sinOmega / (2.0 * qClamped)
 
         val (b0, b1, b2, a0, a1, a2) = when (filterType) {
+            ParametricEqFilterType.PREAMP -> {
+                // Flat frequency-independent gain stage (ported PreampFilter).
+                // Represented as a degenerate biquad: H(z) = 10^(gain/20).
+                val g = 10.0.pow(gain / 20.0)
+                Sextet(g, 0.0, 0.0, 1.0, 0.0, 0.0)
+            }
             ParametricEqFilterType.PEAKING -> Sextet(
                 1.0 + alpha * A, -2.0 * cosOmega, 1.0 - alpha * A,
                 1.0 + alpha / A, -2.0 * cosOmega, 1.0 - alpha / A

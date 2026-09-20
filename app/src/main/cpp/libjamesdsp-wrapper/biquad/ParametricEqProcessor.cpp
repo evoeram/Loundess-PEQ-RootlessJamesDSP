@@ -33,6 +33,23 @@ void ParametricEqProcessor::configure(double sr, const ParametricEqBandConfig* b
         if (!cfg.enabled)
             continue;
 
+        BandState state;
+        state.channelMode = cfg.channelMode;
+        state.enabled = true;
+        state.isPreamp = false;
+        state.preampLinear = 1.0;
+
+        // Preamp bands are flat frequency-independent gain stages (ported
+        // from EqualizerAPO's PreampFilter). They apply 10^(gain/20) to the
+        // sample directly, without any biquad coloring.
+        if (cfg.filterType == PEQ_PREAMP)
+        {
+            state.isPreamp = true;
+            state.preampLinear = std::pow(10.0, cfg.gain / 20.0);
+            bandStates.push_back(std::move(state));
+            continue;
+        }
+
         // Clamp frequency to valid range for the sample rate
         double freq = cfg.frequency;
         double nyquist = sampleRate * 0.5;
@@ -46,12 +63,9 @@ void ParametricEqProcessor::configure(double sr, const ParametricEqBandConfig* b
 
         BiQuad::Type bqt = toBiQuadType(cfg.filterType);
 
-        BandState state;
         // Create biquads with Q mode (isBandwidthOrS = false)
         state.bqL = BiQuad(bqt, cfg.gain, freq, sampleRate, q, false);
         state.bqR = BiQuad(bqt, cfg.gain, freq, sampleRate, q, false);
-        state.channelMode = cfg.channelMode;
-        state.enabled = true;
 
         bandStates.push_back(std::move(state));
     }
@@ -116,6 +130,26 @@ void ParametricEqProcessor::processDeinterleaved(float* left, float* right, size
         {
             if (!band.enabled)
                 continue;
+
+            // Preamp band: flat gain stage, no biquad processing.
+            if (band.isPreamp)
+            {
+                const double g = band.preampLinear;
+                switch (band.channelMode)
+                {
+                case PEQ_CHAN_BOTH:
+                    sampleL *= g;
+                    sampleR *= g;
+                    break;
+                case PEQ_CHAN_LEFT:
+                    sampleL *= g;
+                    break;
+                case PEQ_CHAN_RIGHT:
+                    sampleR *= g;
+                    break;
+                }
+                continue;
+            }
 
             // Remove denormals periodically to prevent CPU spikes
             band.bqL.removeDenormals();

@@ -33,6 +33,7 @@ enum ParametricEqFilterType : int
     PEQ_BAND_PASS   = 5,
     PEQ_NOTCH       = 6,
     PEQ_ALL_PASS    = 7,
+    PEQ_PREAMP      = 8, // Flat frequency-independent gain stage (ported PreampFilter)
 };
 
 // Channel routing modes
@@ -106,6 +107,8 @@ private:
         BiQuad bqR;
         int channelMode;  // PEQ_CHAN_BOTH / LEFT / RIGHT
         bool enabled;
+        bool isPreamp;        // true for PEQ_PREAMP bands (flat gain, no biquad)
+        double preampLinear;  // linear gain = 10^(gain/20) for preamp bands
     };
 
     std::vector<BandState> bandStates;

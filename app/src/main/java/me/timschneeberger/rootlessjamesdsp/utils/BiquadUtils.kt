@@ -45,6 +45,15 @@ object BiquadUtils {
         val alpha = sinOmega / (2.0 * q)
 
         return when (filterType) {
+            ParametricEqFilterType.PREAMP -> {
+                // Flat frequency-independent gain stage (ported PreampFilter).
+                // H(z) = 10^(gain/20); degenerate biquad with b0 = gain, a0 = 1.
+                val g = 10.0.pow(gain / 20.0)
+                BiquadCoefficients(
+                    b0 = g, b1 = 0.0, b2 = 0.0,
+                    a0 = 1.0, a1 = 0.0, a2 = 0.0
+                )
+            }
             ParametricEqFilterType.PEAKING -> {
                 BiquadCoefficients(
                     b0 = 1.0 + alpha * A,
