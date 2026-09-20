@@ -339,6 +339,56 @@ class JamesDspRemoteEngine(
         return effect.setParameterFloatArray(1302, floatArrayOf(currentVolumeDb.toFloat())) == AudioEffect.SUCCESS
     }
 
+    // ---- Auto system volume tracking (root/remote engine) ----
+
+    private var volumeReceiverRegistered = false
+    private val audioManager by lazy {
+        context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+    }
+
+    private val volumeReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(ctx: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action == VOLUME_CHANGED_ACTION) {
+                val volDb = getCurrentMediaVolumeDb()
+                setLoudnessCorrectionVolume(volDb)
+            }
+        }
+    }
+
+    override fun setLoudnessAutoVolume(enable: Boolean) {
+        if (enable && !volumeReceiverRegistered) {
+            val filter = android.content.IntentFilter(VOLUME_CHANGED_ACTION)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(volumeReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                context.registerReceiver(volumeReceiver, filter)
+            }
+            volumeReceiverRegistered = true
+            // Push initial volume
+            val volDb = getCurrentMediaVolumeDb()
+            setLoudnessCorrectionVolume(volDb)
+            Timber.d("Loudness auto-volume tracking enabled (vol=%.1f dB)", volDb)
+        } else if (!enable && volumeReceiverRegistered) {
+            try {
+                context.unregisterReceiver(volumeReceiver)
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to unregister volume receiver")
+            }
+            volumeReceiverRegistered = false
+            Timber.d("Loudness auto-volume tracking disabled")
+        }
+    }
+
+    override fun getCurrentMediaVolumeDb(): Double {
+        val maxVol = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        val curVol = audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        if (maxVol <= 0) return 0.0
+        if (curVol <= 0) return -60.0 // mute → maximum correction
+        val ratio = curVol.toDouble() / maxVol.toDouble()
+        return 20.0 * kotlin.math.log10(ratio.coerceIn(0.001, 1.0))
+    }
+
     // EEL VM utilities (unavailable)
     override fun enumerateEelVariables(): ArrayList<EelVmVariable> { return arrayListOf() }
     override fun manipulateEelVariable(name: String, value: Float): Boolean { return false }
@@ -377,6 +427,8 @@ class JamesDspRemoteEngine(
     companion object {
         private val EFFECT_TYPE_CUSTOM = UUID.fromString("f98765f4-c321-5de6-9a45-123459495ab2")
         private val EFFECT_JAMESDSP = UUID.fromString("f27317f4-c984-4de6-9a90-545759495bf2")
+        // AudioManager.VOLUME_CHANGED_ACTION is a hidden API
+        private const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
 
         fun isPluginInstalled(): PluginState {
             return try {
