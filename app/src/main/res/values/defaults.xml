@@ -39,6 +39,14 @@
 
     <!-- Device profiles -->
     <bool name="default_device_profiles_enable" translatable="false">false</bool>
+    <bool name="default_preset_select_enable" translatable="false">false</bool>
+    <bool name="default_preset_select_usb_dac" translatable="false">true</bool>
+    <bool name="default_preset_select_usb_headphones" translatable="false">false</bool>
+    <bool name="default_preset_select_bluetooth" translatable="false">false</bool>
+    <bool name="default_preset_select_hdmi" translatable="false">false</bool>
+    <bool name="default_preset_select_analog" translatable="false">false</bool>
+    <bool name="default_preset_select_speaker" translatable="false">false</bool>
+    <bool name="default_preset_select_other" translatable="false">false</bool>
 
     <!-- Appearance -->
     <string name="default_appearance_theme_mode" translatable="false">0</string>

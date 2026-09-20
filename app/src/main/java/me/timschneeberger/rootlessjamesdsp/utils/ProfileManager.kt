@@ -74,11 +74,61 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
             return
 
         Timber.d("onRoutingDeviceChanged: $device")
-        rotate(device ?: return)
+        device ?: return
+
+        // Проверка: нужно ли показать диалог выбора пресета для этого устройства
+        if(shouldAskForPreset(device)) {
+            Timber.i("Device requires preset selection: $device (isUsbDac=${device.isUsbDac})")
+            // Сначала создаём профиль для нового устройства (пустой)
+            rotate(device)
+            // Затем показываем диалог выбора пресета
+            me.timschneeberger.rootlessjamesdsp.activity.PresetSelectionActivity.start(context, device)
+        } else {
+            rotate(device)
+        }
+    }
+
+    /**
+     * Проверяет, нужно ли показывать диалог выбора пресета при подключении устройства.
+     * Условие: глобальный переключатель preset_select_enable включён И тип устройства выбран.
+     * USB DAC (TYPE_USB_DEVICE/TYPE_USB_ACCESSORY) и USB-наушники (TYPE_USB_HEADSET)
+     * различаются через device.isUsbDac.
+     */
+    private fun shouldAskForPreset(device: RoutingObserver.Device): Boolean {
+        if(!prefs.get<Boolean>(R.string.key_preset_select_enable))
+            return false
+
+        return when(device.group) {
+            RoutingObserver.DeviceGroup.USB -> {
+                if(device.isUsbDac)
+                    prefs.get<Boolean>(R.string.key_preset_select_usb_dac)
+                else
+                    prefs.get<Boolean>(R.string.key_preset_select_usb_headphones)
+            }
+            RoutingObserver.DeviceGroup.BLUETOOTH -> prefs.get<Boolean>(R.string.key_preset_select_bluetooth)
+            RoutingObserver.DeviceGroup.HDMI -> prefs.get<Boolean>(R.string.key_preset_select_hdmi)
+            RoutingObserver.DeviceGroup.ANALOG -> prefs.get<Boolean>(R.string.key_preset_select_analog)
+            RoutingObserver.DeviceGroup.SPEAKER -> prefs.get<Boolean>(R.string.key_preset_select_speaker)
+            RoutingObserver.DeviceGroup.OTHER -> prefs.get<Boolean>(R.string.key_preset_select_other)
+        }
     }
 
     fun rotate(newDevice: RoutingObserver.Device) {
         rotate(Profile.from(newDevice))
+    }
+
+    /**
+     * Сохранить текущие настройки (shared_prefs) в активный профиль устройства.
+     * Используется PresetSelectionActivity после применения пресета:
+     * 1. rotate() загрузил профиль в shared_prefs
+     * 2. Preset.load() перезаписал shared_prefs выбранным пресетом
+     * 3. storeCurrentProfile() сохраняет обновлённые shared_prefs в профиль устройства
+     */
+    fun storeCurrentProfile() {
+        synchronized(lock) {
+            val profile = activeProfile ?: return
+            store(profile)
+        }
     }
 
     fun rotate(newProfile: Profile) {
