@@ -167,6 +167,12 @@ class ParametricEqualizerFragment : Fragment() {
         binding.add.setOnClickListener {
             if (editorActive) return@setOnClickListener
 
+            // Limit to 64 bands maximum (PEQ_MAX_BANDS in native code)
+            if (adapter.bands.size >= 64) {
+                requireContext().toast(R.string.peq_max_bands_reached)
+                return@setOnClickListener
+            }
+
             editorBandBackup = null
             editorBandUuid = null
             editorActive = true

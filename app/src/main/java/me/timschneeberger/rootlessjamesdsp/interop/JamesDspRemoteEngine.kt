@@ -289,13 +289,13 @@ class JamesDspRemoteEngine(
         bands: List<me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand>
     ): Boolean {
         // Build float array: [sampleRate, preampDb, band0(5 floats), band1(5 floats), ...]
-        // Pad to 32 bands (162 floats total) with freq<=0 to mark unused slots.
-        val maxBands = 32
-        val data = FloatArray(2 + maxBands * 5)
+        // Variable-size array: only send as many bands as configured (up to 64).
+        val maxBands = 64
+        val count = minOf(bands.size, maxBands)
+        val data = FloatArray(2 + count * 5)
         data[0] = sampleRate.toFloat()
         data[1] = preampDb.toFloat()
 
-        val count = minOf(bands.size, maxBands)
         for (i in 0 until count) {
             val band = bands[i]
             val base = 2 + i * 5
