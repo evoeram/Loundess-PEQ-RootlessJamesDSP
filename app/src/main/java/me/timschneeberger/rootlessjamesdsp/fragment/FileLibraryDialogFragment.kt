@@ -451,6 +451,13 @@ class FileLibraryDialogFragment : ListPreferenceDialogFragmentCompat(), TargetFr
             builder.setNeutralButton(getString(R.string.add)) { _, _ -> }
             builder.setNegativeButton(getString(R.string.close)) { _, _ -> }
             builder.setTitle(getString(R.string.action_presets))
+        } else {
+            // Кнопка очистки выбора файла (импульса/DDC/liveprog скрипта)
+            builder.setNegativeButton(getString(R.string.filelibrary_clear_selection)) { _, _ ->
+                if (fileLibPreference.callChangeListener("")) {
+                    fileLibPreference.value = ""
+                }
+            }
         }
 
         builder.setAdapter(createAdapter()) { _, position ->
