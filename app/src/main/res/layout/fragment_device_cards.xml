@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Контейнер для списка карточек устройств.
+  Используется внутри MaterialCardView на главном экране.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="4dp">
+
+    <!-- Заголовок раздела -->
+    <TextView
+        android:id="@+id/devices_header"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="4dp"
+        android:textAppearance="?attr/textAppearanceTitleSmall"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:text="@string/devices_section_header" />
+
+    <!-- RecyclerView со списком устройств -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/devices_recycler"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:overScrollMode="never"
+        android:nestedScrollingEnabled="false" />
+
+    <!-- Заглушка, когда нет известных устройств -->
+    <TextView
+        android:id="@+id/devices_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:gravity="center"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:text="@string/devices_empty"
+        android:visibility="gone" />
+
+</LinearLayout>

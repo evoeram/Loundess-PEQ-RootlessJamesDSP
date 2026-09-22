@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Карточка устройства для RecyclerView в разделе "Устройства".
+  Содержит: иконку, имя, тип+UUID, назначенный пресет, индикатор активной линии слева.
+-->
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="1dp"
+    app:strokeWidth="0dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <!-- Индикатор активного устройства: цветная вертикальная линия слева -->
+        <View
+            android:id="@+id/active_indicator"
+            android:layout_width="4dp"
+            android:layout_height="match_parent"
+            android:background="@color/device_outline_default" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:padding="16dp"
+            android:gravity="center_vertical">
+
+            <!-- Иконка типа устройства -->
+            <ImageView
+                android:id="@+id/device_icon"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginEnd="12dp"
+                android:contentDescription="@null"
+                app:tint="?attr/colorPrimary" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <!-- Имя устройства -->
+                <TextView
+                    android:id="@+id/device_name"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceBodyLarge"
+                    android:textColor="?attr/colorOnSurface"
+                    android:singleLine="true"
+                    android:ellipsize="end"
+                    tools:text="Sony WH-1000XM4 (Bluetooth)" />
+
+                <!-- Тип устройства + UUID -->
+                <TextView
+                    android:id="@+id/device_type"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    tools:text="Bluetooth • AA:BB:CC:DD:EE:FF" />
+
+                <!-- Назначенный пресет -->
+                <TextView
+                    android:id="@+id/device_preset"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textAppearance="?attr/textAppearanceLabelMedium"
+                    android:textColor="?attr/colorSecondary"
+                    android:singleLine="true"
+                    android:ellipsize="end"
+                    tools:text="Bass Boost.tar" />
+
+            </LinearLayout>
+
+            <!-- Иконка-стрелка (индикатор действия) -->
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_twotone_chevron_right_24dp"
+                app:tint="?attr/colorOnSurfaceVariant" />
+
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

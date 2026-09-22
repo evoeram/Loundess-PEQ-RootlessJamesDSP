@@ -2,6 +2,10 @@
 <resources>
     <color name="divider_default">@color/md_black_1000_12</color>
 
+    <!-- Device cards -->
+    <color name="accent_device_active">#FF0000</color>
+    <color name="device_outline_default">#CCCCCC</color>
+
     <!-- AMOLED Mode -->
     <color name="surface_amoled">#000001</color>
     <color name="background_amoled">#000000</color>

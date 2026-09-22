@@ -32,6 +32,8 @@ import me.timschneeberger.rootlessjamesdsp.session.dump.DumpManager
 import me.timschneeberger.rootlessjamesdsp.session.root.RootSessionDatabase
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.ProfileManager
+import me.timschneeberger.rootlessjamesdsp.utils.DevicePresetManager
+import me.timschneeberger.rootlessjamesdsp.utils.PresetOverlayManager
 import me.timschneeberger.rootlessjamesdsp.utils.RoutingObserver
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.isRoot
@@ -146,6 +148,8 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
             single { DumpManager(androidContext()) }
             single { Preferences(androidContext()).App() }
             single { Preferences(androidContext()).Var() }
+            single { DevicePresetManager() }
+            single { PresetOverlayManager() }
         }
 
         startKoin {

@@ -26,6 +26,8 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
     private val context: Context by inject()
     private val prefs: Preferences.App by inject()
     private val routingObserver: RoutingObserver by inject()
+    private val devicePresetManager: DevicePresetManager by inject()
+    private val presetOverlayManager: PresetOverlayManager by inject()
     private val lock = Any()
 
     private var activeProfile: Profile? = null
@@ -74,7 +76,30 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
             return
 
         Timber.d("onRoutingDeviceChanged: $device")
-        rotate(device ?: return)
+        device ?: return
+
+        // Регистрируем устройство в постоянном хранилище
+        devicePresetManager.registerDevice(device)
+
+        // Обработка пресета только при реальной смене устройства.
+        // rotate() делает early return если id тот же — значит событие ложное
+        // (onRouteChanged срабатывает при изменении громкости и т.п.).
+        // Поэтому handleDeviceChange + overlay вызываем только если rotate реально выполнился.
+        val previousId = activeProfile?.id
+        rotate(device)
+
+        if (activeProfile?.id != previousId) {
+            // Устройство сменилось — обрабатываем пресет
+            val action = devicePresetManager.handleDeviceChange(device)
+            Timber.d("DevicePresetManager action: $action")
+
+            if (action is DevicePresetManager.PresetAction.AskUser) {
+                val shown = presetOverlayManager.show(device.id, device.name)
+                if (!shown) {
+                    Timber.w("Overlay not shown (no SYSTEM_ALERT_WINDOW permission?). Falling back to notification.")
+                }
+            }
+        }
     }
 
     fun rotate(newDevice: RoutingObserver.Device) {

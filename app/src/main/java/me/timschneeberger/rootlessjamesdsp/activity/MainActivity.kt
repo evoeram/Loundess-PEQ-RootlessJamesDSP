@@ -13,6 +13,8 @@ import android.content.SharedPreferences
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
+import android.widget.Toast
 import android.os.Bundle
 import android.os.IBinder
 import android.os.PersistableBundle
@@ -99,6 +101,7 @@ class MainActivity : BaseActivity() {
     private var hasLoadFailed = false
     private lateinit var runtimePermissionLauncher: ActivityResultLauncher<Array<String>>
     private val updateManager: UpdateManager by inject()
+    private val presetOverlayManager: me.timschneeberger.rootlessjamesdsp.utils.PresetOverlayManager by inject()
 
     private var processorService: BaseAudioProcessorService? = null
     private var processorServiceBound: Boolean = false
@@ -364,6 +367,13 @@ class MainActivity : BaseActivity() {
             runtimePermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
         }
 
+        // Запрос SYSTEM_ALERT_WINDOW для overlay-диалога выбора пресета.
+        // На рутованных устройствах можно выдать через appops, но также запрашиваем через UI.
+        if (isRoot() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, getString(R.string.overlay_permission_request), Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        }
+
         // Load initial preference states
         val initialPrefList = arrayOf(R.string.key_appearance_nav_hide, R.string.key_powered_on)
         for (pref in initialPrefList)
@@ -420,6 +430,10 @@ class MainActivity : BaseActivity() {
     override fun onStop() {
         super.onStop()
         unbindProcessorService()
+
+        // Закрываем overlay-диалог при уходе приложения в фон,
+        // иначе он остаётся поверх системы и блокирует swipe.
+        presetOverlayManager.dismiss()
     }
 
     override fun onPause() {
