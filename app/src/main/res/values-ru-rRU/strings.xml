@@ -602,24 +602,4 @@
     <string name="version_mismatch_root">Пакет JamesDSP для Magisk требует обновления</string>
     <string name="version_mismatch_root_description">Установленный на вашем устройстве пакет JamesDSP для Magisk устарел и больше не поддерживается этим приложением.\n\nПожалуйста, загрузите самый последний ZIP-файл пакета JamesDSP для Magisk и установите его через Magisk.\nОбратите внимание, что пакет Magisk может заменить это приложение на официальное приложение JamesDSP.\n\nХотите посетить веб-сайт загрузки пакетов Magisk сейчас?</string>
     <string name="version_mismatch_root_toast">Не удалось запустить. Установленный пакет JamesDSP для Magisk устарел и больше не поддерживается этим приложением.</string>
-
-    <!-- Preset selection on device change -->
-    <string name="preset_select_enable">Предлагать пресет при смене устройства</string>
-    <string name="preset_select_enable_summary_on">Показывать диалог выбора пресета при подключении определённых устройств</string>
-    <string name="preset_select_enable_summary_off">Не показывать диалог выбора пресета</string>
-    <string name="preset_select_devices">Типы устройств для выбора пресета</string>
-    <string name="preset_select_devices_summary">Выберите, для каких типов устройств показывать диалог пресета</string>
-    <string name="preset_select_usb_dac">USB ЦАП</string>
-    <string name="preset_select_usb_headphones">USB-наушники</string>
-    <string name="preset_select_bluetooth">Bluetooth</string>
-    <string name="preset_select_hdmi">HDMI</string>
-    <string name="preset_select_analog">Аналоговые наушники</string>
-    <string name="preset_select_speaker">Динамик</string>
-    <string name="preset_select_other">Другое</string>
-    <string name="preset_select_dialog_title">Выбор пресета</string>
-    <string name="preset_select_dialog_message">Подключено новое аудиоустройство. Выберите пресет для применения.</string>
-    <string name="preset_select_skip">Пропустить</string>
-    <string name="preset_select_apply">Применён пресет</string>
-    <string name="preset_select_notification_title">Новое устройство подключено</string>
-    <string name="preset_select_notification_text">Нажмите, чтобы выбрать пресет для нового аудиоустройства</string>
 </resources>

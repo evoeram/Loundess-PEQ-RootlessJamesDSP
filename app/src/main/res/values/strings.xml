@@ -722,26 +722,6 @@
     <string name="device_profile_manage_copy_select">Select profile to copy</string>
     <string name="device_profile_manage_paste_select">Select profiles to overwrite</string>
 
-    <!-- Preset selection on device change -->
-    <string name="preset_select_enable">Ask for preset on device change</string>
-    <string name="preset_select_enable_summary_on">Show preset selection dialog when specific devices are connected</string>
-    <string name="preset_select_enable_summary_off">Do not show preset selection dialog</string>
-    <string name="preset_select_devices">Device types that trigger preset dialog</string>
-    <string name="preset_select_devices_summary">Select which device types show the preset dialog when connected</string>
-    <string name="preset_select_usb_dac">USB DAC</string>
-    <string name="preset_select_usb_headphones">USB headphones</string>
-    <string name="preset_select_bluetooth">Bluetooth</string>
-    <string name="preset_select_hdmi">HDMI</string>
-    <string name="preset_select_analog">Analog headphones</string>
-    <string name="preset_select_speaker">Speaker</string>
-    <string name="preset_select_other">Other</string>
-    <string name="preset_select_dialog_title">Select preset</string>
-    <string name="preset_select_dialog_message">A new audio device has been connected. Choose a preset to apply.</string>
-    <string name="preset_select_skip">Skip</string>
-    <string name="preset_select_apply">Apply</string>
-    <string name="preset_select_notification_title">New device connected</string>
-    <string name="preset_select_notification_text">Tap to select a preset for the new audio device</string>
-
     <!-- Root version check -->
     <string name="version_mismatch_root">JamesDSP magisk package requires an update</string>
     <string name="version_mismatch_root_description">The JamesDSP magisk package installed on your device is outdated and not supported by this app anymore.\n\nPlease retrieve the latest JamesDSP magisk package ZIP and install it via Magisk.\nNote that the magisk package may replace this app with the official JamesDSP app.\n\nDo you want to visit the download website for the Magisk packages now?</string>

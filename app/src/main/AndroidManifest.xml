@@ -196,13 +196,6 @@
         </activity>
 
         <activity
-            android:name=".activity.PresetSelectionActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:noHistory="true"
-            android:theme="@style/Theme.Transparent.Material3" />
-
-        <activity
             android:name=".activity.AeqSelectorActivity"
             android:exported="false"
             android:theme="@style/Theme.RootlessJamesDSP"

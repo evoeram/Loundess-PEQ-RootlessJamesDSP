@@ -55,8 +55,7 @@ class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinCompon
                 Device(
                     device.productName.toString(),
                     device.address,
-                    device.deviceGroup,
-                    device.type == AudioDeviceInfo.TYPE_USB_DEVICE || device.type == AudioDeviceInfo.TYPE_USB_ACCESSORY
+                    device.deviceGroup
                 )
             }
     }
@@ -172,8 +171,6 @@ class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinCompon
         private val productName: String,
         private val address: String,
         val group: DeviceGroup,
-        /** true, если устройство — USB DAC (TYPE_USB_DEVICE/TYPE_USB_ACCESSORY), false для USB-наушников (TYPE_USB_HEADSET) */
-        val isUsbDac: Boolean = false,
     ) {
         init {
             // Log unexpected events
@@ -206,20 +203,6 @@ class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinCompon
 
 
         override fun toString() = "Device(id=$id, group=$group, name='$name', productName='$productName', address='$address')"
-
-        override fun equals(other: Any?): Boolean {
-            if(this === other) return true
-            if(other !is Device) return false
-            // Сравнение по id и группе — isUsbDac не влияет на идентичность устройства
-            return id == other.id && group == other.group
-        }
-
-        override fun hashCode(): Int {
-            var result = id.hashCode()
-            result = 31 * result + group.hashCode()
-            return result
-        }
-
         private fun hasProductName(): Boolean {
             // Special case: you can connect two phones of the same model name via bluetooth
             return (productName != Build.MODEL || group == DeviceGroup.BLUETOOTH) && productName.isNotEmpty()
