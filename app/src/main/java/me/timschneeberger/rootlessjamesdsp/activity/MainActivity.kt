@@ -284,8 +284,15 @@ class MainActivity : BaseActivity() {
                         // Currently on, let's turn it off
                         RootlessAudioProcessorService.stop(this@MainActivity)
                         binding.powerToggle.isToggled = false
+                        // Сохраняем состояние power off в prefs.
+                        // Без этого key_powered_on остаётся true, и ProfileManager
+                        // показывает overlay «Ask on connection» даже при выключенном DSP.
+                        prefsApp.set(R.string.key_powered_on, false)
                     } else {
                         // Currently off, let's turn it on
+                        // Сохраняем состояние power on в prefs (будет подтверждено
+                        // после успешного получения capture permission).
+                        prefsApp.set(R.string.key_powered_on, true)
                         requestCapturePermission()
                     }
                 }
@@ -320,6 +327,8 @@ class MainActivity : BaseActivity() {
                     RootlessAudioProcessorService.start(this, result.data)
                 } else {
                     binding.powerToggle.isToggled = false
+                    // Пользователь отказал в capture permission — откатываем key_powered_on.
+                    prefsApp.set(R.string.key_powered_on, false)
                 }
             }
         }
