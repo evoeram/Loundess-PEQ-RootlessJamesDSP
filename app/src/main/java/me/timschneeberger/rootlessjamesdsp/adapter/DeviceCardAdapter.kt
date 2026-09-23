@@ -29,9 +29,26 @@ class DeviceCardAdapter(
 
     /** Элементы списка — карточка устройства или сворачиваемый заголовок. */
     sealed class Item {
-        data class ActiveDeviceCard(val card: DeviceCard) : Item()
-        data class OtherHeader(val count: Int) : Item()
-        data class OtherDeviceCard(val card: DeviceCard) : Item()
+        abstract val stableId: Long
+
+        /** Карточка активного устройства. */
+        data class ActiveDeviceCard(val card: DeviceCard) : Item() {
+            // Стабильный ID на основе ID устройства.
+            // Важно: ActiveDeviceCard и OtherDeviceCard для одного и того же
+            // устройства имеют РАЗНЫЕ stableId, чтобы DiffUtil корректно
+            // отрабатывал смену статуса (remove old + insert new, а не change).
+            override val stableId: Long = STABLE_ID_ACTIVE_PREFIX or card.id.hashCode().toLong()
+        }
+
+        /** Сворачиваемый заголовок «Другие устройства (N)». */
+        data class OtherHeader(val count: Int) : Item() {
+            override val stableId: Long = STABLE_ID_HEADER
+        }
+
+        /** Карточка неактивного устройства. */
+        data class OtherDeviceCard(val card: DeviceCard) : Item() {
+            override val stableId: Long = STABLE_ID_OTHER_PREFIX or card.id.hashCode().toLong()
+        }
     }
 
     /** Состояние сворачивания списка неактивных устройств. */
@@ -40,24 +57,37 @@ class DeviceCardAdapter(
     /** Последний полный список устройств (до фильтрации по expand-состоянию). */
     private var lastFullList: List<DeviceCard> = emptyList()
 
+    init {
+        // Стабильные ID необходимы, чтобы RecyclerView не путал ViewHolder'ы
+        // при быстрой смене списка (например, при переключении устройства).
+        setHasStableIds(true)
+    }
+
     companion object {
         private const val TYPE_ACTIVE = 0
         private const val TYPE_HEADER = 1
         private const val TYPE_OTHER = 2
 
+        // Префиксы для стабильных ID, чтобы гарантировать уникальность
+        // между активными и неактивными карточками одного и того же устройства.
+        private const val STABLE_ID_ACTIVE_PREFIX: Long = 0x10_0000_0000L
+        private const val STABLE_ID_OTHER_PREFIX: Long  = 0x20_0000_0000L
+        private const val STABLE_ID_HEADER: Long        = 0x30_0000_0000L
+
         private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<Item>() {
-            override fun areItemsTheSame(old: Item, new: Item): Boolean = when {
-                old is Item.ActiveDeviceCard && new is Item.ActiveDeviceCard ->
-                    old.card.id == new.card.id
-                old is Item.OtherDeviceCard && new is Item.OtherDeviceCard ->
-                    old.card.id == new.card.id
-                old is Item.OtherHeader && new is Item.OtherHeader -> true
-                else -> false
-            }
+            override fun areItemsTheSame(old: Item, new: Item): Boolean =
+                old.stableId == new.stableId
 
             override fun areContentsTheSame(old: Item, new: Item): Boolean = old == new
+
+            // Отключаем change-анимации: при смене статуса устройства
+            // (active ↔ other) DiffUtil видит remove + insert, а не change.
+            // Это предотвращает краш "Two different ViewHolders have the same change ID".
+            override fun getChangePayload(oldItem: Item, newItem: Item): Any? = null
         }
     }
+
+    override fun getItemId(position: Int): Long = getItem(position).stableId
 
     override fun getItemViewType(position: Int): Int = when (getItem(position)) {
         is Item.ActiveDeviceCard -> TYPE_ACTIVE
@@ -68,10 +98,7 @@ class DeviceCardAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
-            TYPE_ACTIVE -> DeviceCardViewHolder(
-                ItemDeviceCardBinding.inflate(inflater, parent, false)
-            )
-            TYPE_OTHER -> DeviceCardViewHolder(
+            TYPE_ACTIVE, TYPE_OTHER -> DeviceCardViewHolder(
                 ItemDeviceCardBinding.inflate(inflater, parent, false)
             )
             TYPE_HEADER -> OtherHeaderViewHolder(
@@ -183,9 +210,9 @@ class DeviceCardAdapter(
                 else R.drawable.ic_twotone_chevron_right_24dp
             )
 
+            // Тап по заголовку — перестраиваем список через rebuildList()
             binding.root.setOnClickListener {
                 toggleOtherExpanded()
-                notifyItemRangeChanged(0, itemCount)
             }
         }
     }

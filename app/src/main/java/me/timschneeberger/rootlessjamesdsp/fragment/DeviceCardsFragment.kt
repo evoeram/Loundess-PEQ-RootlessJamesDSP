@@ -53,6 +53,13 @@ class DeviceCardsFragment : Fragment(), RoutingObserver.RoutingChangedCallback {
         binding.devicesRecycler.layoutManager = LinearLayoutManager(requireContext())
         binding.devicesRecycler.adapter = adapter
 
+        // Отключаем change-анимации (ITEM_ANIMATOR_CHANGE_ANIMATIONS).
+        // При смене активного устройства карточка мигрирует между типами
+        // (Active → Other и наоборот). Change-анимация в этом случае
+        // вызывает краш "Two different ViewHolders have the same change ID".
+        (binding.devicesRecycler.itemAnimator as? androidx.recyclerview.widget.DefaultItemAnimator)
+            ?.supportsChangeAnimations = false
+
         routingObserver.registerOnRoutingChangeListener(this)
 
         // Первичная загрузка сохранённых устройств
