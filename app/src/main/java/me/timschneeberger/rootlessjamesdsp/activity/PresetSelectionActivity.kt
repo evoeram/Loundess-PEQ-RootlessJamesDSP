@@ -69,6 +69,29 @@ class PresetSelectionActivity : Activity() {
     }
 
     /**
+     * Обработка кнопки "Назад" и жеста "назад" (боковая грань).
+     * Убираем overlay-окно и завершаем активность.
+     */
+    override fun onBackPressed() {
+        closeOverlay()
+        super.onBackPressed()
+    }
+
+    /**
+     * Закрыть overlay-окно и завершить активность.
+     */
+    private fun closeOverlay() {
+        overlayView?.let {
+            try {
+                val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                windowManager.removeView(it)
+            } catch (e: Exception) { /* уже удалено */ }
+            overlayView = null
+        }
+        if (!isFinishing) finish()
+    }
+
+    /**
      * Проверка наличия разрешения SYSTEM_ALERT_WINDOW.
      */
     private val canDrawOverlays: Boolean

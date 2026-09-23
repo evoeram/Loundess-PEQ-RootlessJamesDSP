@@ -48,7 +48,7 @@ class DeviceCardAdapter(
             // Тип устройства + UUID
             val groupLabel = ctx.getString(device.group.nameRes)
             binding.deviceType.text = "${device.uuid} • $groupLabel"
-            binding.devicePreset.text = device.getPresetAssignmentDisplay()
+            binding.devicePreset.text = device.getPresetAssignmentDisplay(ctx)
 
             // Иконка по типу устройства
             binding.deviceIcon.setImageDrawable(

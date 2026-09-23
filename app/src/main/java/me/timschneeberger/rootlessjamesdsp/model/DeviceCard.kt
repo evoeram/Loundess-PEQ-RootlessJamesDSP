@@ -1,5 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.model
 
+import android.content.Context
+import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.utils.RoutingObserver
 
 /**
@@ -22,10 +24,11 @@ data class DeviceCard(
 ) {
     /**
      * Человеко-читаемое описание назначения пресета.
+     * @param ctx контекст для доступа к строковым ресурсам
      */
-    fun getPresetAssignmentDisplay(): String = when (presetAssignment) {
-        "none" -> "Нет (по умолчанию)"
-        "ask" -> "Спросить при подключении"
+    fun getPresetAssignmentDisplay(ctx: Context): String = when (presetAssignment) {
+        "none" -> ctx.getString(R.string.preset_select_none)
+        "ask" -> ctx.getString(R.string.preset_select_ask)
         else -> presetAssignment.removeSuffix(".tar")
     }
 
