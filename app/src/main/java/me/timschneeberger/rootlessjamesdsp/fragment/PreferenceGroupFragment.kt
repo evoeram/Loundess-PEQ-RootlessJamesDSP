@@ -320,12 +320,14 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
                                 putBoolean(getString(R.string.key_loudness_auto_volume), true)
                             }?.apply()
 
-                            calibratePref.summary = getString(
-                                R.string.loudness_calibrate_success,
-                                result.measuredSplDb,
-                                result.referenceLevel,
-                                result.referenceOffset
-                            )
+                            // Принудительно обновляем отображение всех preference-виджетов,
+                            // т.к. программная запись в SharedPreferences не вызывает
+                            // автоматическое обновление UI виджетов PreferenceFragment.
+                            // Полная перезагрузка фрагмента — самый надёжный способ
+                            // обновить все seekbar'ы и switch'и.
+                            val id = this@PreferenceGroupFragment.id
+                            (requireParentFragment() as DspFragment)
+                                .restartFragment(id, cloneInstance(this@PreferenceGroupFragment))
 
                             // Показываем toast с результатом
                             android.widget.Toast.makeText(context,
