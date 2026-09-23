@@ -220,10 +220,9 @@ class LoudnessCalibrationManager(
 
     private fun startPinkNoisePlayback(sampleRate: Int, channel: NoiseChannel): Boolean {
         return try {
-            val channelConfig = when (channel) {
-                NoiseChannel.BOTH -> AudioFormat.CHANNEL_OUT_STEREO
-                NoiseChannel.LEFT, NoiseChannel.RIGHT -> AudioFormat.CHANNEL_OUT_MONO
-            }
+            // Всегда используем стерео-выход: это позволяет заглушать
+            // отдельные каналы (L/R) и дублировать в оба (L+R).
+            val channelConfig = AudioFormat.CHANNEL_OUT_STEREO
 
             val audioFormat = AudioFormat.Builder()
                 .setSampleRate(sampleRate)
@@ -232,7 +231,7 @@ class LoudnessCalibrationManager(
                 .build()
 
             val minBufSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
-            val bufSize = (minBufSize * 2).coerceAtLeast(sampleSize)
+            val bufSize = (minBufSize * 2).coerceAtLeast(sampleSize * 2)
 
             audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(
@@ -246,62 +245,27 @@ class LoudnessCalibrationManager(
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
-            val isStereo = channel == NoiseChannel.BOTH
-            val playLeft = channel == NoiseChannel.LEFT
-            val playRight = channel == NoiseChannel.RIGHT
-            val numSamples = bufSize / 2
+            val playLeft = channel == NoiseChannel.BOTH || channel == NoiseChannel.LEFT
+            val playRight = channel == NoiseChannel.BOTH || channel == NoiseChannel.RIGHT
 
-            // Генерация и запуск pink noise в отдельном потоке
+            // Размер блока генерации (в моно-сэмплах)
+            val chunkSamples = 2048
+
+            // Непрерывная генерация и воспроизведение шума в отдельном потоке.
+            // Шум генерируется новыми блоками — не повторяется циклично.
             noiseThread = Thread {
-                val noiseBuffer = generatePinkNoise(numSamples, sampleRate)
-
-                // Для моно-режима с одним каналом: заглушаем нужный канал через стерео-микс
-                if (isStereo) {
-                    // L+R: дублируем шум в оба канала
-                    val stereoBuffer = ShortArray(numSamples * 2)
-                    for (i in 0 until numSamples) {
-                        stereoBuffer[i * 2] = noiseBuffer[i]     // L
-                        stereoBuffer[i * 2 + 1] = noiseBuffer[i] // R
+                val pinkGen = PinkNoiseGenerator()
+                audioTrack?.play()
+                while (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    // Генерируем новый блок розового шума
+                    val monoChunk = pinkGen.generate(chunkSamples)
+                    // Конвертируем в стерео с маршрутизацией каналов
+                    val stereoChunk = ShortArray(chunkSamples * 2)
+                    for (i in 0 until chunkSamples) {
+                        stereoChunk[i * 2]     = if (playLeft) monoChunk[i] else 0  // L
+                        stereoChunk[i * 2 + 1] = if (playRight) monoChunk[i] else 0 // R
                     }
-                    audioTrack?.play()
-                    while (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                        audioTrack?.write(stereoBuffer, 0, stereoBuffer.size)
-                    }
-                } else {
-                    // L или R только: используем стерео-выход с заглушенным каналом
-                    // Пересоздаём AudioTrack как стерео для возможности заглушить канал
-                    audioTrack?.stop()
-                    audioTrack?.release()
-
-                    val stereoFormat = AudioFormat.Builder()
-                        .setSampleRate(sampleRate)
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
-                        .build()
-                    val stereoMinBuf = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
-                    val stereoBufSize = (stereoMinBuf * 2).coerceAtLeast(sampleSize)
-
-                    audioTrack = AudioTrack.Builder()
-                        .setAudioAttributes(
-                            android.media.AudioAttributes.Builder()
-                                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
-                                .build()
-                        )
-                        .setAudioFormat(stereoFormat)
-                        .setBufferSizeInBytes(stereoBufSize)
-                        .setTransferMode(AudioTrack.MODE_STREAM)
-                        .build()
-
-                    val stereoBuffer = ShortArray(numSamples * 2)
-                    for (i in 0 until numSamples) {
-                        stereoBuffer[i * 2] = if (playLeft) noiseBuffer[i] else 0   // L
-                        stereoBuffer[i * 2 + 1] = if (playRight) noiseBuffer[i] else 0 // R
-                    }
-                    audioTrack?.play()
-                    while (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                        audioTrack?.write(stereoBuffer, 0, stereoBuffer.size)
-                    }
+                    audioTrack?.write(stereoChunk, 0, stereoChunk.size)
                 }
             }
             noiseThread?.start()
@@ -314,41 +278,43 @@ class LoudnessCalibrationManager(
     }
 
     private fun stopPlayback() {
-        try {
-            audioTrack?.stop()
-        } catch (_: Exception) {}
-        try {
-            audioTrack?.release()
-        } catch (_: Exception) {}
+        try { audioTrack?.stop() } catch (_: Exception) {}
+        // Прерываем поток генерации шума
+        noiseThread?.interrupt()
+        try { noiseThread?.join(500) } catch (_: Exception) {}
+        try { audioTrack?.release() } catch (_: Exception) {}
         audioTrack = null
         noiseThread = null
     }
 
     /**
-     * Генерация розового шума (алгоритм Voss-McCartney).
+     * Генератор розового шума с сохранением состояния между блоками (Voss-McCartney).
+     * Состояние фильтров хранится в полях — шум непрерывный, не цикличный.
      */
-    private fun generatePinkNoise(numSamples: Int, @Suppress("UNUSED_PARAMETER") sampleRate: Int): ShortArray {
-        val output = ShortArray(numSamples)
-        val rng = java.util.Random()
-        var b0 = 0.0; var b1 = 0.0; var b2 = 0.0; var b3 = 0.0
-        var b4 = 0.0; var b5 = 0.0; var b6 = 0.0
-        val gain = 0.11
+    private class PinkNoiseGenerator {
+        private val rng = java.util.Random()
+        private var b0 = 0.0; private var b1 = 0.0; private var b2 = 0.0; private var b3 = 0.0
+        private var b4 = 0.0; private var b5 = 0.0; private var b6 = 0.0
+        private val gain = 0.11
 
-        for (i in 0 until numSamples) {
-            val white = rng.nextGaussian()
-            b0 = 0.99886 * b0 + white * 0.0555179
-            b1 = 0.99332 * b1 + white * 0.0750759
-            b2 = 0.96900 * b2 + white * 0.1538520
-            b3 = 0.86650 * b3 + white * 0.3104856
-            b4 = 0.55000 * b4 + white * 0.5329522
-            b5 = -0.7616 * b5 - white * 0.0168980
-            val pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362
-            b6 = white * 0.115926
+        fun generate(numSamples: Int): ShortArray {
+            val output = ShortArray(numSamples)
+            for (i in 0 until numSamples) {
+                val white = rng.nextGaussian()
+                b0 = 0.99886 * b0 + white * 0.0555179
+                b1 = 0.99332 * b1 + white * 0.0750759
+                b2 = 0.96900 * b2 + white * 0.1538520
+                b3 = 0.86650 * b3 + white * 0.3104856
+                b4 = 0.55000 * b4 + white * 0.5329522
+                b5 = -0.7616 * b5 - white * 0.0168980
+                val pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362
+                b6 = white * 0.115926
 
-            output[i] = (pink * gain * Short.MAX_VALUE).toInt()
-                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+                output[i] = (pink * gain * Short.MAX_VALUE).toInt()
+                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+            }
+            return output
         }
-        return output
     }
 
     // ── Запись с микрофона ──────────────────────────────────────────
