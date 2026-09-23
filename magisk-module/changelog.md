@@ -1,3 +1,9 @@
+### v6.3.0.4 - 9.23.2026
+* Updated libjamesdsp.so from app v1.6.14 build 51 (PEQ+Loudness fork)
+* English strings fix for preset selection overlay
+* SELinux vendor_file:s0 context fix in customize.sh and service.sh
+* AML (Audio Modification Library) workaround in service.sh
+
 ### v6.1 - 4.24.2024
 * mmtex v3.7 update
 

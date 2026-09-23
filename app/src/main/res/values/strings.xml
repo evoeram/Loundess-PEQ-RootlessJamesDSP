@@ -723,16 +723,16 @@
     <string name="device_profile_manage_paste_select">Select profiles to overwrite</string>
 
     <!-- Devices section -->
-    <string name="devices_section_header">Устройства</string>
-    <string name="devices_empty">Нет известных устройств. Подключите устройство для создания профиля.</string>
+    <string name="devices_section_header">Devices</string>
+    <string name="devices_empty">No known devices. Connect a device to create a profile.</string>
 
     <!-- Preset selection -->
-    <string name="preset_select_title">Выбор пресета</string>
-    <string name="preset_select_subtitle">Выберите пресет для автоматического применения при подключении</string>
-    <string name="preset_select_none">Нет (по умолчанию)</string>
-    <string name="preset_select_ask">Спросить при подключении</string>
-    <string name="preset_select_apply">Применить</string>
-    <string name="overlay_permission_request">Для всплывающего окна выбора пресета разрешите отображение поверх других приложений</string>
+    <string name="preset_select_title">Select preset</string>
+    <string name="preset_select_subtitle">Choose a preset to automatically apply on connection</string>
+    <string name="preset_select_none">None (default)</string>
+    <string name="preset_select_ask">Ask on connection</string>
+    <string name="preset_select_apply">Apply</string>
+    <string name="overlay_permission_request">Allow display over other apps for the preset selection overlay</string>
 
     <!-- Root version check -->
     <string name="version_mismatch_root">JamesDSP magisk package requires an update</string>
