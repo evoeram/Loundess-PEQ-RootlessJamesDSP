@@ -89,6 +89,14 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
         rotate(device)
 
         if (activeProfile?.id != previousId) {
+            // Не показываем overlay и не применяем пресет, если обработка отключена
+            // (главная кнопка power off). Нет смысла менять пресет, когда DSP не работает.
+            val isPoweredOn = prefs.get<Boolean>(R.string.key_powered_on)
+            if (!isPoweredOn) {
+                Timber.d("Processing is off (key_powered_on=false), skipping preset overlay")
+                return
+            }
+
             // Устройство сменилось — обрабатываем пресет
             val action = devicePresetManager.handleDeviceChange(device)
             Timber.d("DevicePresetManager action: $action")
