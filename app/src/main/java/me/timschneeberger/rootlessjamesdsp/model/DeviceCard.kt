@@ -26,7 +26,7 @@ data class DeviceCard(
     fun getPresetAssignmentDisplay(): String = when (presetAssignment) {
         "none" -> "Нет (по умолчанию)"
         "ask" -> "Спросить при подключении"
-        else -> presetAssignment
+        else -> presetAssignment.removeSuffix(".tar")
     }
 
     /**

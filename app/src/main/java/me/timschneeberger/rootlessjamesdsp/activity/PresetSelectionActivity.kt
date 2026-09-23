@@ -126,7 +126,7 @@ class PresetSelectionActivity : Activity() {
         val items = mutableListOf<String>()
         items.add(getString(R.string.preset_select_none))
         items.add(getString(R.string.preset_select_ask))
-        items.addAll(presets)
+        items.addAll(presets.map { it.removeSuffix(".tar") })
 
         val checkedIndex = when (currentAssignment) {
             DevicePresetManager.VALUE_NONE -> 0
@@ -237,10 +237,10 @@ class PresetSelectionActivity : Activity() {
         }
         radioGroup.addView(divider)
 
-        // Пресеты
+        // Пресеты (расширение .tar убирается для отображения)
         presets.forEachIndexed { index, presetName ->
             val radio = RadioButton(this).apply {
-                text = presetName
+                text = presetName.removeSuffix(".tar")
                 id = VIEW_ID_PRESET_BASE + index
                 isChecked = currentAssignment == presetName
             }

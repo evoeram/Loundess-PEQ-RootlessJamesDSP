@@ -367,13 +367,6 @@ class MainActivity : BaseActivity() {
             runtimePermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
         }
 
-        // Запрос SYSTEM_ALERT_WINDOW для overlay-диалога выбора пресета.
-        // На рутованных устройствах можно выдать через appops, но также запрашиваем через UI.
-        if (isRoot() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, getString(R.string.overlay_permission_request), Toast.LENGTH_LONG).show()
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-        }
-
         // Load initial preference states
         val initialPrefList = arrayOf(R.string.key_appearance_nav_hide, R.string.key_powered_on)
         for (pref in initialPrefList)
@@ -464,6 +457,13 @@ class MainActivity : BaseActivity() {
 
         if(isRootless())
             binding.powerToggle.isToggled = processorService != null
+
+        // Проверка SYSTEM_ALERT_WINDOW для overlay-диалога выбора пресета
+        // при каждом возврате в приложение — пользователь мог отозвать разрешение.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, getString(R.string.overlay_permission_request), Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        }
     }
 
     private fun showAndroid15Alert() {

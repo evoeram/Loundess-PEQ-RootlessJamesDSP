@@ -179,21 +179,37 @@ class PresetOverlayManager : KoinComponent {
             orientation = RadioGroup.VERTICAL
         }
 
-        // "Нет (по умолчанию)"
-        val noneRadio = RadioButton(themedContext).apply {
-            text = themedContext.getString(R.string.preset_select_none)
-            id = VIEW_ID_NONE
-            isChecked = currentAssignment == DevicePresetManager.VALUE_NONE
-        }
-        radioGroup.addView(noneRadio)
+        // При persist=true (тап на карточку в главном меню) показываем
+        // "Нет (по умолчанию)" и "Спросить при подключении" — это настройки
+        // постоянного поведения устройства.
+        // При persist=false (автоподключение, popup) показываем "Нет (по умолчанию)"
+        // и пресеты — без "Спросить при подключении", чтобы не создавать впечатление,
+        // что выбор пресета меняет постоянное поведение при следующих подключениях.
+        if (persist) {
+            // "Нет (по умолчанию)"
+            val noneRadio = RadioButton(themedContext).apply {
+                text = themedContext.getString(R.string.preset_select_none)
+                id = VIEW_ID_NONE
+                isChecked = currentAssignment == DevicePresetManager.VALUE_NONE
+            }
+            radioGroup.addView(noneRadio)
 
-        // "Спросить при подключении"
-        val askRadio = RadioButton(themedContext).apply {
-            text = themedContext.getString(R.string.preset_select_ask)
-            id = VIEW_ID_ASK
-            isChecked = currentAssignment == DevicePresetManager.VALUE_ASK
+            // "Спросить при подключении"
+            val askRadio = RadioButton(themedContext).apply {
+                text = themedContext.getString(R.string.preset_select_ask)
+                id = VIEW_ID_ASK
+                isChecked = currentAssignment == DevicePresetManager.VALUE_ASK
+            }
+            radioGroup.addView(askRadio)
+        } else {
+            // Popup при автоподключении: только "Нет (по умолчанию)" без "Спросить"
+            val noneRadio = RadioButton(themedContext).apply {
+                text = themedContext.getString(R.string.preset_select_none)
+                id = VIEW_ID_NONE
+                isChecked = currentAssignment == DevicePresetManager.VALUE_NONE
+            }
+            radioGroup.addView(noneRadio)
         }
-        radioGroup.addView(askRadio)
 
         // Разделитель
         val divider = View(themedContext).apply {
@@ -204,10 +220,10 @@ class PresetOverlayManager : KoinComponent {
         }
         radioGroup.addView(divider)
 
-        // Пресеты
+        // Пресеты (расширение .tar убирается для отображения)
         presets.forEachIndexed { index, presetName ->
             val radio = RadioButton(themedContext).apply {
-                text = presetName
+                text = presetName.removeSuffix(".tar")
                 id = VIEW_ID_PRESET_BASE + index
                 isChecked = currentAssignment == presetName
             }
