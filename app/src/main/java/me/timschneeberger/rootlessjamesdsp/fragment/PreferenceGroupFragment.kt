@@ -287,6 +287,13 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             .setPositiveButton(android.R.string.ok) { dialog, _ ->
                 dialog.dismiss()
 
+                // Отключаем loudness перед калибровкой, чтобы розовый шум
+                // воспроизводился без коррекции — иначе измерение будет искажено.
+                val wasLoudnessEnabled = prefs?.getBoolean(getString(R.string.key_loudness_enable), false) ?: false
+                if (wasLoudnessEnabled) {
+                    prefs?.edit()?.putBoolean(getString(R.string.key_loudness_enable), false)?.apply()
+                }
+
                 val manager = me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager(context)
 
                 // Обновляем summary в реальном времени
@@ -327,6 +334,10 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
                                 android.widget.Toast.LENGTH_LONG
                             ).show()
                         } else {
+                            // При ошибке восстанавливаем предыдущее состояние loudness
+                            if (wasLoudnessEnabled) {
+                                prefs?.edit()?.putBoolean(getString(R.string.key_loudness_enable), true)?.apply()
+                            }
                             calibratePref.summary = getString(R.string.loudness_calibrate_failed, result.errorMessage ?: "")
                             android.widget.Toast.makeText(context,
                                 getString(R.string.loudness_calibrate_failed, result.errorMessage ?: ""),
@@ -338,7 +349,13 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
                     }
                 }
 
-                manager.start(durationSec = 5, sampleRate = 48000)
+                // Запускаем калибровку с задержкой — DSP должен успеть применить
+                // отключение loudness, иначе розовый шум будет воспроизводиться с коррекцией.
+                calibratePref.summary = getString(R.string.loudness_calibrate_running, 0)
+                Thread {
+                    Thread.sleep(500)
+                    manager.start(durationSec = 5, sampleRate = 48000)
+                }.start()
             }
             .setNegativeButton(android.R.string.cancel) { dialog, _ -> dialog.dismiss() }
             .show()
