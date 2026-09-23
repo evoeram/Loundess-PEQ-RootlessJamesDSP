@@ -725,6 +725,7 @@
     <!-- Devices section -->
     <string name="devices_section_header">Devices</string>
     <string name="devices_empty">No known devices. Connect a device to create a profile.</string>
+    <string name="devices_other_header">Other devices (%1$d)</string>
 
     <!-- Preset selection -->
     <string name="preset_select_title">Select preset</string>

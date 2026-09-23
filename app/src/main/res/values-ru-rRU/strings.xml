@@ -602,6 +602,7 @@
     <!-- Devices section -->
     <string name="devices_section_header">Устройства</string>
     <string name="devices_empty">Нет известных устройств. Подключите устройство для создания профиля.</string>
+    <string name="devices_other_header">Другие устройства (%1$d)</string>
 
     <!-- Preset selection -->
     <string name="preset_select_title">Выбор пресета</string>

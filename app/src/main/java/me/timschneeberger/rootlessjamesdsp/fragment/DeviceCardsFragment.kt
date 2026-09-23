@@ -78,6 +78,9 @@ class DeviceCardsFragment : Fragment(), RoutingObserver.RoutingChangedCallback {
      * Обновить список карточек устройств.
      * Источник данных — DevicePresetManager.getAllDevices() (постоянное хранилище).
      * Активное устройство берётся из routingObserver.currentDevice.
+     *
+     * Адаптер сам разбивает список на активные (всегда видны) и неактивные
+     * (свернуты под заголовком «Другие устройства» по умолчанию).
      */
     private fun refreshList() {
         val activeDevice = routingObserver.currentDevice
@@ -115,7 +118,8 @@ class DeviceCardsFragment : Fragment(), RoutingObserver.RoutingChangedCallback {
             binding.devicesRecycler.visibility = View.VISIBLE
         }
 
-        adapter.submitList(cards)
+        // Передаём полный список — адаптер сам решает что показать
+        adapter.submitDeviceList(cards)
     }
 
     /**
