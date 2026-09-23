@@ -182,6 +182,19 @@
     <string name="loudness_calibrate_success">Calibration complete: SPL %.1f dBFS, ref level %.1f dB, offset %.1f dB</string>
     <string name="loudness_calibrate_failed">Calibration failed: %1$s</string>
     <string name="loudness_calibrate_warning">Ensure the microphone is positioned at your listening position. Pink noise will play for 5 seconds.</string>
+    <string name="loudness_calibrate_mode">Calibration mode</string>
+    <string name="loudness_calibrate_mode_mic">Microphone (automatic)</string>
+    <string name="loudness_calibrate_mode_manual">External SPL meter (manual)</string>
+    <string name="loudness_calibrate_channel">Noise channel</string>
+    <string name="loudness_calibrate_channel_both">Left + Right</string>
+    <string name="loudness_calibrate_channel_left">Left only</string>
+    <string name="loudness_calibrate_channel_right">Right only</string>
+    <string name="loudness_calibrate_manual_spl">Measured SPL (dB)</string>
+    <string name="loudness_calibrate_manual_hint">Enter the SPL value measured by an external SPL meter at your listening position</string>
+    <string name="loudness_calibrate_play_noise">Play pink noise</string>
+    <string name="loudness_calibrate_stop_noise">Stop noise</string>
+    <string name="loudness_calibrate_apply">Apply SPL value</string>
+    <string name="loudness_calibrate_manual_warning">Play pink noise through your speakers, measure SPL with an external meter at your listening position, then enter the value below.</string>
 
     <string name="geq_enable">Arbitrary response equalizer</string>
     <string name="geq_nodes">Magnitude response</string>

@@ -231,13 +231,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
     }
 
     /**
-     * Настройка кнопки автокалибровки loudness по микрофону.
-     * При нажатии запускает LoudnessCalibrationManager, который:
-     * 1. Воспроизводит розовый шум через AudioTrack
-     * 2. Записывает сигнал с микрофона через AudioRecord
-     * 3. Вычисляет RMS → SPL (dBFS)
-     * 4. Вычисляет referenceLevel и referenceOffset
-     * 5. Сохраняет значения в SharedPreferences
+     * Настройка кнопки автокалибровки loudness по микрофону или внешнему SPL-метру.
      */
     private fun setupLoudnessCalibration() {
         val calibratePref = findPreference<Preference>("loudness_calibrate") ?: return
@@ -245,14 +239,14 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
         calibratePref.setOnPreferenceClickListener {
             val context = requireContext()
 
-            // Проверяем разрешение RECORD_AUDIO перед запуском калибровки
+            // Проверяем разрешение RECORD_AUDIO (нужно только для микрофонного режима,
+            // но запрашиваем сразу, чтобы не прерывать поток калибровки)
             if (!context.hasRecordPermission()) {
-                // Запрашиваем разрешение через ActivityResultLauncher
                 requestRecordAudioPermission.launch(android.Manifest.permission.RECORD_AUDIO)
                 return@setOnPreferenceClickListener true
             }
 
-            startCalibration(context, calibratePref)
+            showCalibrationModeDialog(context, calibratePref)
             true
         }
     }
@@ -264,7 +258,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
         if (granted) {
             val context = requireContext()
             val calibratePref = findPreference<Preference>("loudness_calibrate") ?: return@registerForActivityResult
-            startCalibration(context, calibratePref)
+            showCalibrationModeDialog(context, calibratePref)
         } else {
             android.widget.Toast.makeText(
                 requireContext(),
@@ -275,20 +269,65 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
     }
 
     /**
-     * Запустить калибровку loudness по микрофону.
+     * Диалог выбора режима калибровки: микрофон или внешний SPL-метр.
      */
-    private fun startCalibration(context: Context, calibratePref: Preference) {
+    private fun showCalibrationModeDialog(context: Context, calibratePref: Preference) {
+        val modes = arrayOf(
+            getString(R.string.loudness_calibrate_mode_mic),
+            getString(R.string.loudness_calibrate_mode_manual),
+        )
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.loudness_calibrate_mode)
+            .setItems(modes) { _, which ->
+                when (which) {
+                    0 -> showChannelSelectionDialog(context, calibratePref)
+                    1 -> showManualSplDialog(context, calibratePref)
+                }
+            }
+            .setNegativeButton(android.R.string.cancel) { d, _ -> d.dismiss() }
+            .show()
+    }
+
+    /**
+     * Диалог выбора канала воспроизведения шума (для микрофонного режима).
+     */
+    private fun showChannelSelectionDialog(context: Context, calibratePref: Preference) {
+        val channels = arrayOf(
+            getString(R.string.loudness_calibrate_channel_both),
+            getString(R.string.loudness_calibrate_channel_left),
+            getString(R.string.loudness_calibrate_channel_right),
+        )
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.loudness_calibrate_channel)
+            .setItems(channels) { _, which ->
+                val channel = when (which) {
+                    0 -> me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager.NoiseChannel.BOTH
+                    1 -> me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager.NoiseChannel.LEFT
+                    else -> me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager.NoiseChannel.RIGHT
+                }
+                startMicrophoneCalibration(context, calibratePref, channel)
+            }
+            .setNegativeButton(android.R.string.cancel) { d, _ -> d.dismiss() }
+            .show()
+    }
+
+    /**
+     * Запустить микрофонную калибровку.
+     */
+    private fun startMicrophoneCalibration(
+        context: Context,
+        calibratePref: Preference,
+        channel: me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager.NoiseChannel,
+    ) {
         val prefs = preferenceManager.sharedPreferences
 
-        // Показываем предупреждение перед началом
         com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
             .setTitle(R.string.loudness_calibrate)
             .setMessage(R.string.loudness_calibrate_warning)
             .setPositiveButton(android.R.string.ok) { dialog, _ ->
                 dialog.dismiss()
 
-                // Отключаем loudness перед калибровкой, чтобы розовый шум
-                // воспроизводился без коррекции — иначе измерение будет искажено.
+                // Отключаем loudness перед калибровкой
                 val wasLoudnessEnabled = prefs?.getBoolean(getString(R.string.key_loudness_enable), false) ?: false
                 if (wasLoudnessEnabled) {
                     prefs?.edit()?.putBoolean(getString(R.string.key_loudness_enable), false)?.apply()
@@ -296,71 +335,178 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
 
                 val manager = me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager(context)
 
-                // Обновляем summary в реальном времени
                 manager.onProgress = { progress ->
                     try {
                         val percent = (progress * 100).toInt()
                         calibratePref.summary = getString(R.string.loudness_calibrate_running, percent)
-                    } catch (e: IllegalStateException) {
-                        // Fragment may be detached
-                    }
+                    } catch (_: IllegalStateException) {}
                 }
 
                 manager.onComplete = { result ->
-                    try {
-                        if (result.success) {
-                            // Сохраняем вычисленные значения в SharedPreferences
-                            // и автоматически включаем loudness + auto_volume
-                            prefs?.edit()?.apply {
-                                putFloat(getString(R.string.key_loudness_reference_level), result.referenceLevel.toFloat())
-                                putFloat(getString(R.string.key_loudness_reference_offset), result.referenceOffset.toFloat())
-                                // Автовключение loudness-коррекции
-                                putBoolean(getString(R.string.key_loudness_enable), true)
-                                // Автовключение отслеживания системной громкости
-                                putBoolean(getString(R.string.key_loudness_auto_volume), true)
-                            }?.apply()
-
-                            // Принудительно обновляем отображение всех preference-виджетов,
-                            // т.к. программная запись в SharedPreferences не вызывает
-                            // автоматическое обновление UI виджетов PreferenceFragment.
-                            // Полная перезагрузка фрагмента — самый надёжный способ
-                            // обновить все seekbar'ы и switch'и.
-                            val id = this@PreferenceGroupFragment.id
-                            (requireParentFragment() as DspFragment)
-                                .restartFragment(id, cloneInstance(this@PreferenceGroupFragment))
-
-                            // Показываем toast с результатом
-                            android.widget.Toast.makeText(context,
-                                getString(R.string.loudness_calibrate_success,
-                                    result.measuredSplDb, result.referenceLevel, result.referenceOffset),
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            // При ошибке восстанавливаем предыдущее состояние loudness
-                            if (wasLoudnessEnabled) {
-                                prefs?.edit()?.putBoolean(getString(R.string.key_loudness_enable), true)?.apply()
-                            }
-                            calibratePref.summary = getString(R.string.loudness_calibrate_failed, result.errorMessage ?: "")
-                            android.widget.Toast.makeText(context,
-                                getString(R.string.loudness_calibrate_failed, result.errorMessage ?: ""),
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    } catch (e: IllegalStateException) {
-                        // Fragment may be detached
-                    }
+                    handleCalibrationResult(context, calibratePref, prefs, result, wasLoudnessEnabled)
                 }
 
-                // Запускаем калибровку с задержкой — DSP должен успеть применить
-                // отключение loudness, иначе розовый шум будет воспроизводиться с коррекцией.
                 calibratePref.summary = getString(R.string.loudness_calibrate_running, 0)
                 Thread {
                     Thread.sleep(500)
-                    manager.start(durationSec = 5, sampleRate = 48000)
+                    manager.startMicrophone(durationSec = 5, sampleRate = 48000, channel = channel)
                 }.start()
             }
-            .setNegativeButton(android.R.string.cancel) { dialog, _ -> dialog.dismiss() }
+            .setNegativeButton(android.R.string.cancel) { d, _ -> d.dismiss() }
             .show()
+    }
+
+    /**
+     * Диалог ручного ввода SPL (внешний SPL-метр).
+     * С возможностью воспроизвести розовый шум для измерения.
+     */
+    private fun showManualSplDialog(context: Context, calibratePref: Preference) {
+        val prefs = preferenceManager.sharedPreferences
+        val manager = me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager(context)
+
+        // Отключаем loudness перед воспроизведением шума
+        val wasLoudnessEnabled = prefs?.getBoolean(getString(R.string.key_loudness_enable), false) ?: false
+        if (wasLoudnessEnabled) {
+            prefs?.edit()?.putBoolean(getString(R.string.key_loudness_enable), false)?.apply()
+        }
+
+        val input = android.widget.EditText(context).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+            hint = getString(R.string.loudness_calibrate_manual_spl)
+        }
+
+        val container = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 16)
+        }
+        container.addView(android.widget.TextView(context).apply {
+            text = getString(R.string.loudness_calibrate_manual_warning)
+            setPadding(0, 0, 0, 24)
+        })
+
+        // Кнопки каналов
+        val channelGroup = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+        }
+        val noiseButtons = mutableListOf<com.google.android.material.button.MaterialButton>()
+
+        val channels = listOf(
+            Triple(me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager.NoiseChannel.BOTH, R.string.loudness_calibrate_channel_both, R.string.loudness_calibrate_play_noise),
+            Triple(me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager.NoiseChannel.LEFT, R.string.loudness_calibrate_channel_left, R.string.loudness_calibrate_play_noise),
+            Triple(me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager.NoiseChannel.RIGHT, R.string.loudness_calibrate_channel_right, R.string.loudness_calibrate_play_noise),
+        )
+
+        channels.forEach { (ch, labelRes, _) ->
+            val btn = com.google.android.material.button.MaterialButton(context).apply {
+                text = getString(labelRes)
+                setOnClickListener {
+                    // Если кнопка показывает "Stop" — останавливаем
+                    val isPlaying = text == getString(R.string.loudness_calibrate_stop_noise)
+                    if (isPlaying) {
+                        manager.stopNoise()
+                        text = getString(R.string.loudness_calibrate_play_noise)
+                    } else {
+                        noiseButtons.forEach { it.text = getString(R.string.loudness_calibrate_play_noise) }
+                        Thread {
+                            Thread.sleep(500)
+                            manager.playNoiseForManualCalibration(48000, ch)
+                        }.start()
+                        text = getString(R.string.loudness_calibrate_stop_noise)
+                    }
+                }
+            }
+            noiseButtons.add(btn)
+            channelGroup.addView(btn)
+            (btn.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
+                weight = 1f
+                marginEnd = 8
+            }
+        }
+
+        container.addView(channelGroup)
+        container.addView(input)
+
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.loudness_calibrate)
+            .setView(container)
+            .setPositiveButton(R.string.loudness_calibrate_apply) { d, _ ->
+                val splText = input.text.toString().trim()
+                val spl = splText.toDoubleOrNull()
+                if (spl == null) {
+                    android.widget.Toast.makeText(context,
+                        getString(R.string.loudness_calibrate_failed, "Invalid SPL value"),
+                        android.widget.Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+
+                manager.stopNoise()
+
+                // Применяем введённый SPL
+                manager.onComplete = { result ->
+                    handleCalibrationResult(context, calibratePref, prefs, result, wasLoudnessEnabled)
+                }
+                manager.applyManualSpl(spl)
+                d.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel) { d, _ ->
+                manager.stopNoise()
+                // Восстанавливаем loudness
+                if (wasLoudnessEnabled) {
+                    prefs?.edit()?.putBoolean(getString(R.string.key_loudness_enable), true)?.apply()
+                }
+                d.dismiss()
+            }
+            .setOnDismissListener {
+                manager.stopNoise()
+            }
+            .create()
+
+        dialog.show()
+    }
+
+    /**
+     * Обработка результата калибровки (общий для микрофона и ручного ввода).
+     */
+    private fun handleCalibrationResult(
+        context: Context,
+        calibratePref: Preference,
+        prefs: SharedPreferences?,
+        result: me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager.CalibrationResult,
+        wasLoudnessEnabled: Boolean,
+    ) {
+        try {
+            if (result.success) {
+                prefs?.edit()?.apply {
+                    putFloat(getString(R.string.key_loudness_reference_level), result.referenceLevel.toFloat())
+                    putFloat(getString(R.string.key_loudness_reference_offset), result.referenceOffset.toFloat())
+                    putBoolean(getString(R.string.key_loudness_enable), true)
+                    putBoolean(getString(R.string.key_loudness_auto_volume), true)
+                }?.apply()
+
+                val id = this@PreferenceGroupFragment.id
+                (requireParentFragment() as DspFragment)
+                    .restartFragment(id, cloneInstance(this@PreferenceGroupFragment))
+
+                android.widget.Toast.makeText(context,
+                    getString(R.string.loudness_calibrate_success,
+                        result.measuredSplDb, result.referenceLevel, result.referenceOffset),
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            } else {
+                if (wasLoudnessEnabled) {
+                    prefs?.edit()?.putBoolean(getString(R.string.key_loudness_enable), true)?.apply()
+                }
+                try {
+                    calibratePref.summary = getString(R.string.loudness_calibrate_failed, result.errorMessage ?: "")
+                } catch (_: IllegalStateException) {}
+                android.widget.Toast.makeText(context,
+                    getString(R.string.loudness_calibrate_failed, result.errorMessage ?: ""),
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        } catch (_: IllegalStateException) {
+            // Fragment may be detached
+        }
     }
 
     private fun setupConvolverSampleRateFiles() {

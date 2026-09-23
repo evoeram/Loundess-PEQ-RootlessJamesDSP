@@ -19,28 +19,39 @@ import kotlin.math.sqrt
 /**
  * Менеджер автокалибровки loudness-коррекции по измеренному SPL с микрофона.
  *
- * Процесс калибровки:
- * 1. Генерируется розовый шум и воспроизводится через AudioTrack на текущей громкости.
- * 2. Параллельно записывается сигнал с микрофона через AudioRecord.
- * 3. Вычисляется RMS записанного сигнала → переводится в dB SPL (относительно full-scale).
- * 4. Измеренный SPL и текущая системная громкость (dB) используются для вычисления:
- *    - referenceLevel = измеренный SPL (dB) — уровень, при котором АЧХ flat
- *    - referenceOffset = referenceLevel - текущая громкость (dB) — связывает SPL с системной громкостью
+ * Поддерживает два режима:
+ * 1. MICROPHONE — воспроизводит розовый шум и записывает с микрофона, вычисляет RMS → dBFS.
+ * 2. MANUAL_SPL — пользователь измеряет SPL внешним SPL-метром, вводит значение вручную.
+ *    Шум может воспроизводиться (опционально) или не воспроизводиться вообще.
  *
- * В runtime при изменении громкости:
- *    volDiff = referenceLevel - referenceOffset - currentVolume
- *    → volDiff > 0: громкость ниже референсной → boost НЧ/ВЧ (Fletcher-Munson)
- *    → volDiff < 0: громкость выше референсной → cut НЧ/ВЧ
+ * Канал воспроизведения шума: LEFT, RIGHT, BOTH.
  *
- * Точность зависит от микрофона. Для абсолютного SPL требуется калибровочный файл микрофона.
- * Без калибровки измеряется относительный SPL (dBFS), что достаточно для loudness-коррекции.
+ * Процесс:
+ * 1. (Опционально) Генерируется розовый шум и воспроизводится через AudioTrack.
+ * 2. (MICROPHONE) Параллельно записывается сигнал с микрофона через AudioRecord.
+ * 3. (MICROPHONE) Вычисляется RMS → dBFS.
+ *    (MANUAL_SPL) Пользователь вводит измеренный SPL (dB SPL) вручную.
+ * 4. referenceLevel = measuredSpl, referenceOffset = measuredSpl - systemVolumeDb.
  */
 class LoudnessCalibrationManager(
     private val context: Context,
 ) {
+    /** Режим калибровки. */
+    enum class CalibrationMode {
+        /** Запись через микрофон, вычисление dBFS. */
+        MICROPHONE,
+        /** Ручной ввод SPL, измеренного внешним SPL-метром. */
+        MANUAL_SPL,
+    }
+
+    /** Канал воспроизведения розового шума. */
+    enum class NoiseChannel {
+        LEFT, RIGHT, BOTH,
+    }
+
     /** Результат калибровки. */
     data class CalibrationResult(
-        val measuredSplDb: Double,      // Измеренный SPL (dBFS или dB SPL с калибровкой)
+        val measuredSplDb: Double,      // Измеренный SPL (dBFS или dB SPL)
         val systemVolumeDb: Double,     // Системная громкость в dB на момент калибровки
         val referenceLevel: Double,     // = measuredSplDb
         val referenceOffset: Double,    // = referenceLevel - systemVolumeDb
@@ -57,29 +68,76 @@ class LoudnessCalibrationManager(
     private var calibrationJob: Job? = null
     private var audioTrack: AudioTrack? = null
     private var audioRecord: AudioRecord? = null
+    private var noiseThread: Thread? = null
 
     private val audioManager by lazy {
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
 
     /**
-     * Запустить калибровку.
+     * Запустить калибровку через микрофон.
      *
-     * @param durationSec длительность измерения в секундах (по умолчанию 5)
-     * @param sampleRate частота дискретизации (по умолчанию 48000)
+     * @param durationSec длительность измерения в секундах
+     * @param sampleRate частота дискретизации
+     * @param channel канал воспроизведения шума (LEFT / RIGHT / BOTH)
      */
-    fun start(durationSec: Int = 5, sampleRate: Int = 48000) {
+    fun startMicrophone(
+        durationSec: Int = 5,
+        sampleRate: Int = 48000,
+        channel: NoiseChannel = NoiseChannel.BOTH,
+    ) {
         if (calibrationJob?.isActive == true) {
             Log.w(TAG, "Calibration already in progress")
             return
         }
 
         calibrationJob = CoroutineScope(Dispatchers.Default).launch {
-            val result = runCalibration(durationSec, sampleRate)
-            withContext(Dispatchers.Main) {
-                onComplete?.invoke(result)
-            }
+            val result = runMicrophoneCalibration(durationSec, sampleRate, channel)
+            withContext(Dispatchers.Main) { onComplete?.invoke(result) }
         }
+    }
+
+    /**
+     * Применить вручную измеренный SPL (от внешнего SPL-метра).
+     * Шум НЕ воспроизводится и НЕ записывается — только вычисление referenceLevel/Offset.
+     *
+     * @param measuredSplDb SPL в dB, измеренный внешним прибором
+     */
+    fun applyManualSpl(measuredSplDb: Double) {
+        val systemVolumeDb = getCurrentSystemVolumeDb()
+        val referenceLevel = measuredSplDb
+        val referenceOffset = measuredSplDb - systemVolumeDb
+
+        Log.i(TAG, "Manual SPL calibration: SPL=%.1f dB, sysVol=%.1f dB, refLevel=%.1f, refOffset=%.1f"
+            .format(measuredSplDb, systemVolumeDb, referenceLevel, referenceOffset))
+
+        onComplete?.invoke(CalibrationResult(
+            measuredSplDb = measuredSplDb,
+            systemVolumeDb = systemVolumeDb,
+            referenceLevel = referenceLevel,
+            referenceOffset = referenceOffset,
+            success = true,
+        ))
+    }
+
+    /**
+     * Воспроизвести розовый шум для ручной калибровки (без записи).
+     * Пользователь измеряет SPL внешним прибором во время воспроизведения.
+     *
+     * @param sampleRate частота дискретизации
+     * @param channel канал воспроизведения (LEFT / RIGHT / BOTH)
+     * @return true если запуск успешен
+     */
+    fun playNoiseForManualCalibration(
+        sampleRate: Int = 48000,
+        channel: NoiseChannel = NoiseChannel.BOTH,
+    ): Boolean {
+        return startPinkNoisePlayback(sampleRate, channel)
+    }
+
+    /** Остановить воспроизведение шума (для ручной калибровки). */
+    fun stopNoise() {
+        stopPlayback()
     }
 
     /** Отменить калибровку. */
@@ -89,51 +147,32 @@ class LoudnessCalibrationManager(
         stopRecording()
     }
 
-    /**
-     * Основная логика калибровки.
-     */
-    private suspend fun runCalibration(
+    // ── Калибровка через микрофон ──────────────────────────────────
+
+    private suspend fun runMicrophoneCalibration(
         durationSec: Int,
         sampleRate: Int,
+        channel: NoiseChannel,
     ): CalibrationResult = withContext(Dispatchers.Default) {
         val totalSamples = sampleRate * durationSec
         val chunkSize = 1024
         var recordedSamples = 0
         var sumSquares = 0.0
-        var maxAmplitude = 0.0f
 
         try {
-            // --- Запуск воспроизведения розового шума ---
-            val trackResult = startPinkNoisePlayback(sampleRate)
+            val trackResult = startPinkNoisePlayback(sampleRate, channel)
             if (!trackResult) {
-                return@withContext CalibrationResult(
-                    measuredSplDb = 0.0,
-                    systemVolumeDb = 0.0,
-                    referenceLevel = 0.0,
-                    referenceOffset = 0.0,
-                    success = false,
-                    errorMessage = "Не удалось запустить воспроизведение розового шума",
-                )
+                return@withContext failResult("Не удалось запустить воспроизведение розового шума")
             }
 
-            // Небольшая задержка для стабилизации воспроизведения
             Thread.sleep(200)
 
-            // --- Запуск записи с микрофона ---
             val recordResult = startRecording(sampleRate)
             if (!recordResult) {
                 stopPlayback()
-                return@withContext CalibrationResult(
-                    measuredSplDb = 0.0,
-                    systemVolumeDb = 0.0,
-                    referenceLevel = 0.0,
-                    referenceOffset = 0.0,
-                    success = false,
-                    errorMessage = "Не удалось получить доступ к микрофону",
-                )
+                return@withContext failResult("Не удалось получить доступ к микрофону")
             }
 
-            // --- Цикл записи и вычисления RMS ---
             val buffer = ShortArray(chunkSize)
             while (recordedSamples < totalSamples && isActive) {
                 val read = audioRecord?.read(buffer, 0, chunkSize) ?: -1
@@ -142,8 +181,6 @@ class LoudnessCalibrationManager(
                 for (i in 0 until read) {
                     val sample = buffer[i].toFloat() / Short.MAX_VALUE
                     sumSquares += (sample * sample).toDouble()
-                    val absSample = kotlin.math.abs(sample)
-                    if (absSample > maxAmplitude) maxAmplitude = absSample
                 }
                 recordedSamples += read
 
@@ -155,71 +192,39 @@ class LoudnessCalibrationManager(
             stopRecording()
 
             if (recordedSamples == 0) {
-                return@withContext CalibrationResult(
-                    measuredSplDb = 0.0,
-                    systemVolumeDb = 0.0,
-                    referenceLevel = 0.0,
-                    referenceOffset = 0.0,
-                    success = false,
-                    errorMessage = "Не удалось записать ни одного сэмпла",
-                )
+                return@withContext failResult("Не удалось записать ни одного сэмпла")
             }
 
-            // --- Вычисление RMS и SPL ---
             val rms = sqrt(sumSquares / recordedSamples)
             val measuredSplDb = if (rms > 0.0) 20.0 * log10(rms) else -120.0
-
-            // --- Получение текущей системной громкости в dB ---
             val systemVolumeDb = getCurrentSystemVolumeDb()
-
-            // --- Вычисление referenceLevel и referenceOffset ---
-            // referenceLevel = измеренный SPL (точка flat АЧХ)
-            // referenceOffset = referenceLevel - systemVolumeDb
-            //   → связывает измеренный SPL с позицией системной громкости
-            //   → volDiff = referenceLevel - referenceOffset - volume = measuredSpl - (measuredSpl - sysVol) - volume
-            //              = sysVol - volume
-            //   При калибровке: volDiff = sysVol - sysVol = 0 (flat)
-            //   При уменьшении громкости: volDiff > 0 → boost НЧ/ВЧ
             val referenceLevel = measuredSplDb
             val referenceOffset = measuredSplDb - systemVolumeDb
 
-            Log.i(TAG, "Calibration complete: SPL=%.1f dBFS, sysVol=%.1f dB, refLevel=%.1f, refOffset=%.1f"
+            Log.i(TAG, "Mic calibration: SPL=%.1f dBFS, sysVol=%.1f dB, refLevel=%.1f, refOffset=%.1f"
                 .format(measuredSplDb, systemVolumeDb, referenceLevel, referenceOffset))
 
-            CalibrationResult(
-                measuredSplDb = measuredSplDb,
-                systemVolumeDb = systemVolumeDb,
-                referenceLevel = referenceLevel,
-                referenceOffset = referenceOffset,
-                success = true,
-            )
+            CalibrationResult(measuredSplDb, systemVolumeDb, referenceLevel, referenceOffset, true)
 
         } catch (e: Exception) {
             Log.e(TAG, "Calibration failed", e)
             stopPlayback()
             stopRecording()
-            CalibrationResult(
-                measuredSplDb = 0.0,
-                systemVolumeDb = 0.0,
-                referenceLevel = 0.0,
-                referenceOffset = 0.0,
-                success = false,
-                errorMessage = e.message ?: "Unknown error",
-            )
+            failResult(e.message ?: "Unknown error")
         }
     }
 
+    private fun failResult(msg: String) = CalibrationResult(0.0, 0.0, 0.0, 0.0, false, msg)
+
     // ── Воспроизведение розового шума ──────────────────────────────
 
-    /**
-     * Запустить воспроизведение розового шума через AudioTrack.
-     * Используется алгоритм Voss-McCartney для генерации pink noise.
-     *
-     * @return true если запуск успешен
-     */
-    private fun startPinkNoisePlayback(sampleRate: Int): Boolean {
+    private fun startPinkNoisePlayback(sampleRate: Int, channel: NoiseChannel): Boolean {
         return try {
-            val channelConfig = AudioFormat.CHANNEL_OUT_MONO
+            val channelConfig = when (channel) {
+                NoiseChannel.BOTH -> AudioFormat.CHANNEL_OUT_STEREO
+                NoiseChannel.LEFT, NoiseChannel.RIGHT -> AudioFormat.CHANNEL_OUT_MONO
+            }
+
             val audioFormat = AudioFormat.Builder()
                 .setSampleRate(sampleRate)
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -227,7 +232,7 @@ class LoudnessCalibrationManager(
                 .build()
 
             val minBufSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
-            val bufSize = (minBufSize * 2).coerceAtLeast(sampleRate) // минимум 1 секунда
+            val bufSize = (minBufSize * 2).coerceAtLeast(sampleSize)
 
             audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(
@@ -241,18 +246,65 @@ class LoudnessCalibrationManager(
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
-            // Генерация и запуск pink noise в отдельном потоке
-            val noiseBuffer = generatePinkNoise(bufSize / 2, sampleRate)
-            audioTrack?.play()
-            audioTrack?.write(noiseBuffer, 0, noiseBuffer.size)
+            val isStereo = channel == NoiseChannel.BOTH
+            val playLeft = channel == NoiseChannel.LEFT
+            val playRight = channel == NoiseChannel.RIGHT
+            val numSamples = bufSize / 2
 
-            // Постоянная подача шума в цикле
-            Thread {
-                val loopBuffer = generatePinkNoise(bufSize / 2, sampleRate)
-                while (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                    audioTrack?.write(loopBuffer, 0, loopBuffer.size)
+            // Генерация и запуск pink noise в отдельном потоке
+            noiseThread = Thread {
+                val noiseBuffer = generatePinkNoise(numSamples, sampleRate)
+
+                // Для моно-режима с одним каналом: заглушаем нужный канал через стерео-микс
+                if (isStereo) {
+                    // L+R: дублируем шум в оба канала
+                    val stereoBuffer = ShortArray(numSamples * 2)
+                    for (i in 0 until numSamples) {
+                        stereoBuffer[i * 2] = noiseBuffer[i]     // L
+                        stereoBuffer[i * 2 + 1] = noiseBuffer[i] // R
+                    }
+                    audioTrack?.play()
+                    while (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                        audioTrack?.write(stereoBuffer, 0, stereoBuffer.size)
+                    }
+                } else {
+                    // L или R только: используем стерео-выход с заглушенным каналом
+                    // Пересоздаём AudioTrack как стерео для возможности заглушить канал
+                    audioTrack?.stop()
+                    audioTrack?.release()
+
+                    val stereoFormat = AudioFormat.Builder()
+                        .setSampleRate(sampleRate)
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                        .build()
+                    val stereoMinBuf = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
+                    val stereoBufSize = (stereoMinBuf * 2).coerceAtLeast(sampleSize)
+
+                    audioTrack = AudioTrack.Builder()
+                        .setAudioAttributes(
+                            android.media.AudioAttributes.Builder()
+                                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                                .build()
+                        )
+                        .setAudioFormat(stereoFormat)
+                        .setBufferSizeInBytes(stereoBufSize)
+                        .setTransferMode(AudioTrack.MODE_STREAM)
+                        .build()
+
+                    val stereoBuffer = ShortArray(numSamples * 2)
+                    for (i in 0 until numSamples) {
+                        stereoBuffer[i * 2] = if (playLeft) noiseBuffer[i] else 0   // L
+                        stereoBuffer[i * 2 + 1] = if (playRight) noiseBuffer[i] else 0 // R
+                    }
+                    audioTrack?.play()
+                    while (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                        audioTrack?.write(stereoBuffer, 0, stereoBuffer.size)
+                    }
                 }
-            }.start()
+            }
+            noiseThread?.start()
 
             true
         } catch (e: Exception) {
@@ -264,35 +316,23 @@ class LoudnessCalibrationManager(
     private fun stopPlayback() {
         try {
             audioTrack?.stop()
+        } catch (_: Exception) {}
+        try {
             audioTrack?.release()
-        } catch (e: Exception) {
-            Log.w(TAG, "Error stopping playback", e)
-        }
+        } catch (_: Exception) {}
         audioTrack = null
+        noiseThread = null
     }
 
     /**
      * Генерация розового шума (алгоритм Voss-McCartney).
-     *
-     * @param numSamples количество сэмплов
-     * @param sampleRate частота дискретизации (не используется, но для совместимости)
-     * @return массив 16-bit PCM сэмплов
      */
     private fun generatePinkNoise(numSamples: Int, @Suppress("UNUSED_PARAMETER") sampleRate: Int): ShortArray {
         val output = ShortArray(numSamples)
-        // Voss-McCartney: 7 октавных генераторов
-        val rows = 7
         val rng = java.util.Random()
-        var b0 = 0.0
-        var b1 = 0.0
-        var b2 = 0.0
-        var b3 = 0.0
-        var b4 = 0.0
-        var b5 = 0.0
-        var b6 = 0.0
-
-        // Нормализующий коэффициент: pink noise имеет RMS ~ 0.37 от white noise
-        val gain = 0.11 // эмпирически подобранный gain для RMS ~ -12 dBFS
+        var b0 = 0.0; var b1 = 0.0; var b2 = 0.0; var b3 = 0.0
+        var b4 = 0.0; var b5 = 0.0; var b6 = 0.0
+        val gain = 0.11
 
         for (i in 0 until numSamples) {
             val white = rng.nextGaussian()
@@ -305,38 +345,23 @@ class LoudnessCalibrationManager(
             val pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362
             b6 = white * 0.115926
 
-            val sample = (pink * gain * Short.MAX_VALUE).toInt()
-                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-            output[i] = sample.toShort()
+            output[i] = (pink * gain * Short.MAX_VALUE).toInt()
+                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
         return output
     }
 
     // ── Запись с микрофона ──────────────────────────────────────────
 
-    /**
-     * Запустить запись с микрофона через AudioRecord.
-     *
-     * @return true если запуск успешен
-     */
     private fun startRecording(sampleRate: Int): Boolean {
         return try {
             val channelConfig = AudioFormat.CHANNEL_IN_MONO
-            val audioFormat = AudioFormat.Builder()
-                .setSampleRate(sampleRate)
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setChannelMask(channelConfig)
-                .build()
-
             val minBufSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
             val bufSize = (minBufSize * 2).coerceAtLeast(1024)
 
             audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                sampleRate,
-                channelConfig,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufSize
+                MediaRecorder.AudioSource.MIC, sampleRate, channelConfig,
+                AudioFormat.ENCODING_PCM_16BIT, bufSize
             )
 
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
@@ -355,21 +380,13 @@ class LoudnessCalibrationManager(
     }
 
     private fun stopRecording() {
-        try {
-            audioRecord?.stop()
-            audioRecord?.release()
-        } catch (e: Exception) {
-            Log.w(TAG, "Error stopping recording", e)
-        }
+        try { audioRecord?.stop() } catch (_: Exception) {}
+        try { audioRecord?.release() } catch (_: Exception) {}
         audioRecord = null
     }
 
     // ── Системная громкость ─────────────────────────────────────────
 
-    /**
-     * Получить текущую системную громкость MEDIA в dB.
-     * Использует тот же метод, что и JamesDspBaseEngine.getCurrentMediaVolumeDb().
-     */
     private fun getCurrentSystemVolumeDb(): Double {
         val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
@@ -381,5 +398,6 @@ class LoudnessCalibrationManager(
 
     companion object {
         private const val TAG = "LoudnessCalibration"
+        private const val sampleSize = 4 // bytes per 16-bit mono sample
     }
 }
