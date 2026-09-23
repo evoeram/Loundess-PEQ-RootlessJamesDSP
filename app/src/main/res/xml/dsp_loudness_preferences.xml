@@ -23,7 +23,7 @@
             android:key="@string/key_loudness_reference_offset"
             android:title="@string/loudness_reference_offset"
             android:defaultValue="0"
-            app:minValue="0"
+            app:minValue="-60"
             app:maxValue="30"
             app:unit="dB"
             app:allowDividerAbove="false"

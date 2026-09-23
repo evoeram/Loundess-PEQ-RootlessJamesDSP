@@ -303,9 +303,14 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
                     try {
                         if (result.success) {
                             // Сохраняем вычисленные значения в SharedPreferences
+                            // и автоматически включаем loudness + auto_volume
                             prefs?.edit()?.apply {
                                 putFloat(getString(R.string.key_loudness_reference_level), result.referenceLevel.toFloat())
                                 putFloat(getString(R.string.key_loudness_reference_offset), result.referenceOffset.toFloat())
+                                // Автовключение loudness-коррекции
+                                putBoolean(getString(R.string.key_loudness_enable), true)
+                                // Автовключение отслеживания системной громкости
+                                putBoolean(getString(R.string.key_loudness_auto_volume), true)
                             }?.apply()
 
                             calibratePref.summary = getString(
