@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.util.TypedValue
 import android.view.ContextThemeWrapper
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
@@ -289,6 +290,20 @@ class PresetOverlayManager : KoinComponent {
 
         cardView.addView(container)
 
+        // Делаем карточку focusable, чтобы она получала key events.
+        // Overlay-окно через WindowManager не получает KEYCODE_BACK автоматически —
+        // без этого кнопка «Назад» (нижняя или жест с боковой грани) не закрывает диалог.
+        cardView.isFocusable = true
+        cardView.isFocusableInTouchMode = true
+        cardView.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                onClose()
+                true
+            } else {
+                false
+            }
+        }
+
         // Касание вне карточки (но внутри overlay-окна) закрывает диалог.
         // FLAG_WATCH_OUTSIDE_TOUCH отправляет MotionEvent.ACTION_OUTSIDE при тапе мимо view.
         cardView.setOnTouchListener { _, event ->
@@ -299,6 +314,9 @@ class PresetOverlayManager : KoinComponent {
                 false
             }
         }
+
+        // Запрашиваем фокус после добавления в WindowManager — иначе ключи идут мимо.
+        cardView.post { cardView.requestFocus() }
 
         return cardView
     }
