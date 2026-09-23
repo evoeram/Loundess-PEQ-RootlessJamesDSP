@@ -127,12 +127,16 @@ class DeviceCardAdapter(
 
     /** Перестроить видимые элементы из lastFullList с учётом otherExpanded. */
     private fun rebuildList() {
-        val active = lastFullList.filter { it.isActive }
-        val other = lastFullList.filter { !it.isActive }
+        // Дедупликация по id на случай, если во входном списке есть дубликаты
+        // (misdetection типа устройства и т.п.).
+        val deduped = lastFullList.distinctBy { it.id }
+        val active = deduped.filter { it.isActive }
+        val other = deduped.filter { !it.isActive }
 
         val items = mutableListOf<Item>()
         active.forEach { items.add(Item.ActiveDeviceCard(it)) }
         if (other.isNotEmpty()) {
+            // Только один заголовок, независимо от количества неактивных устройств
             items.add(Item.OtherHeader(other.size))
             if (otherExpanded) {
                 other.forEach { items.add(Item.OtherDeviceCard(it)) }

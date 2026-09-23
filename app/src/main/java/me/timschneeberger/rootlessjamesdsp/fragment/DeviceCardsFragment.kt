@@ -53,12 +53,12 @@ class DeviceCardsFragment : Fragment(), RoutingObserver.RoutingChangedCallback {
         binding.devicesRecycler.layoutManager = LinearLayoutManager(requireContext())
         binding.devicesRecycler.adapter = adapter
 
-        // Отключаем change-анимации (ITEM_ANIMATOR_CHANGE_ANIMATIONS).
-        // При смене активного устройства карточка мигрирует между типами
-        // (Active → Other и наоборот). Change-анимация в этом случае
-        // вызывает краш "Two different ViewHolders have the same change ID".
-        (binding.devicesRecycler.itemAnimator as? androidx.recyclerview.widget.DefaultItemAnimator)
-            ?.supportsChangeAnimations = false
+        // Полностью отключаем ItemAnimator.
+        // Список устройств маленький (несколько карточек), анимации не нужны.
+        // ItemAnimator вызывает визуальные артефакты при быстрой смене списка:
+        // «задвоение» заголовка «Другие устройства» при одновременном
+        // добавлении/удалении нескольких элементов с анимацией.
+        binding.devicesRecycler.itemAnimator = null
 
         routingObserver.registerOnRoutingChangeListener(this)
 
@@ -117,7 +117,13 @@ class DeviceCardsFragment : Fragment(), RoutingObserver.RoutingChangedCallback {
             )
         }.sortedByDescending { it.isActive } // активное первым
 
-        if (cards.isEmpty()) {
+        // Дедупликация по id: DevicePresetManager может содержать несколько
+        // записей для одного физического устройства (например, при misdetection
+        // типа: сначала OTHER, потом USB). Оставляем только первую запись для
+        // каждого id — предпочтительно активную (она идёт первой после сортировки).
+        val dedupedCards = cards.distinctBy { it.id }
+
+        if (dedupedCards.isEmpty()) {
             binding.devicesEmpty.visibility = View.VISIBLE
             binding.devicesRecycler.visibility = View.GONE
         } else {
@@ -126,7 +132,7 @@ class DeviceCardsFragment : Fragment(), RoutingObserver.RoutingChangedCallback {
         }
 
         // Передаём полный список — адаптер сам решает что показать
-        adapter.submitDeviceList(cards)
+        adapter.submitDeviceList(dedupedCards)
     }
 
     /**
