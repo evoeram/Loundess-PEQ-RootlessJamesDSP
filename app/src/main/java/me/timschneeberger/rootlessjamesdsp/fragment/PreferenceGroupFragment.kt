@@ -8,6 +8,7 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.PermissionExtensions.hasRecordPermission
 import androidx.annotation.XmlRes
 import androidx.appcompat.app.AlertDialog
 import androidx.preference.Preference
@@ -243,68 +244,99 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
 
         calibratePref.setOnPreferenceClickListener {
             val context = requireContext()
-            val prefs = preferenceManager.sharedPreferences
 
-            // Показываем предупреждение перед началом
-            com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
-                .setTitle(R.string.loudness_calibrate)
-                .setMessage(R.string.loudness_calibrate_warning)
-                .setPositiveButton(android.R.string.ok) { dialog, _ ->
-                    dialog.dismiss()
+            // Проверяем разрешение RECORD_AUDIO перед запуском калибровки
+            if (!context.hasRecordPermission()) {
+                // Запрашиваем разрешение через ActivityResultLauncher
+                requestRecordAudioPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                return@setOnPreferenceClickListener true
+            }
 
-                    val manager = me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager(context)
-
-                    // Обновляем summary в реальном времени
-                    manager.onProgress = { progress ->
-                        try {
-                            val percent = (progress * 100).toInt()
-                            calibratePref.summary = getString(R.string.loudness_calibrate_running, percent)
-                        } catch (e: IllegalStateException) {
-                            // Fragment may be detached
-                        }
-                    }
-
-                    manager.onComplete = { result ->
-                        try {
-                            if (result.success) {
-                                // Сохраняем вычисленные значения в SharedPreferences
-                                prefs?.edit()?.apply {
-                                    putFloat(getString(R.string.key_loudness_reference_level), result.referenceLevel.toFloat())
-                                    putFloat(getString(R.string.key_loudness_reference_offset), result.referenceOffset.toFloat())
-                                }?.apply()
-
-                                calibratePref.summary = getString(
-                                    R.string.loudness_calibrate_success,
-                                    result.measuredSplDb,
-                                    result.referenceLevel,
-                                    result.referenceOffset
-                                )
-
-                                // Показываем toast с результатом
-                                android.widget.Toast.makeText(context,
-                                    getString(R.string.loudness_calibrate_success,
-                                        result.measuredSplDb, result.referenceLevel, result.referenceOffset),
-                                    android.widget.Toast.LENGTH_LONG
-                                ).show()
-                            } else {
-                                calibratePref.summary = getString(R.string.loudness_calibrate_failed, result.errorMessage ?: "")
-                                android.widget.Toast.makeText(context,
-                                    getString(R.string.loudness_calibrate_failed, result.errorMessage ?: ""),
-                                    android.widget.Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        } catch (e: IllegalStateException) {
-                            // Fragment may be detached
-                        }
-                    }
-
-                    manager.start(durationSec = 5, sampleRate = 48000)
-                }
-                .setNegativeButton(android.R.string.cancel) { dialog, _ -> dialog.dismiss() }
-                .show()
-
+            startCalibration(context, calibratePref)
             true
         }
+    }
+
+    /** Launcher для запроса RECORD_AUDIO */
+    private val requestRecordAudioPermission = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val context = requireContext()
+            val calibratePref = findPreference<Preference>("loudness_calibrate") ?: return@registerForActivityResult
+            startCalibration(context, calibratePref)
+        } else {
+            android.widget.Toast.makeText(
+                requireContext(),
+                getString(R.string.loudness_calibrate_failed, "RECORD_AUDIO permission denied"),
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    /**
+     * Запустить калибровку loudness по микрофону.
+     */
+    private fun startCalibration(context: Context, calibratePref: Preference) {
+        val prefs = preferenceManager.sharedPreferences
+
+        // Показываем предупреждение перед началом
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.loudness_calibrate)
+            .setMessage(R.string.loudness_calibrate_warning)
+            .setPositiveButton(android.R.string.ok) { dialog, _ ->
+                dialog.dismiss()
+
+                val manager = me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager(context)
+
+                // Обновляем summary в реальном времени
+                manager.onProgress = { progress ->
+                    try {
+                        val percent = (progress * 100).toInt()
+                        calibratePref.summary = getString(R.string.loudness_calibrate_running, percent)
+                    } catch (e: IllegalStateException) {
+                        // Fragment may be detached
+                    }
+                }
+
+                manager.onComplete = { result ->
+                    try {
+                        if (result.success) {
+                            // Сохраняем вычисленные значения в SharedPreferences
+                            prefs?.edit()?.apply {
+                                putFloat(getString(R.string.key_loudness_reference_level), result.referenceLevel.toFloat())
+                                putFloat(getString(R.string.key_loudness_reference_offset), result.referenceOffset.toFloat())
+                            }?.apply()
+
+                            calibratePref.summary = getString(
+                                R.string.loudness_calibrate_success,
+                                result.measuredSplDb,
+                                result.referenceLevel,
+                                result.referenceOffset
+                            )
+
+                            // Показываем toast с результатом
+                            android.widget.Toast.makeText(context,
+                                getString(R.string.loudness_calibrate_success,
+                                    result.measuredSplDb, result.referenceLevel, result.referenceOffset),
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            calibratePref.summary = getString(R.string.loudness_calibrate_failed, result.errorMessage ?: "")
+                            android.widget.Toast.makeText(context,
+                                getString(R.string.loudness_calibrate_failed, result.errorMessage ?: ""),
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    } catch (e: IllegalStateException) {
+                        // Fragment may be detached
+                    }
+                }
+
+                manager.start(durationSec = 5, sampleRate = 48000)
+            }
+            .setNegativeButton(android.R.string.cancel) { dialog, _ -> dialog.dismiss() }
+            .show()
     }
 
     private fun setupConvolverSampleRateFiles() {
