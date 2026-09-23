@@ -176,6 +176,12 @@
     <string name="loudness_auto_volume">Track system volume</string>
     <string name="loudness_auto_volume_summary">Automatically use the system media volume instead of the manual slider</string>
     <string name="loudness_summary">Fletcher-Munson loudness compensation: boosts bass and treble at low listening volumes</string>
+    <string name="loudness_calibrate">Auto-calibrate with microphone</string>
+    <string name="loudness_calibrate_summary">Play pink noise and measure SPL via microphone to set reference level</string>
+    <string name="loudness_calibrate_running">Calibrating… %1$d%%</string>
+    <string name="loudness_calibrate_success">Calibration complete: SPL %.1f dBFS, ref level %.1f dB, offset %.1f dB</string>
+    <string name="loudness_calibrate_failed">Calibration failed: %1$s</string>
+    <string name="loudness_calibrate_warning">Ensure the microphone is positioned at your listening position. Pink noise will play for 5 seconds.</string>
 
     <string name="geq_enable">Arbitrary response equalizer</string>
     <string name="geq_nodes">Magnitude response</string>

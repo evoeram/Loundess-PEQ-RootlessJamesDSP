@@ -58,5 +58,10 @@
             android:summary="@string/loudness_auto_volume_summary"
             android:defaultValue="false"
             app:iconSpaceReserved="false"/>
+        <Preference
+            android:key="loudness_calibrate"
+            android:title="@string/loudness_calibrate"
+            android:summary="@string/loudness_calibrate_summary"
+            app:iconSpaceReserved="false"/>
     </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

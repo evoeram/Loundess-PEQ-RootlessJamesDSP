@@ -102,6 +102,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
 
         when(args.getInt(BUNDLE_XML_RES)) {
             R.xml.dsp_convolver_preferences -> setupConvolverSampleRateFiles()
+            R.xml.dsp_loudness_preferences -> setupLoudnessCalibration()
             R.xml.dsp_compander_preferences -> {
                 findPreference<MaterialSeekbarPreference>(getString(R.string.key_compander_granularity))?.valueLabelOverride =
                     fun(it: Float): String {
@@ -226,6 +227,84 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
 
         preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(listener)
         prefsApp.registerOnSharedPreferenceChangeListener(listenerApp)
+    }
+
+    /**
+     * Настройка кнопки автокалибровки loudness по микрофону.
+     * При нажатии запускает LoudnessCalibrationManager, который:
+     * 1. Воспроизводит розовый шум через AudioTrack
+     * 2. Записывает сигнал с микрофона через AudioRecord
+     * 3. Вычисляет RMS → SPL (dBFS)
+     * 4. Вычисляет referenceLevel и referenceOffset
+     * 5. Сохраняет значения в SharedPreferences
+     */
+    private fun setupLoudnessCalibration() {
+        val calibratePref = findPreference<Preference>("loudness_calibrate") ?: return
+
+        calibratePref.setOnPreferenceClickListener {
+            val context = requireContext()
+            val prefs = preferenceManager.sharedPreferences
+
+            // Показываем предупреждение перед началом
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
+                .setTitle(R.string.loudness_calibrate)
+                .setMessage(R.string.loudness_calibrate_warning)
+                .setPositiveButton(android.R.string.ok) { dialog, _ ->
+                    dialog.dismiss()
+
+                    val manager = me.timschneeberger.rootlessjamesdsp.utils.LoudnessCalibrationManager(context)
+
+                    // Обновляем summary в реальном времени
+                    manager.onProgress = { progress ->
+                        try {
+                            val percent = (progress * 100).toInt()
+                            calibratePref.summary = getString(R.string.loudness_calibrate_running, percent)
+                        } catch (e: IllegalStateException) {
+                            // Fragment may be detached
+                        }
+                    }
+
+                    manager.onComplete = { result ->
+                        try {
+                            if (result.success) {
+                                // Сохраняем вычисленные значения в SharedPreferences
+                                prefs?.edit()?.apply {
+                                    putFloat(getString(R.string.key_loudness_reference_level), result.referenceLevel.toFloat())
+                                    putFloat(getString(R.string.key_loudness_reference_offset), result.referenceOffset.toFloat())
+                                }?.apply()
+
+                                calibratePref.summary = getString(
+                                    R.string.loudness_calibrate_success,
+                                    result.measuredSplDb,
+                                    result.referenceLevel,
+                                    result.referenceOffset
+                                )
+
+                                // Показываем toast с результатом
+                                android.widget.Toast.makeText(context,
+                                    getString(R.string.loudness_calibrate_success,
+                                        result.measuredSplDb, result.referenceLevel, result.referenceOffset),
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                calibratePref.summary = getString(R.string.loudness_calibrate_failed, result.errorMessage ?: "")
+                                android.widget.Toast.makeText(context,
+                                    getString(R.string.loudness_calibrate_failed, result.errorMessage ?: ""),
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        } catch (e: IllegalStateException) {
+                            // Fragment may be detached
+                        }
+                    }
+
+                    manager.start(durationSec = 5, sampleRate = 48000)
+                }
+                .setNegativeButton(android.R.string.cancel) { dialog, _ -> dialog.dismiss() }
+                .show()
+
+            true
+        }
     }
 
     private fun setupConvolverSampleRateFiles() {
