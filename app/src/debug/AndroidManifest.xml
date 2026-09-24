@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Debug-only entry points for tools/latency/run_latency_test.py.
+         DUMP is held by the adb shell user, not by third-party apps. -->
+    <application>
+        <!-- Latency A/B knobs -->
+        <receiver
+            android:name=".receiver.LatencyTuningReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+    </application>
+
+</manifest>

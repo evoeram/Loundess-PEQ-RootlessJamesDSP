@@ -12,7 +12,7 @@ import androidx.recyclerview.widget.RecyclerView
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
-import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.*
@@ -112,7 +112,7 @@ class ParametricEqBandAdapter(var bands: ParametricEqBandList) :
         viewHolder.deleteButton.isEnabled = true
 
         val band = bands[position]
-        viewHolder.filterType.text = "${band.filterType.displayLabel} ${band.channelMode.displayLabel}"
+        viewHolder.filterType.text = "${band.filterType.displayLabel} ${band.channel.displayLabel}"
 
         if (band.filterType.isFlatGain) {
             // Preamp bands: flat gain, frequency and Q are irrelevant

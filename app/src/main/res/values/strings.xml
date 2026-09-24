@@ -9,6 +9,7 @@
 
     <!-- Notification channels -->
     <string name="notification_group_service">Service</string>
+    <string name="notification_group_service_alerts">Service alerts</string>
     <string name="notification_channel_service">Service notification</string>
     <string name="notification_channel_session_loss_alert">Session loss alert</string>
     <string name="notification_channel_permission_prompt">Permission prompt request</string>
@@ -413,6 +414,28 @@
     <string name="audio_format_optimization_benchmark">Use benchmarks to optimize performance</string>
     <string name="audio_format_optimization_benchmark_summary">Increases performance of effects that use convolver modules</string>
     <string name="audio_format_optimization_benchmark_ongoing">Benchmark in progress…</string>
+
+    <!-- Processing mode (Кино / Стандартный / Низкая задержка) -->
+    <string name="processing_mode_header">Processing mode</string>
+    <string name="processing_mode_title">Audio processing mode</string>
+    <string name="processing_mode_standard">Standard</string>
+    <string name="processing_mode_standard_summary">Large buffers, all effects, maximum stability. Higher latency (~150–170 ms). Video may desync.</string>
+    <string name="processing_mode_low_latency">Low-latency (Games)</string>
+    <string name="processing_mode_low_latency_summary">Small blocks on the fast output path; all effects, reduced latency (~20–80 ms). Keeps video in sync.</string>
+    <string name="processing_mode_movie">Movie (EQ only, perfect sync)</string>
+    <string name="processing_mode_movie_summary">No capture loop — EQ applied inside each app via system DynamicsProcessing. Perfect A/V sync, but only EQ works (no reverb, bass-boost, etc.).</string>
+    <string name="processing_mode_movie_warning">Movie mode applies only the GraphicEQ + Parametric EQ curve inside each app via Android\'s DynamicsProcessing effect. All other JamesDSP effects (reverb, bass boost, stereo enhancement, compressor, etc.) are disabled in this mode. If you need those effects, switch to Standard or Low-latency mode.</string>
+    <!-- Android EQ internal settings -->
+    <string name="android_eq_latency">Movie mode block size</string>
+    <string name="android_eq_latency_512">512 samples (~10 ms, coarse bass)</string>
+    <string name="android_eq_latency_1024">1024 samples (~20 ms, balanced)</string>
+    <string name="android_eq_latency_2048">2048 samples (~40 ms, precise bass)</string>
+    <string name="android_eq_limiter">Movie mode limiter</string>
+    <string name="android_eq_limiter_summary">Prevents clipping from EQ boosts</string>
+    <!-- Low-latency internal settings -->
+    <string name="audioformat_low_latency">Low-latency capture loop</string>
+    <string name="audioformat_low_latency_on">Small blocks on the fast output path; keeps video in sync</string>
+    <string name="audioformat_low_latency_off">Large buffers (legacy); fewer dropouts on slow devices, but video lags</string>
     <string name="profiles_section_header">Device profiles</string>
     <string name="profiles_summary">Per-device profiles, automatic switching</string>
     <string name="profiles_enable">Per-device profiles</string>

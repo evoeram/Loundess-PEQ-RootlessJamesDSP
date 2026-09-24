@@ -163,7 +163,15 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     }
 
     override fun setGraphicEqInternal(enable: Boolean, bands: String): Boolean {
-        return JamesDspWrapper.setGraphicEq(handle, enable, bands)
+        // Передаём EQ-кривую в AndroidEq (Movie Mode) — поддерживает per-channel стерео
+        // AndroidEq.setCurve парсит строку (включая STEREO_GRAPHIC_EQ_SPLIT) и запускает refit
+        if (me.timschneeberger.rootlessjamesdsp.utils.SdkCheck.isPie)
+            me.timschneeberger.rootlessjamesdsp.androideq.AndroidEq.setCurve(enable, bands)
+
+        // Native JamesDspWrapper не понимает стерео payload с CHANNEL_SPLIT —
+        // передаём только левую кривую (или моно, если кривые одинаковы).
+        val nativeBands = bands.substringBefore(JamesDspBaseEngine.STEREO_GRAPHIC_EQ_SPLIT)
+        return JamesDspWrapper.setGraphicEq(handle, enable, nativeBands)
     }
 
     override fun setLiveprogInternal(enable: Boolean, name: String, script: String): Boolean {
@@ -203,7 +211,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
             gain[i] = band.gain
             q[i] = band.q
             type[i] = band.filterType.code
-            chan[i] = band.channelMode.code
+            chan[i] = band.channel.code
         }
 
         return JamesDspWrapper.setParametricEq(
@@ -215,7 +223,11 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     // Feature support
     override fun supportsEelVmAccess(): Boolean { return true }
     override fun supportsCustomCrossfeed(): Boolean { return true }
-    override fun supportsParametricEqCascade(): Boolean { return true }
+    override fun supportsParametricEqCascade(): Boolean {
+        // В Movie Mode нативный PEQ-каскад недоступен — нет capture loop.
+        // Fallback: PEQ мёрджится в GraphicEQ → AndroidEq (DynamicsProcessing).
+        return !me.timschneeberger.rootlessjamesdsp.androideq.AndroidEq.isEnabled
+    }
     override fun supportsLoudnessCorrection(): Boolean { return true }
 
     // Loudness correction

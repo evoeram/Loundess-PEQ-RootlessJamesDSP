@@ -1,5 +1,36 @@
 <PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory app:title="@string/processing_mode_header"
+        app:iconSpaceReserved="false">
+
+        <ListPreference
+            app:key="@string/key_processing_mode"
+            app:title="@string/processing_mode_title"
+            app:entries="@array/processing_modes"
+            app:entryValues="@array/processing_modes_values"
+            app:useSimpleSummaryProvider="true"
+            app:defaultValue="@string/default_processing_mode"
+            app:iconSpaceReserved="false" />
+
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            android:key="@string/key_android_eq_limiter"
+            android:defaultValue="@bool/default_android_eq_limiter"
+            android:title="@string/android_eq_limiter"
+            android:summary="@string/android_eq_limiter_summary"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            app:key="@string/key_android_eq_latency"
+            app:title="@string/android_eq_latency"
+            app:entries="@array/android_eq_latency_modes"
+            app:entryValues="@array/android_eq_latency_modes_values"
+            app:useSimpleSummaryProvider="true"
+            app:defaultValue="@string/default_android_eq_latency"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
     <PreferenceCategory app:title="@string/audio_format_section_header"
         app:iconSpaceReserved="false">
         <ListPreference

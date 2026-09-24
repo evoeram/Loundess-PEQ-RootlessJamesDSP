@@ -1,8 +1,8 @@
 package me.timschneeberger.rootlessjamesdsp.utils
 
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
-import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.*
@@ -27,7 +27,7 @@ object BiquadUtils {
      * @param frequency Center/corner frequency in Hz
      * @param gain Gain in dB
      * @param q Q factor
-     * @param filterType PEAKING, LOW_SHELF, or HIGH_SHELF
+     * @param filterType PEAKING, LOW_SHELF, HIGH_SHELF, etc.
      * @param sampleRate Sample rate in Hz
      * @return Biquad coefficients (b0, b1, b2, a0, a1, a2)
      */
@@ -42,7 +42,6 @@ object BiquadUtils {
         val omega = 2.0 * PI * frequency / sampleRate
         val sinOmega = sin(omega)
         val cosOmega = cos(omega)
-        val alpha = sinOmega / (2.0 * q)
 
         return when (filterType) {
             ParametricEqFilterType.PREAMP -> {
@@ -55,6 +54,7 @@ object BiquadUtils {
                 )
             }
             ParametricEqFilterType.PEAKING -> {
+                val alpha = sinOmega / (2.0 * q)
                 BiquadCoefficients(
                     b0 = 1.0 + alpha * A,
                     b1 = -2.0 * cosOmega,
@@ -65,6 +65,7 @@ object BiquadUtils {
                 )
             }
             ParametricEqFilterType.LOW_SHELF -> {
+                val alpha = sinOmega / (2.0 * q)
                 val sqrtA = sqrt(A)
                 val twoSqrtAAlpha = 2.0 * sqrtA * alpha
                 BiquadCoefficients(
@@ -77,6 +78,7 @@ object BiquadUtils {
                 )
             }
             ParametricEqFilterType.HIGH_SHELF -> {
+                val alpha = sinOmega / (2.0 * q)
                 val sqrtA = sqrt(A)
                 val twoSqrtAAlpha = 2.0 * sqrtA * alpha
                 BiquadCoefficients(
@@ -89,6 +91,7 @@ object BiquadUtils {
                 )
             }
             ParametricEqFilterType.LOW_PASS -> {
+                val alpha = sinOmega / (2.0 * q)
                 BiquadCoefficients(
                     b0 = (1.0 - cosOmega) / 2.0,
                     b1 = 1.0 - cosOmega,
@@ -99,6 +102,7 @@ object BiquadUtils {
                 )
             }
             ParametricEqFilterType.HIGH_PASS -> {
+                val alpha = sinOmega / (2.0 * q)
                 BiquadCoefficients(
                     b0 = (1.0 + cosOmega) / 2.0,
                     b1 = -(1.0 + cosOmega),
@@ -109,6 +113,7 @@ object BiquadUtils {
                 )
             }
             ParametricEqFilterType.BAND_PASS -> {
+                val alpha = sinOmega / (2.0 * q)
                 BiquadCoefficients(
                     b0 = alpha,
                     b1 = 0.0,
@@ -119,6 +124,7 @@ object BiquadUtils {
                 )
             }
             ParametricEqFilterType.NOTCH -> {
+                val alpha = sinOmega / (2.0 * q)
                 BiquadCoefficients(
                     b0 = 1.0,
                     b1 = -2.0 * cosOmega,
@@ -129,6 +135,7 @@ object BiquadUtils {
                 )
             }
             ParametricEqFilterType.ALL_PASS -> {
+                val alpha = sinOmega / (2.0 * q)
                 BiquadCoefficients(
                     b0 = 1.0 - alpha,
                     b1 = -2.0 * cosOmega,
@@ -185,6 +192,7 @@ object BiquadUtils {
      * @param minFreq Minimum frequency in Hz
      * @param maxFreq Maximum frequency in Hz
      * @param sampleRate Sample rate for coefficient computation
+     * @param channel If non-null, filter bands by channel (LEFT → L+L+R bands, RIGHT → R+L+R bands)
      * @return List of (frequency, totalGainDb) pairs
      */
     fun computeCombinedResponse(
@@ -192,16 +200,27 @@ object BiquadUtils {
         numPoints: Int = 512,
         minFreq: Double = 20.0,
         maxFreq: Double = 20000.0,
-        sampleRate: Double = 48000.0
+        sampleRate: Double = 48000.0,
+        channel: ParametricEqChannel? = null
     ): List<Pair<Double, Double>> {
-        if (bands.isEmpty()) return emptyList()
+        val filteredBands = when (channel) {
+            null -> bands
+            ParametricEqChannel.LEFT ->
+                bands.filter { it.channel == ParametricEqChannel.LEFT_RIGHT || it.channel == ParametricEqChannel.LEFT }
+            ParametricEqChannel.RIGHT ->
+                bands.filter { it.channel == ParametricEqChannel.LEFT_RIGHT || it.channel == ParametricEqChannel.RIGHT }
+            ParametricEqChannel.LEFT_RIGHT ->
+                bands.filter { it.channel == ParametricEqChannel.LEFT_RIGHT }
+        }
+
+        if (filteredBands.isEmpty()) return emptyList()
 
         val logMin = ln(minFreq)
         val logMax = ln(maxFreq)
         val result = ArrayList<Pair<Double, Double>>(numPoints)
 
         // Precompute coefficients for all bands
-        val allCoeffs = bands.map { band ->
+        val allCoeffs = filteredBands.map { band ->
             computeCoefficients(band.frequency, band.gain, band.q, band.filterType, sampleRate)
         }
 
@@ -221,40 +240,54 @@ object BiquadUtils {
     }
 
     /**
-     * Compute the combined magnitude response for a specific channel (L or R),
-     * considering each band's channelMode.
+     * Compute the average of the left and right channel magnitude responses.
      *
-     * - BOTH bands are included on both channels
-     * - LEFT_ONLY bands are included only on the left channel
-     * - RIGHT_ONLY bands are included only on the right channel
+     * - LEFT_RIGHT bands contribute to both channels
+     * - LEFT bands contribute only to the left channel
+     * - RIGHT bands contribute only to the right channel
+     *
+     * If one channel has no bands, it gets 0 dB everywhere (flat), so the average
+     * is half the other channel's response.
      *
      * @param bands List of parametric EQ bands
-     * @param channel Which channel to compute (LEFT or RIGHT)
      * @param numPoints Number of sample points
      * @param minFreq Minimum frequency in Hz
      * @param maxFreq Maximum frequency in Hz
      * @param sampleRate Sample rate for coefficient computation
-     * @return List of (frequency, totalGainDb) pairs
+     * @return List of (frequency, averageGainDb) pairs
      */
-    fun computeChannelResponse(
+    fun computeAverageStereoResponse(
         bands: List<ParametricEqBand>,
-        channel: ParametricEqChannelMode,
         numPoints: Int = 512,
         minFreq: Double = 20.0,
         maxFreq: Double = 20000.0,
         sampleRate: Double = 48000.0
     ): List<Pair<Double, Double>> {
-        // Filter bands that affect this channel
-        val channelBands = bands.filter { band ->
-            when (band.channelMode) {
-                ParametricEqChannelMode.BOTH -> true
-                ParametricEqChannelMode.LEFT_ONLY -> channel == ParametricEqChannelMode.LEFT_ONLY
-                ParametricEqChannelMode.RIGHT_ONLY -> channel == ParametricEqChannelMode.RIGHT_ONLY
-            }
-        }
+        val left = computeCombinedResponse(
+            bands,
+            numPoints = numPoints,
+            minFreq = minFreq,
+            maxFreq = maxFreq,
+            sampleRate = sampleRate,
+            channel = ParametricEqChannel.LEFT
+        )
+        val right = computeCombinedResponse(
+            bands,
+            numPoints = numPoints,
+            minFreq = minFreq,
+            maxFreq = maxFreq,
+            sampleRate = sampleRate,
+            channel = ParametricEqChannel.RIGHT
+        )
 
-        if (channelBands.isEmpty()) return emptyList()
-        return computeCombinedResponse(channelBands, numPoints, minFreq, maxFreq, sampleRate)
+        if (left.isEmpty() && right.isEmpty()) return emptyList()
+
+        val normalizedLeft = if (left.isEmpty()) right.map { it.first to 0.0 } else left
+        val normalizedRight = if (right.isEmpty()) left.map { it.first to 0.0 } else right
+
+        return normalizedLeft.indices.map { index ->
+            normalizedLeft[index].first to ((normalizedLeft[index].second + normalizedRight[index].second) * 0.5)
+        }
     }
 
     private val dfFreq = DecimalFormat("0.00", DecimalFormatSymbols.getInstance(Locale.ENGLISH))

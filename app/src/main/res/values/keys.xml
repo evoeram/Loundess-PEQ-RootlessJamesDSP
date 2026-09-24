@@ -43,6 +43,15 @@
     <string name="key_audioformat_enhanced_processing" translatable="false">audioformat_enhanced_processing</string>
     <string name="key_audioformat_optimization_benchmark" translatable="false">audioformat_optimization_benchmark</string>
 
+    <!-- Processing mode (Кино / Стандартный / Низкая задержка) -->
+    <string name="key_processing_mode" translatable="false">processing_mode</string>
+    <!-- Android EQ mode (внутренние настройки) -->
+    <string name="key_android_eq_enable" translatable="false">android_eq_enable</string>
+    <string name="key_android_eq_latency" translatable="false">android_eq_latency</string>
+    <string name="key_android_eq_limiter" translatable="false">android_eq_limiter</string>
+    <!-- Low-latency mode (внутренние настройки) -->
+    <string name="key_audioformat_low_latency" translatable="false">audioformat_low_latency</string>
+
     <!-- Device profiles -->
     <string name="key_device_profiles_enable" translatable="false">device_profiles_enable</string>
 

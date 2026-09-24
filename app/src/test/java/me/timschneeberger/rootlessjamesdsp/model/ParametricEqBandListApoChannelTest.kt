@@ -31,9 +31,9 @@ class ParametricEqBandListApoChannelTest {
         assertEquals(-1.0, result.preampDb, 0.01)
         assertEquals(3, bands.size)
 
-        assertEquals(ParametricEqChannelMode.BOTH, bands[0].channelMode)
-        assertEquals(ParametricEqChannelMode.LEFT_ONLY, bands[1].channelMode)
-        assertEquals(ParametricEqChannelMode.RIGHT_ONLY, bands[2].channelMode)
+        assertEquals(ParametricEqChannel.LEFT_RIGHT, bands[0].channel)
+        assertEquals(ParametricEqChannel.LEFT, bands[1].channel)
+        assertEquals(ParametricEqChannel.RIGHT, bands[2].channel)
 
         assertEquals(260.0, bands[0].frequency, 0.01)
         assertEquals(3440.0, bands[1].frequency, 0.01)
@@ -54,8 +54,8 @@ class ParametricEqBandListApoChannelTest {
         bands.fromApoString(apo)
 
         assertEquals(2, bands.size)
-        assertEquals(ParametricEqChannelMode.BOTH, bands[0].channelMode)
-        assertEquals(ParametricEqChannelMode.BOTH, bands[1].channelMode)
+        assertEquals(ParametricEqChannel.LEFT_RIGHT, bands[0].channel)
+        assertEquals(ParametricEqChannel.LEFT_RIGHT, bands[1].channel)
     }
 
     // ── Test 3: Channel directive persists until changed ──
@@ -74,9 +74,9 @@ class ParametricEqBandListApoChannelTest {
         bands.fromApoString(apo)
 
         assertEquals(3, bands.size)
-        assertEquals(ParametricEqChannelMode.LEFT_ONLY, bands[0].channelMode)
-        assertEquals(ParametricEqChannelMode.LEFT_ONLY, bands[1].channelMode)
-        assertEquals(ParametricEqChannelMode.RIGHT_ONLY, bands[2].channelMode)
+        assertEquals(ParametricEqChannel.LEFT, bands[0].channel)
+        assertEquals(ParametricEqChannel.LEFT, bands[1].channel)
+        assertEquals(ParametricEqChannel.RIGHT, bands[2].channel)
     }
 
     // ── Test 4: Export with per-channel directives ──
@@ -84,14 +84,14 @@ class ParametricEqBandListApoChannelTest {
     @Test
     fun exportWithChannelDirectives() {
         val bands = ParametricEqBandList()
-        bands.add(ParametricEqBand(260.0, -6.0, 0.6, ParametricEqFilterType.LOW_SHELF, ParametricEqChannelMode.BOTH))
-        bands.add(ParametricEqBand(3440.0, -0.9, 3.87, ParametricEqFilterType.PEAKING, ParametricEqChannelMode.LEFT_ONLY))
-        bands.add(ParametricEqBand(2840.0, 1.0, 2.39, ParametricEqFilterType.PEAKING, ParametricEqChannelMode.RIGHT_ONLY))
+        bands.add(ParametricEqBand(260.0, -6.0, 0.6, ParametricEqFilterType.LOW_SHELF, ParametricEqChannel.LEFT_RIGHT))
+        bands.add(ParametricEqBand(3440.0, -0.9, 3.87, ParametricEqFilterType.PEAKING, ParametricEqChannel.LEFT))
+        bands.add(ParametricEqBand(2840.0, 1.0, 2.39, ParametricEqFilterType.PEAKING, ParametricEqChannel.RIGHT))
 
         val apo = bands.toApoString(-1.0)
 
         // Should contain Channel directives
-        assertTrue("Should have Channel: ALL", apo.contains("Channel: ALL"))
+        assertTrue("Should have Channel: all", apo.contains("Channel: all"))
         assertTrue("Should have Channel: L", apo.contains("Channel: L"))
         assertTrue("Should have Channel: R", apo.contains("Channel: R"))
         assertTrue("Should have Preamp", apo.contains("Preamp: -1"))
@@ -102,12 +102,13 @@ class ParametricEqBandListApoChannelTest {
     @Test
     fun exportAllBoth_noChannelDirectives() {
         val bands = ParametricEqBandList()
-        bands.add(ParametricEqBand(1000.0, 3.0, 1.41, ParametricEqFilterType.PEAKING, ParametricEqChannelMode.BOTH))
-        bands.add(ParametricEqBand(100.0, 5.0, 0.71, ParametricEqFilterType.LOW_SHELF, ParametricEqChannelMode.BOTH))
+        bands.add(ParametricEqBand(1000.0, 3.0, 1.41, ParametricEqFilterType.PEAKING, ParametricEqChannel.LEFT_RIGHT))
+        bands.add(ParametricEqBand(100.0, 5.0, 0.71, ParametricEqFilterType.LOW_SHELF, ParametricEqChannel.LEFT_RIGHT))
 
         val apo = bands.toApoString(0.0)
 
-        assertFalse("Should NOT have Channel directives", apo.contains("Channel:"))
+        assertFalse("Should NOT have per-channel directives", apo.contains("Channel: L"))
+        assertFalse("Should NOT have per-channel directives", apo.contains("Channel: R"))
     }
 
     // ── Test 6: Round-trip import → export → import ──
@@ -144,7 +145,7 @@ class ParametricEqBandListApoChannelTest {
 
         // Verify channel modes match
         for (i in bands1.indices) {
-            assertEquals("Band $i channel mismatch", bands1[i].channelMode, bands2[i].channelMode)
+            assertEquals("Band $i channel mismatch", bands1[i].channel, bands2[i].channel)
             assertEquals("Band $i freq mismatch", bands1[i].frequency, bands2[i].frequency, 0.01)
             assertEquals("Band $i gain mismatch", bands1[i].gain, bands2[i].gain, 0.01)
             assertEquals("Band $i q mismatch", bands1[i].q, bands2[i].q, 0.001)
@@ -171,10 +172,10 @@ class ParametricEqBandListApoChannelTest {
         bands.fromApoString(apo)
 
         assertEquals(4, bands.size)
-        assertEquals(ParametricEqChannelMode.BOTH, bands[0].channelMode)
-        assertEquals(ParametricEqChannelMode.LEFT_ONLY, bands[1].channelMode)
-        assertEquals(ParametricEqChannelMode.RIGHT_ONLY, bands[2].channelMode)
-        assertEquals(ParametricEqChannelMode.BOTH, bands[3].channelMode)
+        assertEquals(ParametricEqChannel.LEFT_RIGHT, bands[0].channel)
+        assertEquals(ParametricEqChannel.LEFT, bands[1].channel)
+        assertEquals(ParametricEqChannel.RIGHT, bands[2].channel)
+        assertEquals(ParametricEqChannel.LEFT_RIGHT, bands[3].channel)
     }
 
     // ── Test 8: Full example from task ──
@@ -211,17 +212,17 @@ class ParametricEqBandListApoChannelTest {
 
         // First 3: BOTH
         for (i in 0..2) {
-            assertEquals("Band $i should be BOTH", ParametricEqChannelMode.BOTH, bands[i].channelMode)
+            assertEquals("Band $i should be BOTH", ParametricEqChannel.LEFT_RIGHT, bands[i].channel)
         }
 
         // Bands 4-10 (index 3-9): LEFT
         for (i in 3..9) {
-            assertEquals("Band $i should be LEFT", ParametricEqChannelMode.LEFT_ONLY, bands[i].channelMode)
+            assertEquals("Band $i should be LEFT", ParametricEqChannel.LEFT, bands[i].channel)
         }
 
         // Bands 11-14 (index 10-13): RIGHT
         for (i in 10..13) {
-            assertEquals("Band $i should be RIGHT", ParametricEqChannelMode.RIGHT_ONLY, bands[i].channelMode)
+            assertEquals("Band $i should be RIGHT", ParametricEqChannel.RIGHT, bands[i].channel)
         }
 
         // Verify specific values
@@ -240,18 +241,18 @@ class ParametricEqBandListApoChannelTest {
     @Test
     fun exportGroupsConsecutiveSameChannel() {
         val bands = ParametricEqBandList()
-        bands.add(ParametricEqBand(100.0, 1.0, 1.0, ParametricEqFilterType.PEAKING, ParametricEqChannelMode.BOTH))
-        bands.add(ParametricEqBand(200.0, 2.0, 1.0, ParametricEqFilterType.PEAKING, ParametricEqChannelMode.BOTH))
-        bands.add(ParametricEqBand(300.0, 3.0, 1.0, ParametricEqFilterType.PEAKING, ParametricEqChannelMode.LEFT_ONLY))
-        bands.add(ParametricEqBand(400.0, 4.0, 1.0, ParametricEqFilterType.PEAKING, ParametricEqChannelMode.LEFT_ONLY))
-        bands.add(ParametricEqBand(500.0, 5.0, 1.0, ParametricEqFilterType.PEAKING, ParametricEqChannelMode.RIGHT_ONLY))
+        bands.add(ParametricEqBand(100.0, 1.0, 1.0, ParametricEqFilterType.PEAKING, ParametricEqChannel.LEFT_RIGHT))
+        bands.add(ParametricEqBand(200.0, 2.0, 1.0, ParametricEqFilterType.PEAKING, ParametricEqChannel.LEFT_RIGHT))
+        bands.add(ParametricEqBand(300.0, 3.0, 1.0, ParametricEqFilterType.PEAKING, ParametricEqChannel.LEFT))
+        bands.add(ParametricEqBand(400.0, 4.0, 1.0, ParametricEqFilterType.PEAKING, ParametricEqChannel.LEFT))
+        bands.add(ParametricEqBand(500.0, 5.0, 1.0, ParametricEqFilterType.PEAKING, ParametricEqChannel.RIGHT))
 
         val apo = bands.toApoString(0.0)
 
         // Count Channel directives — should be exactly 3: ALL, L, R
         val channelLines = apo.lines().filter { it.startsWith("Channel:") }
         assertEquals(3, channelLines.size)
-        assertEquals("Channel: ALL", channelLines[0])
+        assertEquals("Channel: all", channelLines[0])
         assertEquals("Channel: L", channelLines[1])
         assertEquals("Channel: R", channelLines[2])
 
@@ -279,6 +280,6 @@ class ParametricEqBandListApoChannelTest {
 
         assertEquals(-2.0, result.preampDb, 0.01)
         assertEquals(3, bands.size)
-        bands.forEach { assertEquals(ParametricEqChannelMode.BOTH, it.channelMode) }
+        bands.forEach { assertEquals(ParametricEqChannel.LEFT_RIGHT, it.channel) }
     }
 }

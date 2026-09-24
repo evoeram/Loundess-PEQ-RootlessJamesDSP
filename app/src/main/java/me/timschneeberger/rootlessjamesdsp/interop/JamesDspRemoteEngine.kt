@@ -303,7 +303,7 @@ class JamesDspRemoteEngine(
             data[base + 1] = band.gain.toFloat()
             data[base + 2] = band.q.toFloat()
             data[base + 3] = band.filterType.code.toFloat()
-            data[base + 4] = band.channelMode.code.toFloat()
+            data[base + 4] = band.channel.code.toFloat()
         }
         // Remaining slots have freq=0.0f (disabled)
 

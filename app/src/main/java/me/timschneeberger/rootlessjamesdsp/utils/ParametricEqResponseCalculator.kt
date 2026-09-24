@@ -1,7 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.utils
 
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
-import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
 import kotlin.math.*
 
@@ -9,7 +9,7 @@ import kotlin.math.*
  * Pure-Kotlin frequency-response calculator for the parametric EQ visualization layer.
  *
  * Computes independent L and R channel magnitude responses by:
- *  1. Filtering bands per channel (BOTH → both, LEFT_ONLY → L, RIGHT_ONLY → R)
+ *  1. Filtering bands per channel (LEFT_RIGHT → both, LEFT → L, RIGHT → R)
  *  2. Computing RBJ biquad coefficients for each band
  *  3. Evaluating H(e^jω) = (b0 + b1·e^-jω + b2·e^-2jω) / (a0 + a1·e^-jω + a2·e^-2jω)
  *  4. Cascading: H_total = H1 · H2 · H3 · …  (multiply complex transfer functions)
@@ -49,9 +49,9 @@ class ParametricEqResponseCalculator(
     /**
      * Compute independent L and R frequency responses (filter-only, WITHOUT preamp).
      *
-     * - BOTH bands contribute to BOTH channels
-     * - LEFT_ONLY bands contribute ONLY to leftResponseDb
-     * - RIGHT_ONLY bands contribute ONLY to rightResponseDb
+     * - LEFT_RIGHT bands contribute to BOTH channels
+     * - LEFT bands contribute ONLY to leftResponseDb
+     * - RIGHT bands contribute ONLY to rightResponseDb
      *
      * If no bands affect a channel, that channel's response is 0 dB everywhere.
      *
@@ -65,8 +65,8 @@ class ParametricEqResponseCalculator(
      */
     fun compute(bands: List<ParametricEqBand>, @Suppress("UNUSED_PARAMETER") preampDb: Double = 0.0): ResponseData {
         val freqs = logSpacedFrequencies()
-        val leftBands = bandsForChannel(bands, ParametricEqChannelMode.LEFT_ONLY)
-        val rightBands = bandsForChannel(bands, ParametricEqChannelMode.RIGHT_ONLY)
+        val leftBands = bandsForChannel(bands, ParametricEqChannel.LEFT)
+        val rightBands = bandsForChannel(bands, ParametricEqChannel.RIGHT)
 
         val leftResponse = DoubleArray(freqs.size)
         val rightResponse = DoubleArray(freqs.size)
@@ -95,13 +95,13 @@ class ParametricEqResponseCalculator(
     /** Filter bands that affect the given channel. */
     private fun bandsForChannel(
         bands: List<ParametricEqBand>,
-        channel: ParametricEqChannelMode
+        channel: ParametricEqChannel
     ): List<ParametricEqBand> {
         return bands.filter { band ->
-            when (band.channelMode) {
-                ParametricEqChannelMode.BOTH -> true
-                ParametricEqChannelMode.LEFT_ONLY -> channel == ParametricEqChannelMode.LEFT_ONLY
-                ParametricEqChannelMode.RIGHT_ONLY -> channel == ParametricEqChannelMode.RIGHT_ONLY
+            when (band.channel) {
+                ParametricEqChannel.LEFT_RIGHT -> true
+                ParametricEqChannel.LEFT -> channel == ParametricEqChannel.LEFT
+                ParametricEqChannel.RIGHT -> channel == ParametricEqChannel.RIGHT
             }
         }
     }

@@ -22,7 +22,7 @@ import me.timschneeberger.rootlessjamesdsp.databinding.FragmentParametricEqBindi
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
-import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
@@ -181,7 +181,7 @@ class ParametricEqualizerFragment : Fragment() {
             binding.gainInput.value = 0f
             binding.qInput.value = 1.41f
             setFilterTypeSelection(ParametricEqFilterType.PEAKING)
-            setChannelModeSelection(ParametricEqChannelMode.BOTH)
+            setChannelSelection(ParametricEqChannel.LEFT_RIGHT)
             updateEditorInputsVisibility()
             updateViewState()
         }
@@ -303,7 +303,7 @@ class ParametricEqualizerFragment : Fragment() {
                 binding.gainInput.value = band.gain.toFloat()
                 binding.qInput.value = band.q.toFloat()
                 setFilterTypeSelection(band.filterType)
-                setChannelModeSelection(band.channelMode)
+                setChannelSelection(band.channel)
                 updateEditorInputsVisibility()
                 updateViewState()
             }
@@ -342,19 +342,19 @@ class ParametricEqualizerFragment : Fragment() {
         binding.qInput.visibility = if (flatGain) View.GONE else View.VISIBLE
     }
 
-    private fun getSelectedChannelMode(): ParametricEqChannelMode {
+    private fun getSelectedChannel(): ParametricEqChannel {
         return when (binding.channelModeGroup.checkedButtonId) {
-            R.id.channel_left -> ParametricEqChannelMode.LEFT_ONLY
-            R.id.channel_right -> ParametricEqChannelMode.RIGHT_ONLY
-            else -> ParametricEqChannelMode.BOTH
+            R.id.channel_left -> ParametricEqChannel.LEFT
+            R.id.channel_right -> ParametricEqChannel.RIGHT
+            else -> ParametricEqChannel.LEFT_RIGHT
         }
     }
 
-    private fun setChannelModeSelection(mode: ParametricEqChannelMode) {
-        val buttonId = when (mode) {
-            ParametricEqChannelMode.BOTH -> R.id.channel_both
-            ParametricEqChannelMode.LEFT_ONLY -> R.id.channel_left
-            ParametricEqChannelMode.RIGHT_ONLY -> R.id.channel_right
+    private fun setChannelSelection(channel: ParametricEqChannel) {
+        val buttonId = when (channel) {
+            ParametricEqChannel.LEFT_RIGHT -> R.id.channel_both
+            ParametricEqChannel.LEFT -> R.id.channel_left
+            ParametricEqChannel.RIGHT -> R.id.channel_right
         }
         binding.channelModeGroup.check(buttonId)
     }
@@ -390,20 +390,20 @@ class ParametricEqualizerFragment : Fragment() {
             val gain = binding.gainInput.value.toDouble()
             val q = binding.qInput.value.toDouble()
             val filterType = getSelectedFilterType()
-            val channelMode = getSelectedChannelMode()
+            val channel = getSelectedChannel()
 
             if (uuid == null) {
-                val band = ParametricEqBand(freq, gain, q, filterType, channelMode)
+                val band = ParametricEqBand(freq, gain, q, filterType, channel)
                 adapter.bands.add(band)
                 editorBandUuid = band.uuid
-                Timber.d("editorApply: tracking new band $editorBandUuid for $freq Hz $gain dB Q$q $filterType $channelMode")
+                Timber.d("editorApply: tracking new band $editorBandUuid for $freq Hz $gain dB Q$q $filterType $channel")
             } else {
                 Timber.d("editorApply: modifying band $editorBandUuid")
                 val index = adapter.bands.indexOfFirst { it.uuid == uuid }
                 if (index < 0)
                     Timber.e("editorApply: failed to find matching band UUID")
                 else
-                    adapter.bands[index] = ParametricEqBand(freq, gain, q, filterType, channelMode, uuid)
+                    adapter.bands[index] = ParametricEqBand(freq, gain, q, filterType, channel, uuid)
             }
         }
     }

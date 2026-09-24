@@ -10,7 +10,7 @@ import android.view.View
 import androidx.core.content.withStyledAttributes
 import androidx.core.os.bundleOf
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
-import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import me.timschneeberger.rootlessjamesdsp.utils.ParametricEqResponseCalculator
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.CompatExtensions.getParcelableAs
 import kotlin.math.*
@@ -630,7 +630,7 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
 
     fun setBands(bands: ParametricEqBandList, preampDb: Double = mPreampDb.toDouble()) {
         mPreampDb = preampDb.toFloat()
-        mChannelsDiffer = bands.any { it.channelMode != ParametricEqChannelMode.BOTH }
+        mChannelsDiffer = bands.any { it.channel != ParametricEqChannel.LEFT_RIGHT }
         mHasBands = bands.isNotEmpty()
 
         val response = calculator.compute(bands.toList(), preampDb)

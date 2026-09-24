@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import me.timschneeberger.rootlessjamesdsp.R
+import me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode
 import me.timschneeberger.rootlessjamesdsp.databinding.FragmentDspBinding
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
@@ -135,7 +136,7 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
             .commit()
 
         // Load initial preferences
-        arrayOf(R.string.key_device_profiles_enable).forEach {
+        arrayOf(R.string.key_device_profiles_enable, R.string.key_processing_mode).forEach {
             onSharedPreferenceChanged(null, getString(it))
         }
 
@@ -148,7 +149,40 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
                 (binding.cardDeviceProfiles.parent as ViewGroup).isVisible =
                     prefsApp.get<Boolean>(R.string.key_device_profiles_enable)
             }
+            getString(R.string.key_processing_mode) -> {
+                updateCardVisibility()
+            }
         }
+    }
+
+    /**
+     * В Movie Mode (Android EQ) capture loop не запускается, поэтому плагины
+     * JamesDSP (компрессор, бас, реверберация и т.д.) не работают.
+     * Скрываем их карточки, оставляя только EQ (GraphicEQ + PEQ).
+     */
+    private fun updateCardVisibility() {
+        val modeInt = prefsApp.get<String>(R.string.key_processing_mode).toIntOrNull() ?: 1
+        val mode = ProcessingMode.fromInt(modeInt)
+        val movieMode = mode == ProcessingMode.MOVIE
+
+        // В Movie Mode доступны только EQ-карточки (GEQ + PEQ через AndroidEq/DynamicsProcessing);
+        // Multi EQ — нативный плагин JamesDSP, требует capture loop — скрываем
+        binding.cardEq.isVisible = !movieMode
+        // Остальные плагины тоже требуют capture loop — скрываем
+        binding.cardCompressor.isVisible = !movieMode
+        binding.cardBass.isVisible = !movieMode
+        binding.cardDdc.isVisible = !movieMode
+        binding.cardConvolver.isVisible = !movieMode
+        binding.cardLiveprog.isVisible = !movieMode
+        binding.cardTube.isVisible = !movieMode
+        binding.cardStereowide.isVisible = !movieMode
+        binding.cardCrossfeed.isVisible = !movieMode
+        binding.cardReverb.isVisible = !movieMode
+        binding.cardLoudness.isVisible = !movieMode
+        // Output control (limiter) тоже не работает без capture loop
+        binding.cardOutputControl.isVisible = !movieMode
+        // Measurement (MEOW) бесполезен без capture loop
+        binding.cardMeasurement.isVisible = !movieMode
     }
 
     private fun hideTranslationNotice() {

@@ -1,7 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.utils
 
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
-import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
 import org.junit.Assert.*
 import org.junit.Test
@@ -24,7 +24,7 @@ class ParametricEqResponseCalculatorTest {
     private fun band(
         freq: Double, gain: Double, q: Double = 1.41,
         type: ParametricEqFilterType = ParametricEqFilterType.PEAKING,
-        channel: ParametricEqChannelMode = ParametricEqChannelMode.BOTH
+        channel: ParametricEqChannel = ParametricEqChannel.LEFT_RIGHT
     ) = ParametricEqBand(freq, gain, q, type, channel)
 
     /** Find the response value closest to the given frequency. */
@@ -58,7 +58,7 @@ class ParametricEqResponseCalculatorTest {
     @Test
     fun leftOnlyPeak_positiveGain() {
         val calc = makeCalculator()
-        val bands = listOf(band(1000.0, 3.5, 1.41, channel = ParametricEqChannelMode.LEFT_ONLY))
+        val bands = listOf(band(1000.0, 3.5, 1.41, channel = ParametricEqChannel.LEFT))
         val result = calc.compute(bands)
 
         val leftAt1k = responseAt(result.frequencies, result.leftResponseDb, 1000.0)
@@ -73,7 +73,7 @@ class ParametricEqResponseCalculatorTest {
     @Test
     fun rightOnlyPeak_negativeGain() {
         val calc = makeCalculator()
-        val bands = listOf(band(1000.0, -3.5, 1.41, channel = ParametricEqChannelMode.RIGHT_ONLY))
+        val bands = listOf(band(1000.0, -3.5, 1.41, channel = ParametricEqChannel.RIGHT))
         val result = calc.compute(bands)
 
         val leftAt1k = responseAt(result.frequencies, result.leftResponseDb, 1000.0)
@@ -89,8 +89,8 @@ class ParametricEqResponseCalculatorTest {
     fun independentChannels_remainIndependent() {
         val calc = makeCalculator()
         val bands = listOf(
-            band(1000.0, 3.5, 1.41, channel = ParametricEqChannelMode.LEFT_ONLY),
-            band(1000.0, -3.5, 1.41, channel = ParametricEqChannelMode.RIGHT_ONLY)
+            band(1000.0, 3.5, 1.41, channel = ParametricEqChannel.LEFT),
+            band(1000.0, -3.5, 1.41, channel = ParametricEqChannel.RIGHT)
         )
         val result = calc.compute(bands)
 
@@ -120,7 +120,7 @@ class ParametricEqResponseCalculatorTest {
     fun identicalChannels_curvesMatch() {
         val calc = makeCalculator()
         val bands = listOf(
-            band(1000.0, 3.5, 1.41, channel = ParametricEqChannelMode.BOTH)
+            band(1000.0, 3.5, 1.41, channel = ParametricEqChannel.LEFT_RIGHT)
         )
         val result = calc.compute(bands)
 
@@ -138,9 +138,9 @@ class ParametricEqResponseCalculatorTest {
     fun multipleCascadedBands() {
         val calc = makeCalculator()
         val bands = listOf(
-            band(100.0, 5.0, 0.7, channel = ParametricEqChannelMode.BOTH),
-            band(1000.0, -3.0, 1.41, channel = ParametricEqChannelMode.BOTH),
-            band(5000.0, 4.0, 2.0, channel = ParametricEqChannelMode.BOTH)
+            band(100.0, 5.0, 0.7, channel = ParametricEqChannel.LEFT_RIGHT),
+            band(1000.0, -3.0, 1.41, channel = ParametricEqChannel.LEFT_RIGHT),
+            band(5000.0, 4.0, 2.0, channel = ParametricEqChannel.LEFT_RIGHT)
         )
         val result = calc.compute(bands)
 
@@ -189,9 +189,9 @@ class ParametricEqResponseCalculatorTest {
         val calc = makeCalculator()
         // Extreme values
         val bands = listOf(
-            band(20.0, 30.0, 24.0, channel = ParametricEqChannelMode.BOTH),
-            band(20000.0, -30.0, 0.1, channel = ParametricEqChannelMode.LEFT_ONLY),
-            band(1.0, 12.0, 0.1, channel = ParametricEqChannelMode.RIGHT_ONLY)
+            band(20.0, 30.0, 24.0, channel = ParametricEqChannel.LEFT_RIGHT),
+            band(20000.0, -30.0, 0.1, channel = ParametricEqChannel.LEFT),
+            band(1.0, 12.0, 0.1, channel = ParametricEqChannel.RIGHT)
         )
         val result = calc.compute(bands)
 
@@ -243,8 +243,8 @@ class ParametricEqResponseCalculatorTest {
     fun preampNotIncludedInResponse() {
         val calc = makeCalculator()
         val bands = listOf(
-            band(1000.0, 3.0, 1.41, channel = ParametricEqChannelMode.LEFT_ONLY),
-            band(1000.0, -3.0, 1.41, channel = ParametricEqChannelMode.RIGHT_ONLY)
+            band(1000.0, 3.0, 1.41, channel = ParametricEqChannel.LEFT),
+            band(1000.0, -3.0, 1.41, channel = ParametricEqChannel.RIGHT)
         )
         // compute() returns filter-only response, preamp is applied separately by the view
         val result = calc.compute(bands, preampDb = -6.0)
@@ -320,9 +320,9 @@ class ParametricEqResponseCalculatorTest {
     fun mixedChannelModes() {
         val calc = makeCalculator()
         val bands = listOf(
-            band(100.0, 5.0, 0.7, channel = ParametricEqChannelMode.BOTH),
-            band(1000.0, 3.0, 1.41, channel = ParametricEqChannelMode.LEFT_ONLY),
-            band(5000.0, -4.0, 2.0, channel = ParametricEqChannelMode.RIGHT_ONLY)
+            band(100.0, 5.0, 0.7, channel = ParametricEqChannel.LEFT_RIGHT),
+            band(1000.0, 3.0, 1.41, channel = ParametricEqChannel.LEFT),
+            band(5000.0, -4.0, 2.0, channel = ParametricEqChannel.RIGHT)
         )
         val result = calc.compute(bands)
 

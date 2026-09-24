@@ -2,6 +2,8 @@ package me.timschneeberger.rootlessjamesdsp.session.rootless
 
 import android.content.Context
 import android.content.Intent
+import android.media.audiofx.DynamicsProcessing
+import me.timschneeberger.rootlessjamesdsp.androideq.AndroidEq
 import me.timschneeberger.rootlessjamesdsp.model.AudioSessionDumpEntry
 import me.timschneeberger.rootlessjamesdsp.model.IEffectSession
 import me.timschneeberger.rootlessjamesdsp.model.rootless.MutedEffectSession
@@ -38,10 +40,20 @@ class RootlessSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     override fun shouldAddSession(id: Int, uid: Int, packageName: String) = true
 
     override fun createSession(id: Int, uid: Int, packageName: String): MutedEffectSession? {
+        if (AndroidEq.isEnabled) {
+            // Movie Mode: DynamicsProcessing встраивается в тракт приложения.
+            // Capture loop не запускается — эффект живёт в audioMuteEffect.
+            val effect = AndroidEq.create(id)
+            if (effect == null) {
+                appProblemListener?.onAppProblemDetected(uid)
+                return null
+            }
+            return MutedEffectSession(uid, packageName, effect)
+        }
+
+        // Standard / Low-latency: mute-эффект как обычно
         val muteEffect = factory.make(id, packageName)
-        if(muteEffect == null)
-        {
-            // Something weird happened, request user to solve issue
+        if (muteEffect == null) {
             appProblemListener?.onAppProblemDetected(uid)
             return null
         }
@@ -50,11 +62,15 @@ class RootlessSessionDatabase(context: Context) : BaseSessionDatabase(context) {
 
     override fun onSessionRemoved(item: IEffectSession) {
         (item as MutedEffectSession).run {
-            try {
-                audioMuteEffect?.enabled = false
-                audioMuteEffect?.release()
+            val effect = audioMuteEffect
+            if (effect is DynamicsProcessing) {
+                // Movie Mode: освобождаем через AndroidEq
+                AndroidEq.release(effect)
             }
-            catch (ex: Exception) {
+            try {
+                effect?.enabled = false
+                effect?.release()
+            } catch (ex: Exception) {
                 Timber.e("onSessionRemoved: effect already destroyed")
                 Timber.d(ex)
             }

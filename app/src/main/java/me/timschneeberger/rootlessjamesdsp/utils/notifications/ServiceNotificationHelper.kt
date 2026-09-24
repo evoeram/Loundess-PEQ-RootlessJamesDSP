@@ -24,6 +24,7 @@ import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.ge
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.getAppNameFromUid
 import me.timschneeberger.rootlessjamesdsp.utils.isRootless
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
+import me.timschneeberger.rootlessjamesdsp.utils.sdkAbove
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -114,6 +115,14 @@ object ServiceNotificationHelper: KoinComponent {
         .setContentTitle(title)
         .setContentText(message)
         .setSmallIcon(R.drawable.ic_tune_vertical_variant_24dp)
+        // Android 14+ (API 34): DEFERRED делает FGS-уведомление менее навязчивым —
+        // оно показывается в статусбаре, но не всплывает как alert,
+        // позволяя alert-уведомлениям (session loss, app compat) всплывать поверх.
+        .apply {
+            sdkAbove(Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_DEFERRED)
+            }
+        }
         .setContentIntent(
             PendingIntent.getActivity(
                 context,

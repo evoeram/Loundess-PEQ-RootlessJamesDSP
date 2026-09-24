@@ -1,7 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.measurement
 
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
-import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
 import me.timschneeberger.rootlessjamesdsp.utils.ParametricEqResponseCalculator
 import kotlin.math.*
@@ -147,7 +147,7 @@ class AutoEqEngine(
                 bands.add(ParametricEqBand(
                     f0, gain, q,
                     ParametricEqFilterType.PEAKING,
-                    ParametricEqChannelMode.BOTH
+                    ParametricEqChannel.LEFT_RIGHT
                 ))
             } else {
                 // Dip: проверяем, можно ли корректировать
@@ -185,7 +185,7 @@ class AutoEqEngine(
                 bands.add(ParametricEqBand(
                     f0, gain, q,
                     ParametricEqFilterType.PEAKING,
-                    ParametricEqChannelMode.BOTH
+                    ParametricEqChannel.LEFT_RIGHT
                 ))
             }
 

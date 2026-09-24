@@ -35,19 +35,24 @@ enum class ParametricEqFilterType(val code: Int, val apoLabel: String, val displ
 }
 
 /**
- * Channel routing mode for a parametric EQ band.
+ * Channel routing for a parametric EQ band.
  * Controls which channels the filter is applied to.
  */
-enum class ParametricEqChannelMode(val code: Int, val displayLabel: String) {
+enum class ParametricEqChannel(val code: Int, val apoLabel: String, val displayLabel: String) {
     /** Apply to both L and R channels */
-    BOTH(0, "L+R"),
+    LEFT_RIGHT(0, "", "L+R"),
     /** Apply to left channel only; right passes through */
-    LEFT_ONLY(1, "L"),
+    LEFT(1, "L", "L"),
     /** Apply to right channel only; left passes through */
-    RIGHT_ONLY(2, "R");
+    RIGHT(2, "R", "R");
 
     companion object {
-        fun fromCode(code: Int) = entries.firstOrNull { it.code == code } ?: BOTH
+        fun fromCode(code: Int) = entries.firstOrNull { it.code == code } ?: LEFT_RIGHT
+        fun fromApoLabel(label: String?) = when (label?.uppercase()) {
+            "L" -> LEFT
+            "R" -> RIGHT
+            else -> LEFT_RIGHT
+        }
     }
 }
 
@@ -57,14 +62,14 @@ enum class ParametricEqChannelMode(val code: Int, val displayLabel: String) {
  * [uuid] is excluded from equals/hashCode so that two bands with the
  * same audio parameters compare as equal regardless of identity.
  *
- * @param channelMode controls which channels (L+R, L, R) this band applies to
+ * @param channel controls which channels (L+R, L, R) this band applies to
  */
 class ParametricEqBand(
     val frequency: Double,
     val gain: Double,
     val q: Double,
     val filterType: ParametricEqFilterType = ParametricEqFilterType.PEAKING,
-    val channelMode: ParametricEqChannelMode = ParametricEqChannelMode.BOTH,
+    val channel: ParametricEqChannel = ParametricEqChannel.LEFT_RIGHT,
     val uuid: UUID = UUID.randomUUID()
 ) : Serializable {
 
@@ -75,7 +80,7 @@ class ParametricEqBand(
                 gain == other.gain &&
                 q == other.q &&
                 filterType == other.filterType &&
-                channelMode == other.channelMode
+                channel == other.channel
     }
 
     override fun hashCode(): Int {
@@ -83,10 +88,10 @@ class ParametricEqBand(
         result = 31 * result + gain.hashCode()
         result = 31 * result + q.hashCode()
         result = 31 * result + filterType.hashCode()
-        result = 31 * result + channelMode.hashCode()
+        result = 31 * result + channel.hashCode()
         return result
     }
 
     override fun toString(): String =
-        "ParametricEqBand(frequency=$frequency, gain=$gain, q=$q, filterType=$filterType, channelMode=$channelMode, uuid=$uuid)"
+        "ParametricEqBand(frequency=$frequency, gain=$gain, q=$q, filterType=$filterType, channel=$channel, uuid=$uuid)"
 }

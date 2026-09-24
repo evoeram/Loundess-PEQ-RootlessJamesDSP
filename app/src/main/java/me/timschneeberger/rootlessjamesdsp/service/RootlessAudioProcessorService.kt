@@ -21,6 +21,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import java.lang.ref.WeakReference
 import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import androidx.core.math.MathUtils.clamp
@@ -30,6 +31,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
+import me.timschneeberger.rootlessjamesdsp.androideq.AndroidEq
+import me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode
+import me.timschneeberger.rootlessjamesdsp.latency.LatencyTracer
+import me.timschneeberger.rootlessjamesdsp.latency.LatencyTuning
+import me.timschneeberger.rootlessjamesdsp.latency.QueueController
 import me.timschneeberger.rootlessjamesdsp.flavor.CrashlyticsImpl
 import me.timschneeberger.rootlessjamesdsp.interop.JamesDspLocalEngine
 import me.timschneeberger.rootlessjamesdsp.interop.ProcessorMessageHandler
@@ -95,6 +101,12 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     // Exclude restricted apps flag
     private var excludeRestrictedSessions = false
 
+    // Processing mode (Standard / Low-latency / Movie)
+    private var processingMode: ProcessingMode = ProcessingMode.LOW_LATENCY
+
+    // LatencyTracer для телеметрии (Low-latency mode)
+    private var latencyTracer: LatencyTracer? = null
+
     // Termination flags
     private var isProcessorDisposing = false
     private var isServiceDisposing = false
@@ -118,8 +130,10 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         super.onCreate()
 
         // Get reference to system services
-        audioManager = getSystemService<AudioManager>()!!
-        mediaProjectionManager = getSystemService<MediaProjectionManager>()!!
+        // Важно: MediaProjectionManager должен использовать applicationContext,
+        // иначе MediaProjection удерживает ContextImpl сервиса → утечка через native GC root
+        audioManager = applicationContext.getSystemService<AudioManager>()!!
+        mediaProjectionManager = applicationContext.getSystemService<MediaProjectionManager>()!!
         notificationManager = getSystemService<NotificationManager>()!!
 
         // Setup session manager
@@ -146,6 +160,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         preferences.registerOnSharedPreferenceChangeListener(preferencesListener)
         loadFromPreferences(getString(R.string.key_powersave_suspend))
         loadFromPreferences(getString(R.string.key_session_exclude_restricted))
+        loadFromPreferences(getString(R.string.key_processing_mode))
 
         // Setup database observer
         blockedApps.observeForever(blockedAppObserver)
@@ -239,9 +254,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         unregisterLocalReceiver(broadcastReceiver)
 
         // Stop and release MediaProjection to prevent memory leak.
-        // AudioPolicy held by MediaProjection is rooted in native code;
-        // without explicit stop() the native GC root keeps the AudioPolicy
-        // alive, which retains MediaProjection → ContextImpl → this Service.
+        // Native code holds an internal callback that retains MediaProjection → ContextImpl → Service.
+        // unregisterCallback removes our callback; stop() releases the native projection.
+        // Setting to null allows GC to collect the Service once native releases its reference.
         mediaProjection?.unregisterCallback(projectionCallback)
         mediaProjection?.stop()
         mediaProjection = null
@@ -265,26 +280,31 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     }
 
     // Projection termination callback
+    // WeakReference предотвращает утечку сервиса через native GC root в MediaProjection callback.
+    // См. LeakCanary: GC Root: Global variable in native code → MediaProjectionCallback → this$0 → Service
     private val projectionCallback = object: MediaProjection.Callback() {
+        private val serviceRef = WeakReference(this@RootlessAudioProcessorService)
+        private val prefsVar = preferencesVar
         override fun onStop() {
-            if(isServiceDisposing) {
+            val service = serviceRef.get() ?: return
+            if(service.isServiceDisposing) {
                 // Planned shutdown
                 return
             }
 
-            if(preferencesVar.get<Boolean>(R.string.key_is_activity_active)) {
+            if(prefsVar.get<Boolean>(R.string.key_is_activity_active)) {
                 // Activity in foreground, toast too disruptive
                 return
             }
 
             Timber.w("Capture permission revoked. Stopping service.")
 
-            sendLocalBroadcast(Intent(Constants.ACTION_DISCARD_AUTHORIZATION))
+            service.sendLocalBroadcast(Intent(Constants.ACTION_DISCARD_AUTHORIZATION))
 
-            this@RootlessAudioProcessorService.toast(getString(R.string.capture_permission_revoked_toast))
+            service.toast(service.getString(R.string.capture_permission_revoked_toast))
 
-            notificationManager.cancel(Notifications.ID_SERVICE_STATUS)
-            stopSelf()
+            service.notificationManager.cancel(Notifications.ID_SERVICE_STATUS)
+            service.stopSelf()
         }
     }
 
@@ -406,8 +426,41 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
                 requestAudioRecordRecreation()
             }
+            getString(R.string.key_processing_mode) -> {
+                        val modeInt = preferences.get<String>(R.string.key_processing_mode).toIntOrNull() ?: 1
+                        val newMode = ProcessingMode.fromInt(modeInt)
+                        Timber.i("Processing mode set to $newMode")
+                        processingMode = newMode
+                        // Всегда перенастраиваем AndroidEq и перезапускаем capture loop.
+                        // При смене режима меняется supportsParametricEqCascade() (Movie→false, остальные→true),
+                        // поэтому engine.syncWithPreferences() обязателен для перенастройки PEQ/GEQ.
+                        AndroidEq.configure(androidEqSettings(newMode))
+                        if (isRunning) {
+                            restartRecording()
+                            // Перенастраиваем engine: PEQ переключается между native cascade и GraphicEQ fallback
+                            engine.syncWithPreferences()
+                        }
+                    }
+            getString(R.string.key_android_eq_limiter) -> {
+                if (AndroidEq.configure(androidEqSettings(processingMode))) {
+                    if (isRunning) restartRecording()
+                }
+            }
+            getString(R.string.key_android_eq_latency) -> {
+                if (AndroidEq.configure(androidEqSettings(processingMode))) {
+                    if (isRunning) restartRecording()
+                }
+            }
         }
     }
+
+    /** Создаёт настройки AndroidEq из текущих preferences для заданного режима. */
+    private fun androidEqSettings(mode: ProcessingMode = processingMode) = AndroidEq.Settings(
+        enabled = mode == ProcessingMode.MOVIE,
+        blockSize = preferences.get<String>(R.string.key_android_eq_latency).toIntOrNull() ?: AndroidEq.DEFAULT_BLOCK_SIZE,
+        limiter = preferences.get<Boolean>(R.string.key_android_eq_limiter),
+        sampleRate = clamp(determineSamplingRate(), 44100, 48000),
+    )
 
     // Request recreation of the AudioRecord object to update AudioPlaybackRecordingConfiguration
     fun requestAudioRecordRecreation() {
@@ -429,6 +482,33 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             return
         }
 
+        // Movie Mode: capture loop не запускается.
+        // AndroidEq создаёт DynamicsProcessing для каждой сессии приложения.
+        if (AndroidEq.isEnabled) {
+            Timber.i("Movie Mode: skipping capture loop, using Android EQ only")
+            // В Movie Mode capture loop не запускается, но engine.sampleRate
+            // нужен для корректного расчёта biquad-коэффициентов PEQ (fallback-merge).
+            val movieSampleRate = clamp(determineSamplingRate(), 44100, 48000)
+            if(engine.sampleRate.toInt() != movieSampleRate) {
+                Timber.d("Movie Mode: sample rate set to ${movieSampleRate}Hz")
+                engine.sampleRate = movieSampleRate.toFloat()
+            }
+            // Синхронизируем настройки: supportsParametricEqCascade() теперь false → PEQ через fallback
+            engine.syncWithPreferences()
+            sessionManager.pollOnce(false)
+            recorderThread = Thread {
+                while (!isProcessorDisposing) {
+                    try {
+                        Thread.sleep(1000)
+                    } catch (e: InterruptedException) {
+                        break
+                    }
+                }
+            }
+            recorderThread!!.start()
+            return
+        }
+
         // Load preferences
         val encoding = AudioEncoding.fromInt(
             preferences.get<String>(R.string.key_audioformat_encoding).toIntOrNull() ?: 1
@@ -444,16 +524,40 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         }
         val sampleRate = clamp(determineSamplingRate(), 44100, 48000)
 
+        // Low-latency tuning (PEQHUB approach: persistence + debug override)
+        val tuning = LatencyTuning.load(this, processingMode.isLowLatency())
+        val readFrames = if (tuning.readFrames > 0) tuning.readFrames else bufferSize
+        val readSamples = readFrames * 2 // 2 канала
+
+        // QueueController (только для Low-latency: maxQueueFrames > 0)
+        val queueControl = QueueController(tuning.maxQueueFrames)
+
+        // LatencyTracer (PEQHUB approach: AudioTimestamp-based, marker detection)
+        val tracer = LatencyTracer(sampleRate, tuning.trace)
+        latencyTracer = tracer
+        if (tuning.trace) {
+            tracer.logConfig(org.json.JSONObject()
+                .put("sample_rate", sampleRate)
+                .put("buffer_size", bufferSize)
+                .put("read_frames", readFrames)
+                .put("track_buffer_frames", tuning.trackBufferFrames)
+                .put("low_latency_track", tuning.lowLatencyTrack)
+                .put("urgent_priority", tuning.urgentPriority)
+                .put("max_queue_frames", tuning.maxQueueFrames)
+                .put("processing_mode", processingMode.name))
+        }
+
         Timber.i("Sample rate: $sampleRate; Encoding: ${encoding.name}; " +
                 "Buffer size: $bufferSize; Buffer size (bytes): $bufferSizeBytes ; " +
-                "HAL buffer size (bytes): ${determineBufferSize()}")
+                "HAL buffer size (bytes): ${determineBufferSize()}; " +
+                "Mode: $processingMode; Read frames: $readFrames; Max queue: ${tuning.maxQueueFrames}")
 
         // Create recorder and track
         var recorder: AudioRecord
         val track: AudioTrack
         try {
             recorder = buildAudioRecord(encodingFormat, sampleRate, bufferSizeBytes)
-            track = buildAudioTrack(encodingFormat, sampleRate, bufferSizeBytes)
+            track = buildAudioTrack(encodingFormat, sampleRate, bufferSizeBytes, tuning)
         }
         catch(ex: Exception) {
             Timber.e("Failed to create initial audio record/track")
@@ -467,6 +571,15 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             engine.sampleRate = sampleRate.toFloat()
         }
 
+        // Устанавливаем приоритет потока для Low-latency
+        if (tuning.urgentPriority) {
+            try {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
+            } catch (ex: Exception) {
+                Timber.w("Failed to set URGENT_AUDIO priority: ${ex.message}")
+            }
+        }
+
         // TODO Move all audio-related code to C++
         recorderThread = Thread {
             try {
@@ -477,10 +590,12 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     notificationSessions,
                 )
 
-                val floatBuffer = FloatArray(bufferSize)
-                val floatOutBuffer = FloatArray(bufferSize)
-                val shortBuffer = ShortArray(bufferSize)
-                val shortOutBuffer = ShortArray(bufferSize)
+                // Буферы аллоцируются под readSamples, а не bufferSize
+                val floatBuffer = FloatArray(readSamples)
+                val floatOutBuffer = FloatArray(readSamples)
+                val shortBuffer = ShortArray(readSamples)
+                val shortOutBuffer = ShortArray(readSamples)
+
                 while (!isProcessorDisposing) {
                     if(recreateRecorderRequested) {
                         recreateRecorderRequested = false
@@ -525,24 +640,53 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     // Resume recorder if suspended
                     if(recorder.recordingState == AudioRecord.RECORDSTATE_STOPPED) {
                         recorder.startRecording()
+                        tracer.onRecorderStarted()
                     }
                     // Resume track if suspended
                     if(track.playState != AudioTrack.PLAYSTATE_PLAYING) {
                         track.play()
+                        tracer.onTrackStarted()
+                        queueControl.onTrackStarted()
                     }
 
-                    // Choose encoding and process data
+                    // Чтение маленькими блоками (Low-latency) или полный буфер (Standard)
+                    tracer.beginBlock()
                     if(encoding == AudioEncoding.PcmShort) {
-                        recorder.read(shortBuffer, 0, shortBuffer.size, AudioRecord.READ_BLOCKING)
-                        engine.processInt16(shortBuffer, shortOutBuffer)
-                        track.write(shortOutBuffer, 0, shortOutBuffer.size, AudioTrack.WRITE_BLOCKING)
+                        val samples = recorder.read(shortBuffer, 0, shortBuffer.size, AudioRecord.READ_BLOCKING)
+                        if (samples > 0) {
+                            tracer.onRead(recorder, shortBuffer, samples)
+                            // Обработка всегда выполняется — DSP state должен быть непрерывным
+                            engine.processInt16(shortBuffer, shortOutBuffer)
+                            tracer.onProcessed()
+                            if (queueControl.shouldDrop()) {
+                                tracer.onDropped(samples / 2)
+                            } else {
+                                queueControl.shape(track, shortOutBuffer, samples)
+                                val written = track.write(shortOutBuffer, 0, samples, AudioTrack.WRITE_BLOCKING)
+                                queueControl.onWritten(written)
+                                tracer.onWritten(track, shortOutBuffer, written)
+                            }
+                        }
                     }
                     else {
-                        recorder.read(floatBuffer, 0, floatBuffer.size, AudioRecord.READ_BLOCKING)
-                        engine.processFloat(floatBuffer, floatOutBuffer)
-                        track.write(floatOutBuffer, 0, floatOutBuffer.size, AudioTrack.WRITE_BLOCKING)
+                        val samples = recorder.read(floatBuffer, 0, floatBuffer.size, AudioRecord.READ_BLOCKING)
+                        if (samples > 0) {
+                            tracer.onRead(recorder, floatBuffer, samples)
+                            // Обработка всегда выполняется — DSP state должен быть непрерывным
+                            engine.processFloat(floatBuffer, floatOutBuffer)
+                            tracer.onProcessed()
+                            if (queueControl.shouldDrop()) {
+                                tracer.onDropped(samples / 2)
+                            } else {
+                                queueControl.shape(track, floatOutBuffer, samples)
+                                val written = track.write(floatOutBuffer, 0, samples, AudioTrack.WRITE_BLOCKING)
+                                queueControl.onWritten(written)
+                                tracer.onWritten(track, floatOutBuffer, written)
+                            }
+                        }
                     }
                 }
+                tracer.logLoopStop()
             } catch (e: IOException) {
                 Timber.w(e)
                 // ignore
@@ -586,10 +730,15 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         stopRecording()
         isProcessorDisposing = false
         recreateRecorderRequested = false
+
+        // Очищаем сессии перед рестартом
+        sessionManager.sessionDatabase.clearSessions()
+
         startRecording()
     }
 
-    private fun buildAudioTrack(encoding: Int, sampleRate: Int, bufferSizeBytes: Int): AudioTrack {
+    private fun buildAudioTrack(encoding: Int, sampleRate: Int, bufferSizeBytes: Int,
+                                tuning: LatencyTuning = LatencyTuning()): AudioTrack {
         val attributesBuilder = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_UNKNOWN)
             .setContentType(AudioAttributes.CONTENT_TYPE_UNKNOWN)
@@ -619,12 +768,33 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         Timber.d("Using buffer size $bufferSize")
 
-        return AudioTrack.Builder()
+        val trackBuilder = AudioTrack.Builder()
             .setAudioFormat(format)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .setAudioAttributes(attributesBuilder.build())
             .setBufferSizeInBytes(bufferSize)
-            .build()
+
+        // Low-latency: PERFORMANCE_MODE_LOW_LATENCY запрашивает fast audio path
+        if (tuning.lowLatencyTrack) {
+            sdkAbove(Build.VERSION_CODES.M) {
+                trackBuilder.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+            }
+        }
+
+        val track = trackBuilder.build()
+
+        // Low-latency: ограниченный буфер вывода для меньшей задержки
+        if (tuning.trackBufferFrames > 0) {
+            try {
+                sdkAbove(Build.VERSION_CODES.M) {
+                    track.setBufferSizeInFrames(tuning.trackBufferFrames)
+                }
+            } catch (ex: Exception) {
+                Timber.w("Failed to set track buffer size: ${ex.message}")
+            }
+        }
+
+        return track
     }
 
     @SuppressLint("MissingPermission")

@@ -26,3 +26,4 @@ logcat_crash.txt
 PLAN.md
 RECON_REPORT.md
 /build-jamesdsp-effect-*/
+build_debug.log

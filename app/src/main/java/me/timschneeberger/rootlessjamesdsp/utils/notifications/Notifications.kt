@@ -20,6 +20,7 @@ object Notifications {
      * Notification channel and ids used by the service.
      */
     private const val GROUP_SERVICE = "group_service"
+    private const val GROUP_SERVICE_ALERTS = "group_service_alerts"
     const val CHANNEL_SERVICE_STATUS = "service_status"
     const val ID_SERVICE_STATUS = 1
     const val CHANNEL_SERVICE_SESSION_LOSS = "service_session_loss"
@@ -65,6 +66,9 @@ object Notifications {
                 buildNotificationChannelGroup(GROUP_SERVICE) {
                     setName(context.getString(R.string.notification_group_service))
                 },
+                buildNotificationChannelGroup(GROUP_SERVICE_ALERTS) {
+                    setName(context.getString(R.string.notification_group_service_alerts))
+                },
                 buildNotificationChannelGroup(GROUP_BACKUP_RESTORE) {
                     setName(context.getString(R.string.notification_group_backup))
                 }
@@ -73,7 +77,10 @@ object Notifications {
 
         notificationService.createNotificationChannelsCompat(
             listOf(
-                buildNotificationChannel(CHANNEL_SERVICE_STATUS, IMPORTANCE_NONE) {
+                // IMPORTANCE_LOW вместо IMPORTANCE_NONE: на Android 14+ ongoing FGS-уведомление
+                // с IMPORTANCE_NONE сворачивается в «Active apps» и блокирует всплытие alert-уведомлений.
+                // IMPORTANCE_LOW позволяет alert-уведомлениям (session loss, app compat) всплывать поверх.
+                buildNotificationChannel(CHANNEL_SERVICE_STATUS, IMPORTANCE_LOW) {
                     setName(context.getString(R.string.notification_channel_service))
                     setGroup(GROUP_SERVICE)
                     setShowBadge(false)
@@ -97,17 +104,18 @@ object Notifications {
         if(isRootless()) {
             notificationService.createNotificationChannelsCompat(
                 listOf(
+                    // Alert-каналы в отдельной группе, чтобы не сворачивались под ongoing FGS-уведомлением
                     buildNotificationChannel(CHANNEL_SERVICE_SESSION_LOSS, IMPORTANCE_HIGH) {
                         setName(context.getString(R.string.notification_channel_session_loss_alert))
-                        setGroup(GROUP_SERVICE)
+                        setGroup(GROUP_SERVICE_ALERTS)
                     },
                     buildNotificationChannel(CHANNEL_SERVICE_APP_COMPAT, IMPORTANCE_HIGH) {
                         setName(context.getString(R.string.notification_channel_app_compat_alert))
-                        setGroup(GROUP_SERVICE)
+                        setGroup(GROUP_SERVICE_ALERTS)
                     },
                     buildNotificationChannel(CHANNEL_SERVICE_STARTUP, IMPORTANCE_DEFAULT) {
                         setName(context.getString(R.string.notification_channel_permission_prompt))
-                        setGroup(GROUP_SERVICE)
+                        setGroup(GROUP_SERVICE_ALERTS)
                         setVibrationEnabled(false)
                     },
                 )

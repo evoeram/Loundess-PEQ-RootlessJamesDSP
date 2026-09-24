@@ -1,7 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.measurement
 
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
-import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannelMode
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -321,7 +321,7 @@ class AutoEqEngineTest {
             assertEquals("Filter type should be peaking",
                 ParametricEqFilterType.PEAKING, band.filterType)
             assertEquals("Channel mode should be BOTH",
-                ParametricEqChannelMode.BOTH, band.channelMode)
+                ParametricEqChannel.LEFT_RIGHT, band.channel)
         }
     }
 }

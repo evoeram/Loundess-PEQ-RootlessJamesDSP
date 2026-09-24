@@ -19,6 +19,11 @@ object SdkCheck {
     private val sdk: Int
         get() = Build.VERSION.SDK_INT
 
+    // Android 16+ (API 36)
+    @get:ChecksSdkIntAtLeast(api = 36)
+    val isBaklava: Boolean
+        get() = sdk >= 36
+
     @get:ChecksSdkIntAtLeast(api = Build.VERSION_CODES.VANILLA_ICE_CREAM)
     val isVanillaIceCream: Boolean
         get() = sdk >= Build.VERSION_CODES.VANILLA_ICE_CREAM

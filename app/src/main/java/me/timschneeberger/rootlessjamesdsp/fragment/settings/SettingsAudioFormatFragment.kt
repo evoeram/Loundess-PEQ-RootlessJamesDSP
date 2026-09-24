@@ -34,6 +34,9 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     private val enhancedModeInfo by lazy { findPreference<Preference>(getString(R.string.key_audioformat_enhanced_processing_info)) }
     private val benchmark by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_optimization_benchmark)) }
     private val benchmarkRefresh by lazy { findPreference<Preference>(getString(R.string.key_audioformat_optimization_refresh)) }
+    private val processingMode by lazy { findPreference<ListPreference>(getString(R.string.key_processing_mode)) }
+    private val androidEqLimiter by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_android_eq_limiter)) }
+    private val androidEqLatency by lazy { findPreference<ListPreference>(getString(R.string.key_android_eq_latency)) }
 
     private val preferences: Preferences.App by inject()
 
@@ -115,6 +118,40 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
             true
         }
         encoding?.setOnPreferenceChangeListener { _, _ ->
+            context?.sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_HARD_REBOOT_CORE))
+            true
+        }
+
+        // Processing mode: показывать только в rootless
+        processingMode?.let { pref ->
+            pref.parent?.isVisible = isRootless()
+
+            pref.setOnPreferenceChangeListener { _, newValue ->
+                val modeInt = (newValue as String).toIntOrNull() ?: 1
+                val mode = me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.fromInt(modeInt)
+
+                // Предупреждение при выборе Movie Mode
+                if (mode == me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.MOVIE) {
+                    context?.showAlert(
+                        R.string.processing_mode_movie,
+                        R.string.processing_mode_movie_warning
+                    )
+                }
+
+                context?.sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_HARD_REBOOT_CORE))
+                true
+            }
+        }
+
+        // Android EQ настройки: видны только в rootless
+        androidEqLimiter?.parent?.let { category ->
+            category.isVisible = isRootless()
+        }
+        androidEqLimiter?.setOnPreferenceChangeListener { _, _ ->
+            context?.sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_HARD_REBOOT_CORE))
+            true
+        }
+        androidEqLatency?.setOnPreferenceChangeListener { _, _ ->
             context?.sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_HARD_REBOOT_CORE))
             true
         }
