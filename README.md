@@ -40,7 +40,13 @@
   <img alt="Device Preset Selector" width="200" src="img/Device-Preset-Selector.jpg">
   <img alt="Ask on Connection" width="200" src="img/ask-on-connection.jpg">
 </p>
-<p align="center"><sub>Parametric EQ · Loudness Correction · Manual SPL Calibration · MEOW Wizard · Device Preset Selector · Ask on Connection</sub></p>
+<p align="center">
+  <img alt="LiveEQ Channel Switch" width="200" src="screenshots/LiveEQ.jpg">
+  <img alt="GraphEQ Import/Export" width="200" src="screenshots/import-export.jpg">
+  <img alt="GraphEQ to PEQ Converter" width="200" src="screenshots/GEQ2PEQ.jpg">
+  <img alt="Filter Count Selection" width="200" src="screenshots/max num.jpg">
+</p>
+<p align="center"><sub>Parametric EQ · Loudness Correction · Manual SPL Calibration · MEOW Wizard · Device Preset Selector · Ask on Connection · LiveEQ Channel Switch · GraphEQ Import/Export · GraphEQ→PEQ Converter</sub></p>
 
 ---
 
@@ -111,6 +117,63 @@ A complete acoustic measurement pipeline for speaker/headphone equalization:
 6. **Target curve editor** — custom target curves with visual editing (`TargetCurveEditorFragment`)
 
 Native C implementation for performance-critical DSP: `sweep_generator.c`, `farina_deconv.c`, `spl_response.c`, `ir_windowing.c`, `measurement_jni.c`.
+
+---
+
+## GraphEQ Tools
+
+### 📥 GraphEQ Import / Export
+
+The Graphic EQ now supports direct file import and export of presets — previously only available in Parametric EQ:
+
+- **Import** — opens the system file picker, reads a text file in `GraphicEQ: freq gain; freq gain; ...` format, parses it via the existing `deserialize()` method, and applies the nodes. A toast confirms the number of imported nodes.
+- **Export** — creates a new text file (`graphic_eq.txt`) with the current nodes serialized in the standard GraphicEQ format.
+
+Both buttons are disabled while the node editor is active. The file format is fully compatible with the text previously pasted via "Edit as string", so existing manually-created files can be imported directly.
+
+![GraphEQ Import/Export](screenshots/import-export.jpg)
+
+### 🔄 GraphEQ → PEQ Converter
+
+Converts a Graphic EQ target curve into a minimal cascade of parametric IIR filters (PEQ / biquads). This is useful when you want the precision and flexibility of parametric filters but only have a Graphic EQ preset, AutoEQ profile, or manually-tuned curve.
+
+**Algorithm** (pure Kotlin, no external libraries):
+
+1. **Interpolation** — GraphEQ nodes are interpolated in logarithmic frequency scale (512 points, 20 Hz – 20 kHz)
+2. **Greedy iterative search** — the algorithm uses exactly N filters (user-selected: 8, 12, 16, or 20). On each iteration:
+   - Computes residual error: `Target(f) − CascadeResponse(f)`
+   - Adds a Peaking filter at the frequency of maximum error: Fc = peak frequency, Gain = error magnitude, Q = Fc/bandwidth (estimated from −3 dB bandwidth of the error peak)
+3. **Joint optimization** — after each new filter, all parameters (Fc, Q, Gain) are jointly optimized via Nelder-Mead Simplex (pure Kotlin, no scipy/external deps)
+4. **Sharpness penalty** — exponential penalty for Q > 4 to prevent ringing and instability
+5. **Biquad coefficients** — calculated via RBJ Audio EQ Cookbook (matches the C code in `peq_loudness.c`)
+6. **Preamp** — auto-computed to compensate for the peak of the target curve (prevents clipping)
+7. **Sorting** — output filters are sorted by frequency (low → high)
+
+**Result dialog** shows:
+- Summary card: filter count, preamp, quality rating (Excel / Good / Fair / Poor)
+- Accuracy metrics: max error (dB) and RMS error (dB)
+- Filter table: №, Type, Freq, Gain, Q (scrollable, monospace)
+- **Apply to PEQ** — clears the current Parametric EQ and writes the new bands + preamp directly to SharedPreferences, then broadcasts `ACTION_PARAMETRIC_EQ_CHANGED` for instant DSP application
+- **Copy APO preset** — copies the result to clipboard in Equalizer APO format (`Preamp: X dB` / `Channel: all` / `Filter N: ON PK Fc ... Hz Gain ... dB Q ...`)
+
+![GraphEQ→PEQ Converter](screenshots/GEQ2PEQ.jpg)
+![Filter Count Selection](screenshots/max%20num.jpg)
+
+**Constraints**: Q ∈ [0.2, 10], Gain ∈ [−24, +24] dB, max 20 filters.
+
+---
+
+## LiveEQ Channel Switch
+
+The LiveEQ bottom sheet (interactive slider editor for PEQ bands) now includes a **channel selector** with three filter chips:
+
+- **L** — apply filter to left channel only
+- **L+R** — apply filter to both channels (default)
+- **R** — apply filter to right channel only
+
+When a band is selected for editing, the chips automatically reflect its current channel. Switching a chip instantly applies the change — updates the frequency response preview, triggers `onLiveUpdate`, and commits the change. Uses the existing `ParametricEqChannel` enum (LEFT, LEFT_RIGHT, RIGHT) — the same values as the band editor.
+
+![LiveEQ Channel Switch](screenshots/LiveEQ.jpg)
 
 ---
 
@@ -199,8 +262,11 @@ This fork adds **36 commits, 125 files changed, ~16,500 lines** on top of [Rootl
 | Target curve editor | ❌ | ✅ |
 | Movie Mode (DynamicsProcessing) | ❌ | ✅ 3-stage least-squares fitting |
 | Low-Latency Mode | ❌ | ✅ QueueController + LatencyTuning |
-| Processing mode selection | Single mode | 3 modes (Standard / Low-Latency / Movie) |
-| Magisk module | Basic | Enhanced with PEQ+Loudness `.so`, multi-SoC configs |
+|| Processing mode selection | Single mode | 3 modes (Standard / Low-Latency / Movie) |
+|| GraphEQ import/export | ❌ | ✅ File-based preset management |
+|| GraphEQ → PEQ converter | ❌ | ✅ Greedy biquad fitting (Nelder-Mead, RBJ Cookbook) |
+|| LiveEQ channel switch | ❌ | ✅ L / L+R / R per-band in interactive editor |
+|| Magisk module | Basic | Enhanced with PEQ+Loudness `.so`, multi-SoC configs |
 | libjamesdsp submodule | upstream james34602 | [evoeram fork](https://github.com/evoeram/JamesDSPManager) (branch `extensions`) |
 | Unit tests | Minimal | 6 test classes (AutoEq, AndroidEqFitter, MicCalibration, TargetCurve, PEQ Response, PEQ BandList) |
 | Latency telemetry | ❌ | ✅ LatencyTracer (logcat, debug builds) |
