@@ -38,8 +38,9 @@
   <img alt="Loudness Manual SPL" width="200" src="img/loudness_manual.jpg">
   <img alt="MEOW" width="200" src="img/MEOW.jpg">
   <img alt="Device Preset Selector" width="200" src="img/Device-Preset-Selector.jpg">
+  <img alt="Ask on Connection" width="200" src="img/ask-on-connection.jpg">
 </p>
-<p align="center"><sub>Parametric EQ · Loudness Correction · Manual SPL Calibration · MEOW Wizard · Device Preset Selector</sub></p>
+<p align="center"><sub>Parametric EQ · Loudness Correction · Manual SPL Calibration · MEOW Wizard · Device Preset Selector · Ask on Connection</sub></p>
 
 ---
 
