@@ -1,59 +1,251 @@
 <h1 align="center">
   <img alt="Icon" width="75" src="https://github.com/thepbone/RootlessJamesDSP/blob/master/img/icons/web/icon-192.png?raw=true">
   <br>
-  RootlessJamesDSP
+  Loundess-PEQ-RootlessJamesDSP
   <br>
 </h1>
-<h4 align="center">System-wide JamesDSP implementation for non-rooted Android devices</h4>
-<p align="center">
-  <a href="https://play.google.com/store/apps/details?id=me.timschneeberger.rootlessjamesdsp&utm_source=github&pcampaignid=pcampaignidMKT-Other-global-all-co-prtnr-py-PartBadge-Mar2515-1">
-  	<img alt="Google play release" src="https://img.shields.io/github/v/release/ThePBone/RootlessJamesDSP?label=google%20play">
-  </a>
-  <a href="https://f-droid.org/packages/me.timschneeberger.rootlessjamesdsp/">
-  	<img alt="F-Droid release" src="https://img.shields.io/f-droid/v/me.timschneeberger.rootlessjamesdsp">
-  </a>
-  <a href="https://github.com/ThePBone/RootlessJamesDSP/blob/master/LICENSE">
-      <img alt="License" src="https://img.shields.io/github/license/ThePBone/RootlessJamesDSP">
-  </a>
-    <a href="https://github.com/ThePBone/RootlessJamesDSP/actions/workflows/build.yml">
-      <img alt="GitHub Workflow Status" src="https://img.shields.io/github/actions/workflow/status/thepbone/rootlessjamesdsp/build.yml">
-  </a>
 
-</p>
+<h4 align="center">System-wide JamesDSP with PEQ biquad cascade, loudness correction, and acoustic measurement — for non-rooted and rooted Android</h4>
+
 <p align="center">
-  <a href="#limitations">Limitations</a> •
-  <a href="#spotify-support-patch">Spotify patch</a> •
+  <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases">
+    <img alt="GitHub release" src="https://img.shields.io/github/v/release/evoeram/Loundess-PEQ-RootlessJamesDSP?include_prereleases">
+  </a>
+  <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases">
+    <img alt="Downloads" src="https://img.shields.io/github/downloads/evoeram/Loundess-PEQ-RootlessJamesDSP/total">
+  </a>
+  <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/blob/master/LICENSE">
+    <img alt="License" src="https://img.shields.io/github/license/evoeram/Loundess-PEQ-RootlessJamesDSP">
+  </a>
+  <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/actions/workflows/build.yml">
+    <img alt="Build" src="https://img.shields.io/github/actions/workflow/status/evoeram/Loundess-PEQ-RootlessJamesDSP/build.yml?branch=master">
+  </a>
+</p>
+
+<p align="center">
+  <a href="#key-features">Features</a> •
+  <a href="#processing-modes">Processing Modes</a> •
+  <a href="#auto-eq--measurement-wizard-meow">Auto-EQ</a> •
   <a href="#downloads">Downloads</a> •
+  <a href="#differences-from-upstream">vs Upstream</a> •
+  <a href="#building">Building</a> •
   <a href="#credits">Credits</a>
 </p>
 
-<p align="center">
-  <a href='https://play.google.com/store/apps/details?id=me.timschneeberger.rootlessjamesdsp&utm_source=github&pcampaignid=pcampaignidMKT-Other-global-all-co-prtnr-py-PartBadge-Mar2515-1'> 
-    <img width="300" alt='Get it on Google Play' src='https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png'/>
-  </a>
-</p>
+---
 
-<p align="center">
-This app uses <a href="https://github.com/james34602/JamesDSPManager">libjamesdsp</a> which is written by <a href="https://github.com/james34602">James Fung (@james34602)</a>.
-</p>
+## Overview
 
-<p align="center">
-    This app has several limitations that may be deal-breaking to some people; please read this whole document before using the app.</i>
-</p>
+**Loundess-PEQ-RootlessJamesDSP** is an enhanced fork of [RootlessJamesDSP](https://github.com/timschneeb/RootlessJamesDSP) by Tim Schneeberger. It adds three major subsystems on top of the original system-wide audio processing app:
 
-<p align="center">
-   <img alt="Screenshot" width="250" src="img/screenshot1.png">
-   <img alt="Screenshot" width="250" src="img/screenshot7.png">
-</p>
+1. **Time-domain PEQ biquad cascade** — real RBJ biquad filters (ported from EqualizerAPO) replacing the FFT-magnitude approximation, with per-band stereo channel routing and up to 64 bands
+2. **Loudness correction** — Fletcher–Munson compensation (ported from EqualizerAPO) with auto-calibration via microphone SPL measurement
+3. **Acoustic measurement & Auto-EQ wizard (MEOW)** — Farina log-sweep measurement, deconvolution to impulse response, SPL extraction, and greedy iterative PEQ filter fitting against a target curve
 
+The app works on **non-rooted devices** (via MediaProjection audio capture) and **rooted devices** (via Magisk/KernelSU/SukiSU/APatch module with direct AudioFlinger integration).
+
+### Requirements
+
+| | Minimum | Recommended |
+|---|---|---|
+| Android version | 10 (API 29) | 12+ |
+| For Movie Mode | 9 (API 28, DynamicsProcessing) | 12+ |
+| For root mode | Magisk / KernelSU / SukiSU / APatch | — |
+
+---
+
+## Key Features
+
+### 🔧 Parametric EQ (Time-Domain Biquad Cascade)
+
+Unlike the upstream GraphicEQ-based PEQ path (which approximates filter responses via FFT magnitude), this fork implements a true **time-domain biquad cascade** ported from [EqualizerAPO](https://sourceforge.net/projects/equalizerapo/):
+
+- All **8 RBJ biquad filter types**: Peaking, Low-shelf, High-shelf, Low-pass, High-pass, Band-pass, Notch, All-pass
+- **Preamp** gain stage (9th filter type — flat frequency-independent gain)
+- **Per-band channel routing**: L+R (both), L only, R only — allows different EQ curves per stereo channel
+- Up to **64 bands** (upstream max: 32) with variable-size parameter buffer
+- Per-band enable/disable
+- Real-time frequency response preview (`ParametricEqSurface`)
+
+### 🔊 Loudness Correction (Fletcher–Munson Compensation)
+
+At low listening volume, the human ear is less sensitive to bass and treble. This filter measures the difference between current playback volume and a user-defined reference level, then applies scaling low-shelf (75 Hz) and high-shelf (10 kHz) boosts:
+
+- Ported from EqualizerAPO's `LoudnessCorrectionFilter` (© Alexander Walch, GPLv2)
+- Lock-free coefficient recomputation on audio thread (`std::atomic<double>`)
+- Volume pushed from Kotlin layer (reads Android media stream volume)
+- Configurable reference level, reference offset, and attenuation strength
+
+**Auto-calibration** (`LoudnessCalibrationManager`):
+- **Microphone mode** — plays pink noise, records via microphone, computes RMS → dBFS
+- **Manual SPL mode** — user measures SPL with an external SPL meter and enters the value
+- Noise channel selection: Left / Right / Both
+- Continuous pink noise generation (no looping artifacts)
+
+### 🎯 Auto-EQ & Measurement Wizard (MEOW)
+
+> MEOW — **M**easurement, **E**qualization & **O**ptimization **W**izard
+
+A complete acoustic measurement pipeline for speaker/headphone equalization:
+
+1. **Sweep generation** — logarithmic sine sweep (Farina method), exponential frequency growth from f₁ to f₂
+2. **Playback & recording** — sweep played through `AudioTrack`, response recorded via `AudioRecord` or native measurement engine
+3. **Deconvolution** (Farina method) — FFT-based: recorded signal × inverse filter → impulse response, with THD trimming via Tukey window
+4. **SPL extraction** — windowed FFT of IR → magnitude in dB, with fractional-octave smoothing (1/1 to 1/48, or variable)
+5. **Auto-EQ fitting** (`AutoEqEngine`) — greedy iterative algorithm:
+   - Finds frequency with maximum deviation from target curve
+   - Places a peaking filter with gain = −E(f₀), Q computed from −3 dB bandwidth
+   - Q limits: ≤15 for low freqs (<200 Hz), ≤5 for high freqs (>200 Hz)
+   - Non-minimum-phase awareness: narrow deep notches (cancellation) are **not** corrected; only broad dips
+   - Iterates until flatness target or max band count is reached
+6. **Target curve editor** — custom target curves with visual editing (`TargetCurveEditorFragment`)
+
+Native C implementation for performance-critical DSP: `sweep_generator.c`, `farina_deconv.c`, `spl_response.c`, `ir_windowing.c`, `measurement_jni.c`.
+
+---
+
+## Processing Modes
+
+The app supports three processing modes to balance DSP capability, latency, and stability:
+
+| Mode | Technology | Latency | Active DSP | Use Case |
+|---|---|---|---|---|
+| **Movie Mode** | `DynamicsProcessing` API (no capture loop) | ~10–40 ms | GraphicEQ + PEQ only | YouTube, Netflix, TikTok (A/V sync critical) |
+| **Standard Mode** | Legacy MediaProjection capture loop | ~150–170 ms | Full JamesDSP engine | Music, podcasts, low-spec devices |
+| **Low-Latency Mode** | Optimized capture loop (small blocks, low-latency path) | ~20–80 ms | Full JamesDSP engine | Gaming, live streaming |
+
+### Movie Mode (Android EQ)
+
+Bypasses the capture pipeline entirely. Attaches a `DynamicsProcessing` effect (API 28+) directly to each app's audio session. The EQ curve is fitted across three stages (preEq + mbc + postEq) via least-squares regression with curvature penalty.
+
+- Up to 128 bands per stage (32 on Android 15 due to AIDL bug — auto-detected)
+- Per-channel stereo curves (separate L/R)
+- Ideal A/V sync — only block latency, no capture delay
+- Limitation: no reverb, convolver, bass boost, or spatial effects
+
+### Low-Latency Mode
+
+Optimized capture loop with:
+- 20 ms read chunks (960 frames at 48 kHz)
+- `PERFORMANCE_MODE_LOW_LATENCY` on AudioTrack
+- `THREAD_PRIORITY_URGENT_AUDIO` on recorder thread
+- `QueueController` — dynamic queue management: fade-out → drop excess frames → fade-in when output backlog exceeds 60 ms
+- ADB-tunable parameters via `LatencyTuning` (debug builds)
+
+See [docs/PROCESSING_MODES.md](docs/PROCESSING_MODES.md) for full technical details.
+
+---
+
+## Root Mode (Magisk Module)
+
+The fork includes a Magisk module (`ainur_jamesdsp-peq-loudness`) for rooted devices:
+
+- `libjamesdsp.so` (32/64-bit) rebuilt from [evoeram/JamesDSPManager](https://github.com/evoeram/JamesDSPManager) (branch `extensions`) with PEQ cascade + loudness correction support
+- `audio_effects.xml` / `audio_effects.conf` for multiple SoC variants (lahaina, shima, yupik)
+- SELinux vendor_file context fix for AudioFlinger `.so` loading
+- Supports **Magisk**, **KernelSU**, **SukiSU**, and **APatch**
+- All rootless limitations (capture blocking, latency) are **not relevant** in root mode
+
+See [BUILD_ROOT.md](BUILD_ROOT.md) for build instructions.
+
+---
+
+## Downloads
+
+### Rootless APK
+
+Pre-built APKs are available on GitHub Releases:
+
+👉 **[Latest Release](https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases)**
+
+Flavors:
+- `rootFullRelease` — for rooted devices (with Magisk module)
+- `rootlessFullRelease` — for non-rooted devices
+
+### Magisk Module
+
+The Magisk module ZIP is included in releases: `ainur_jamesdsp-peq-loudness-v*.zip`
+
+Install via Magisk → Modules → Install from storage, then reboot.
+
+---
+
+## Differences from Upstream
+
+This fork adds **36 commits, 125 files changed, ~16,500 lines** on top of [RootlessJamesDSP](https://github.com/timschneeb/RootlessJamesDSP). Upstream has no new commits since the divergence point.
+
+### New subsystems
+
+| Feature | Upstream | This Fork |
+|---|---|---|
+| PEQ implementation | GraphicEQ FFT-magnitude approximation | Time-domain RBJ biquad cascade (EqualizerAPO port) |
+| Max PEQ bands | 32 | 64 |
+| Per-band channel routing | ❌ | ✅ L+R / L / R |
+| Preamp filter type | ❌ | ✅ |
+| Loudness correction | ❌ | ✅ Fletcher–Munson (EqualizerAPO port) |
+| Loudness auto-calibration | ❌ | ✅ Microphone + Manual SPL |
+| Acoustic measurement | ❌ | ✅ Farina sweep + deconvolution + SPL |
+| Auto-EQ engine | ❌ | ✅ Greedy iterative PEQ fitting |
+| Target curve editor | ❌ | ✅ |
+| Movie Mode (DynamicsProcessing) | ❌ | ✅ 3-stage least-squares fitting |
+| Low-Latency Mode | ❌ | ✅ QueueController + LatencyTuning |
+| Processing mode selection | Single mode | 3 modes (Standard / Low-Latency / Movie) |
+| Magisk module | Basic | Enhanced with PEQ+Loudness `.so`, multi-SoC configs |
+| libjamesdsp submodule | upstream james34602 | [evoeram fork](https://github.com/evoeram/JamesDSPManager) (branch `extensions`) |
+| Unit tests | Minimal | 6 test classes (AutoEq, AndroidEqFitter, MicCalibration, TargetCurve, PEQ Response, PEQ BandList) |
+| Latency telemetry | ❌ | ✅ LatencyTracer (logcat, debug builds) |
+
+### UI/UX additions
+
+- Device cards with collapse/expand for inactive devices
+- Preset overlay popup (permanent/temp separation, back button handling)
+- Landscape layout for Parametric EQ
+- Waveform view for measurement results
+- Number input box custom view
+- EEL `printf()` from LiveProg scripts → logcat
+- Russian localization
+
+---
+
+## Building
+
+### Prerequisites
+
+- Android Studio (latest)
+- Android SDK 35 (compileSdk/targetSdk)
+- Minimum SDK 29
+- CMake + NDK (for native C/C++ components)
+- Git submodules initialized
+
+### Build commands
+
+```bash
+# Clone with submodules
+git clone --recurse-submodules https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP.git
+cd Loundess-PEQ-RootlessJamesDSP
+
+# Build both flavors
+./gradlew assembleRootFullRelease assembleRootlessFullRelease --no-daemon
+```
+
+Output APKs:
+- `app/build/outputs/apk/rootFull/release/`
+- `app/build/outputs/apk/rootlessFull/release/`
+
+---
 
 ## Limitations
-* Apps blocking internal audio capture remain unprocessed (e.g., Spotify, Google Chrome)
-* Cannot coexist with (some) other audio effect apps (e.g., Wavelet and other apps that make use of the `DynamicsProcessing` Android API)
-* Increased audio latency 
 
+Rootless mode inherits the same fundamental constraints as upstream:
 
-Apps confirmed working:
+- Apps blocking internal audio capture remain unprocessed (e.g., Spotify, Google Chrome — [patch required](#spotify-support-patch))
+- Cannot coexist with some other audio effect apps using `DynamicsProcessing` API
+- Standard and Low-Latency modes add audio latency (capture loop)
+- Movie Mode bypasses these limitations but supports only EQ (no reverb/convolver/bass boost)
+
+**Root mode has none of these limitations** — audio is processed directly in AudioFlinger.
+
+Apps confirmed working (rootless):
 * YouTube
 * YouTube Music
 * Amazon Music
@@ -64,95 +256,53 @@ Apps confirmed working:
 * Spotify ReVanced **(Patch required)**
 * Apple Music
 * Vinyl Music Player
-* ...
 
-Unsupported apps include:
-* Spotify (patch for Spotify exists)
+Unsupported apps (rootless):
+* Spotify (patch exists)
 * Google Chrome
 * SoundCloud
-* ...
 
-Tested on:
-* Samsung Galaxy S20+ (Android 12; OneUI 4.0)
-* Stock AOSP emulator (Android 10-13)
-* Google Pixel 6 Pro (Android 13)
-* Google Pixel 6a
+### Android 15+ note
 
+Due to a Google privacy feature regarding screen sharing, notifications get hidden by the system. To fix this, enable "Disable screen share protection" in developer options.
 
-Changes regarding Android 15 and up
-* Due to google adding a privacy focused feature regarding screen sharing. 
-* Notifications (and probably other things) get hidden by the system.
-* To fix this enabling "Disable screen share protetion" in developer options is necessary
+### Spotify support patch
 
-## Spotify support patch
-> **Note** This patch is universal and may also work with other apps than Spotify.
+> This patch is universal and may also work with other apps besides Spotify.
 
-You can only use Spotify with this application if you patch the Spotify app.
-The setup is very easy:
-
-1. Download and install the [ReVanced manager APK](https://github.com/revanced/revanced-manager/releases) 
+1. Download [ReVanced Manager](https://github.com/revanced/revanced-manager/releases)
 2. Install the unpatched Spotify app
-3. Open ReVanced Manager, select Spotify and enable the `Remove screen capture restriction` patch.
-4. Start the patching process and install the patched APK once it is done.
-5. You can now use Spotify with RootlessJamesDSP.
+3. Open ReVanced Manager → select Spotify → enable `Remove screen capture restriction`
+4. Patch and install the result
 
-### Patching other unsupported apps
+For other apps: enable "Show universal patches" in ReVanced settings, select your APK via the Storage button, and apply the same patch.
 
-The `Remove screen capture restriction` patch is universal and can also be used with custom APKs other than Spotify.
-The patch cannot remove capture restrictions for apps that use the native AAudio C++ API for playback. 
+> **Warning** If the patched app crashes on startup, it likely uses signature checks or anti-tampering protections. Additional patches would need to be created manually.
 
-1. Download and install the [ReVanced manager APK](https://github.com/revanced/revanced-manager/releases)
-2. Open Revanced Manager, go to the settings screen and enable 'Show universal patches'
-3. Go to the patches tab and tap on 'Select an app' and press the 'Storage' action button in the bottom-right corner.
-4. Select your APK using the file picker.
-5. Enable the `Remove screen capture restriction` patch.
-6. Start the patching process and install the patched APK once it is done. Make sure to uninstall the unpatched app if it is installed, otherwise you will run into a signature conflict during installtion.
-
-> **Warning** If the patched app crashes on startup (or refuses to work properly), it is likely that the app uses signature checks or other protections against tampering. In that case, additional patches that disable these anti-tampering checks would need to be created by hand.
-
-## Differences to other rootless FX apps
-
-Regular rootless audio effect apps on the Play Store all essentially work the same way:
-Android has several default audio effects built into its operating system that these apps can use without any special permissions. Here's a list of those: https://developer.android.com/reference/android/media/audiofx/AudioEffect.
-
-Being restricted to these default built-in audio effects is problematic if you want to implement any advanced custom effects such as Viper or JDSP, because Android does not allow apps to access & modify the audio stream directly.
-
-To work around this problem, RootlessJamesDSP uses a bunch of tricks to gain full access to the audio stream of other apps. This is done via Android's internal audio capture.
-This allows RootlessJamesDSP to apply its custom audio effects directly without relying on Android's built-in effects.
-
-Unfortunately, these tricks are not 100% reliable and introduce some limitations.
-Apps such as Spotify block internal audio capture (they don't want people to record their songs), and because of that, RootlessJamesDSP cannot directly access the audio stream of that app.
-This is the reason why a special patch is required to disable this DRM restriction inside Spotify's app. Patches for other apps with these DRM restrictions do not exist, but are possible to do.
+---
 
 ## Translations
 
-This application can be translated via Crowdin: https://crowdin.com/project/rootlessjamesdsp
+Translations are managed via [Crowdin](https://crowdin.com/project/rootlessjamesdsp). To request a new language, please open an issue.
 
-Not all languages are enabled at the moment in Crowdin. To request a new language, please open an issue here on GitHub.
-
-## Downloads
-
-This app is available for free on Google Play: [https://play.google.com/store/apps/details?id=me.timschneeberger.rootlessjamesdsp](https://play.google.com/store/apps/details?id=me.timschneeberger.rootlessjamesdsp&utm_source=github&pcampaignid=pcampaignidMKT-Other-global-all-co-prtnr-py-PartBadge-Mar2515-1)
-
-Also available on F-Droid: https://f-droid.org/packages/me.timschneeberger.rootlessjamesdsp/
-
-[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
-    alt="Get it on F-Droid"
-    height="80">](https://f-droid.org/packages/me.timschneeberger.rootlessjamesdsp/)
-[<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
-    alt="Get it on Google Play"
-    height="80">](https://play.google.com/store/apps/details?id=me.timschneeberger.rootlessjamesdsp&utm_source=github&pcampaignid=pcampaignidMKT-Other-global-all-co-prtnr-py-PartBadge-Mar2515-1)
-
-## Using Root
-
-This app focuses on a rootless implementation, but it can be made to work with the magisk module too. [See here for details](BUILD_ROOT.md).
-
-All the limitations mentioned above are **not relevant** for the magisk/root version. 
+---
 
 ## Credits
 
-* JamesDSP - [James Fung (@james34602)](https://github.com/james34602)
-* Theming system & backup system based on Tachiyomi
+### Original project
+
+- **RootlessJamesDSP** — [Tim Schneeberger (@timschneeb)](https://github.com/timschneeb)
+- **JamesDSP / libjamesdsp** — [James Fung (@james34602)](https://github.com/james34602)
+
+### Ports & libraries
+
+- **EqualizerAPO** — biquad filter logic, loudness correction filter (© Alexander Walch, GPLv2)
+- **kissfft** — FFT library used in measurement/deconvolution
+- Magisk module based on [ainur jamesdsp](https://github.com/therealahrion/ainur_jamesdsp) by @ahrion
+
+### Fork author
+
+- **evoeram** — PEQ cascade, loudness correction, measurement/Auto-EQ, processing modes, low-latency tuning
 
 ### Translators
 
@@ -396,3 +546,11 @@ All the limitations mentioned above are **not relevant** for the magisk/root ver
   </tr>
 </table><a href="https://crowdin.com/project/rootlessjamesdsp" target="_blank">Translate in Crowdin 🚀</a>
 <!-- CROWDIN-CONTRIBUTORS-END -->
+
+---
+
+## License
+
+[GNU General Public License v3](LICENSE)
+
+This fork inherits the GPLv3 license from RootlessJamesDSP and JamesDSP. The EqualizerAPO biquad and loudness correction code is GPLv2-compatible, ported under the terms of the GPL.
