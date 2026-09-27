@@ -9,7 +9,10 @@
 
 <p align="center">
   <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases">
-    <img alt="GitHub release" src="https://img.shields.io/github/v/release/evoeram/Loundess-PEQ-RootlessJamesDSP?include_prereleases">
+    <img alt="GitHub release" src="https://img.shields.io/github/v/release/evoeram/Loundess-PEQ-RootlessJamesDSP?include_prereleases&label=latest%20release">
+  </a>
+  <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases">
+    <img alt="Downloads" src="https://img.shields.io/github/downloads/evoeram/Loundess-PEQ-RootlessJamesDSP/latest/total?label=downloads%20(latest)">
   </a>
   <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/blob/master/LICENSE">
     <img alt="License" src="https://img.shields.io/github/license/evoeram/Loundess-PEQ-RootlessJamesDSP">
