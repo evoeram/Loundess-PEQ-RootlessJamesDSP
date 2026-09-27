@@ -36,7 +36,7 @@ class JamesDspRemoteEngine(
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                Constants.ACTION_SAMPLE_RATE_UPDATED -> syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER))
+                Constants.ACTION_SAMPLE_RATE_UPDATED -> syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_LOUDNESS))
                 Constants.ACTION_PREFERENCES_UPDATED -> syncWithPreferences()
                 Constants.ACTION_SERVICE_RELOAD_LIVEPROG -> syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
                 Constants.ACTION_SERVICE_HARD_REBOOT_CORE -> rebootEngine()
@@ -241,9 +241,10 @@ class JamesDspRemoteEngine(
         val currentSampleRate = sampleRate.toInt()
         if (currentSampleRate > 0 && currentSampleRate != convolverSampleRate) {
             Timber.i(
-                "Convolver sample rate changed from ${convolverSampleRate}Hz to ${currentSampleRate}Hz"
+                "Sample rate changed from ${convolverSampleRate}Hz to ${currentSampleRate}Hz; "
+                + "re-syncing convolver, PEQ, and loudness with new sample rate"
             )
-            syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER))
+            syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_LOUDNESS))
         }
     }
 
