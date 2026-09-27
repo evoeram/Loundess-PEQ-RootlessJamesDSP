@@ -11,9 +11,6 @@
   <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases">
     <img alt="GitHub release" src="https://img.shields.io/github/v/release/evoeram/Loundess-PEQ-RootlessJamesDSP?include_prereleases">
   </a>
-  <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases">
-    <img alt="Downloads" src="https://img.shields.io/github/downloads/evoeram/Loundess-PEQ-RootlessJamesDSP/total">
-  </a>
   <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/blob/master/LICENSE">
     <img alt="License" src="https://img.shields.io/github/license/evoeram/Loundess-PEQ-RootlessJamesDSP">
   </a>
@@ -245,7 +242,7 @@ Install via Magisk → Modules → Install from storage, then reboot.
 
 ## Differences from Upstream
 
-This fork adds **36 commits, 125 files changed, ~16,500 lines** on top of [RootlessJamesDSP](https://github.com/timschneeb/RootlessJamesDSP). Upstream has no new commits since the divergence point.
+This fork adds **40+ commits, 130+ files changed, ~18,000 lines** on top of [RootlessJamesDSP](https://github.com/timschneeb/RootlessJamesDSP). Upstream has no new commits since the divergence point.
 
 ### New subsystems
 
@@ -262,11 +259,11 @@ This fork adds **36 commits, 125 files changed, ~16,500 lines** on top of [Rootl
 | Target curve editor | ❌ | ✅ |
 | Movie Mode (DynamicsProcessing) | ❌ | ✅ 3-stage least-squares fitting |
 | Low-Latency Mode | ❌ | ✅ QueueController + LatencyTuning |
-|| Processing mode selection | Single mode | 3 modes (Standard / Low-Latency / Movie) |
-|| GraphEQ import/export | ❌ | ✅ File-based preset management |
-|| GraphEQ → PEQ converter | ❌ | ✅ Greedy biquad fitting (Nelder-Mead, RBJ Cookbook) |
-|| LiveEQ channel switch | ❌ | ✅ L / L+R / R per-band in interactive editor |
-|| Magisk module | Basic | Enhanced with PEQ+Loudness `.so`, multi-SoC configs |
+| Processing mode selection | Single mode | 3 modes (Standard / Low-Latency / Movie) |
+| GraphEQ import/export | ❌ | ✅ File-based preset management |
+| GraphEQ → PEQ converter | ❌ | ✅ Greedy biquad fitting (Nelder-Mead, RBJ Cookbook) |
+| LiveEQ channel switch | ❌ | ✅ L / L+R / R per-band in interactive editor |
+| Magisk module | Basic | Enhanced with PEQ+Loudness `.so`, multi-SoC configs |
 | libjamesdsp submodule | upstream james34602 | [evoeram fork](https://github.com/evoeram/JamesDSPManager) (branch `extensions`) |
 | Unit tests | Minimal | 6 test classes (AutoEq, AndroidEqFitter, MicCalibration, TargetCurve, PEQ Response, PEQ BandList) |
 | Latency telemetry | ❌ | ✅ LatencyTracer (logcat, debug builds) |
