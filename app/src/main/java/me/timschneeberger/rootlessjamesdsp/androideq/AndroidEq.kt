@@ -23,8 +23,10 @@ import kotlin.math.ln
  * Поддерживает per-channel стерео-кривые: левый и правый канал могут иметь разные EQ-кривые,
  * если GraphicEQ payload содержит разделитель [JamesDspBaseEngine.STEREO_GRAPHIC_EQ_SPLIT].
  *
- * Android 15 AIDL bug: devices with AIDL audio effect implementations (Pixel 8/9 after March 2025
- * patch) silently clamp band counts > 32. [maxBands] is capped to 32 on Android 15+.
+ * Android 15/16 AIDL bug: devices with AIDL audio effect implementations (Pixel 8/9 after March 2025
+ * patch, OnePlus 15 on Android 16) silently clamp band counts > 32. [maxBands] is capped to 32
+ * on Android 15+. На Android 16 (Baklava) ограничение сохраняется и может быть строже —
+ * некоторые устройства с AIDL-only HAL вообще не загружают legacy C-API эффекты.
  */
 @RequiresApi(Build.VERSION_CODES.P)
 object AndroidEq {
@@ -43,7 +45,8 @@ object AndroidEq {
 
     /**
      * Максимальное число полос на стадию.
-     * 128 по умолчанию, 32 на Android 15 (баг AIDL: полосы > 32 игнорируются).
+     * 128 по умолчанию, 32 на Android 15+ (баг AIDL: полосы > 32 игнорируются).
+     * На Android 16 (Baklava) ограничение также 32 — AIDL-only HAL может быть строже.
      */
     val maxBands: Int = if (SdkCheck.isVanillaIceCream) ANDROID15_AIDL_MAX_BANDS else DEFAULT_MAX_BANDS
 

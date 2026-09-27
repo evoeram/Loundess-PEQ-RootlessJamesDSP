@@ -2,6 +2,8 @@ package me.timschneeberger.rootlessjamesdsp.fragment
 
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -11,21 +13,34 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.activity.GraphicEqualizerActivity
 import me.timschneeberger.rootlessjamesdsp.adapter.GraphicEqNodeAdapter
+import me.timschneeberger.rootlessjamesdsp.adapter.PeqFilterResultAdapter
 import me.timschneeberger.rootlessjamesdsp.contract.AutoEqSelectorContract
 import me.timschneeberger.rootlessjamesdsp.databinding.FragmentGraphicEqBinding
+import me.timschneeberger.rootlessjamesdsp.databinding.DialogGeqToPeqResultBinding
 import me.timschneeberger.rootlessjamesdsp.model.GraphicEqNode
 import me.timschneeberger.rootlessjamesdsp.model.GraphicEqNodeList
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
+import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
+import me.timschneeberger.rootlessjamesdsp.utils.GraphEqToPeqConverter
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.showInputAlert
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.showSingleChoiceAlert
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.showYesNoAlert
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.toast
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.unregisterLocalReceiver
 import timber.log.Timber
 import java.util.UUID
@@ -49,6 +64,9 @@ class GraphicEqualizerFragment : Fragment() {
             binding.reset.isEnabled = !value
             binding.autoeq.isEnabled = !value
             binding.editString.isEnabled = !value
+            binding.importFile?.isEnabled = !value
+            binding.exportFile?.isEnabled = !value
+            binding.convertToPeq?.isEnabled = !value
         }
 
     private val autoEqSelectorLauncher =
@@ -56,6 +74,39 @@ class GraphicEqualizerFragment : Fragment() {
             result?.let {
                 adapter.nodes.deserialize(it)
                 save()
+            }
+        }
+
+    /** Лаунчер импорта файла пресета GraphicEQ. Открывает системный файловый пикер. */
+    private val importFileLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri ?: return@registerForActivityResult
+            try {
+                val text = requireContext().contentResolver.openInputStream(uri)
+                    ?.bufferedReader()?.use { it.readText() } ?: return@registerForActivityResult
+                adapter.nodes.deserialize(text)
+                updateViewState()
+                save()
+                requireContext().toast(getString(R.string.geq_import_success, adapter.nodes.size))
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to import GraphicEQ file")
+                requireContext().toast(R.string.geq_import_error)
+            }
+        }
+
+    /** Лаунчер экспорта файла пресета GraphicEQ. Создаёт новый текстовый файл. */
+    private val exportFileLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+            uri ?: return@registerForActivityResult
+            try {
+                val text = adapter.nodes.serialize()
+                requireContext().contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
+                    it.write(text)
+                }
+                requireContext().toast(R.string.geq_export_success)
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to export GraphicEQ file")
+                requireContext().toast("Export failed: ${e.message}")
             }
         }
 
@@ -163,6 +214,59 @@ class GraphicEqualizerFragment : Fragment() {
         binding.autoeq.setOnClickListener {
             editorDiscard()
             autoEqSelectorLauncher.launch(0)
+        }
+
+        // Импорт пресета GraphicEQ из текстового файла
+        binding.importFile?.setOnClickListener {
+            importFileLauncher.launch(arrayOf("text/plain", "text/*"))
+        }
+
+        // Экспорт пресета GraphicEQ в текстовый файл
+        binding.exportFile?.setOnClickListener {
+            exportFileLauncher.launch("graphic_eq.txt")
+        }
+
+        // Конвертация GraphEQ → PEQ: жадный подбор минимального набора
+        // параметрических фильтров. Перед запуском спрашивает max фильтров,
+        // результат показывает в красивом диалоге с кнопками копирования и
+        // прямого применения (с очисткой текущего PEQ).
+        binding.convertToPeq?.setOnClickListener {
+            val nodes = adapter.nodes.map { it.freq to it.gain }
+            if (nodes.size < 2) {
+                requireContext().toast(R.string.geq_convert_to_peq_error)
+                return@setOnClickListener
+            }
+
+            // 1. Выбор максимального количества фильтров
+            val choices = arrayOf<CharSequence>("8", "12", "16", "20")
+            val defaultIndex = 2 // 16
+            requireContext().showSingleChoiceAlert(
+                R.string.geq_convert_to_peq_max_filters,
+                choices,
+                defaultIndex,
+            ) { selectedIdx: Int? ->
+                if (selectedIdx == null) {
+                    return@showSingleChoiceAlert
+                }
+                val maxFilters = choices[selectedIdx].toString().toIntOrNull() ?: 16
+
+                // Показ прогресс-диалога
+                val progress = MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(R.string.geq_convert_to_peq_running)
+                    .setCancelable(false)
+                    .create()
+                progress.show()
+
+                // Запуск в фоновом потоке
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val result = withContext(Dispatchers.Default) {
+                        GraphEqToPeqConverter.convert(nodes, maxFilters)
+                    }
+
+                    progress.dismiss()
+                    showConversionResultDialog(result)
+                }
+            }
         }
 
         // Load node data
@@ -349,6 +453,91 @@ class GraphicEqualizerFragment : Fragment() {
             putFloat(STATE_EDITOR_UI_FREQ_INPUT, binding.freqInput.value)
             putFloat(STATE_EDITOR_UI_GAIN_INPUT, binding.gainInput.value)
         })*/
+    }
+
+    /**
+     * Показывает красивый диалог с результатами конвертации GraphEQ → PEQ.
+     * Содержит карточку сводки, метрики точности, таблицу фильтров
+     * и кнопки: Apply to PEQ (с очисткой), Copy APO preset, Cancel.
+     */
+    private fun showConversionResultDialog(result: GraphEqToPeqConverter.Result) {
+        val dialogBinding = DialogGeqToPeqResultBinding.inflate(layoutInflater)
+
+        // Заполнение сводки
+        dialogBinding.statFilters.text = result.bands.size.toString()
+        dialogBinding.statPreamp.text = String.format(
+            java.util.Locale.US, "%.1f dB", result.preampDb
+        )
+
+        // Метрики точности
+        dialogBinding.statMaxError.text = String.format(
+            java.util.Locale.US, "Max: %.2f dB", result.maxErrorDb
+        )
+        dialogBinding.statRmsError.text = String.format(
+            java.util.Locale.US, "RMS: %.2f dB", result.rmsErrorDb
+        )
+
+        // Оценка качества
+        val qualityText = when {
+            result.maxErrorDb < 0.5 -> "Excel"
+            result.maxErrorDb < 1.0 -> "Good"
+            result.maxErrorDb < 2.0 -> "Fair"
+            else -> "Poor"
+        }
+        dialogBinding.statQuality.text = qualityText
+
+        // Таблица фильтров (уже отсортированы по частоте в конвертере)
+        dialogBinding.filterList.layoutManager = LinearLayoutManager(requireContext())
+        dialogBinding.filterList.adapter = PeqFilterResultAdapter(result.bands)
+
+        // Три кнопки: Apply (с очисткой PEQ), Copy, Cancel
+        val dialog = MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.geq_convert_to_peq_title)
+            .setView(dialogBinding.root)
+            .setPositiveButton(R.string.geq_convert_to_peq_apply) { _, _ ->
+                applyToPeq(result)
+            }
+            .setNeutralButton(R.string.geq_convert_to_peq_copy) { _, _ ->
+                val clipboard = requireContext()
+                    .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(
+                    ClipData.newPlainText("PEQ preset", result.apoString)
+                )
+                requireContext().toast(R.string.geq_convert_to_peq_copied)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+
+        dialog.show()
+
+        Timber.d("GraphEQ→PEQ: ${result.bands.size} filters, maxErr=${result.maxErrorDb}dB, rmsErr=${result.rmsErrorDb}dB, preamp=${result.preampDb}dB")
+    }
+
+    /**
+     * Применяет результат конвертации к модулю Parametric EQ:
+     * очищает текущие полосы, записывает новые полосы + preamp в SharedPreferences
+     * и отправляет broadcast для моментального применения DSP-движком.
+     */
+    @SuppressLint("ApplySharedPref")
+    private fun applyToPeq(result: GraphEqToPeqConverter.Result) {
+        // Формирование списка полос во внутреннем формате
+        val bandList = ParametricEqBandList()
+        for (band in result.bands) {
+            bandList.add(band)
+        }
+
+        // Запись в SharedPreferences (полная замена текущего PEQ)
+        requireContext().getSharedPreferences(Constants.PREF_PEQ, Context.MODE_PRIVATE)
+            .edit()
+            .putString(getString(R.string.key_peq_bands), bandList.serialize())
+            .putFloat(getString(R.string.key_peq_preamp), result.preampDb.toFloat())
+            .commit()
+
+        // Уведомление DSP-движка и UI об изменении
+        requireContext().sendLocalBroadcast(Intent(Constants.ACTION_PARAMETRIC_EQ_CHANGED))
+
+        requireContext().toast(getString(R.string.geq_convert_to_peq_applied, result.bands.size))
+        Timber.d("Applied ${result.bands.size} PEQ filters, preamp=${result.preampDb}dB")
     }
 
     companion object {

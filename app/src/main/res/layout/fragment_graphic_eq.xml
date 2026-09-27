@@ -49,6 +49,30 @@
                 app:chipIcon="@drawable/ic_twotone_download_24" />
 
             <com.google.android.material.chip.Chip
+                android:id="@+id/import_file"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/geq_import"
+                app:chipIcon="@drawable/ic_twotone_download_24" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/export_file"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/geq_export"
+                app:chipIcon="@drawable/ic_twotone_save_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/convert_to_peq"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/geq_convert_to_peq"
+                app:chipIcon="@drawable/ic_baseline_equalizer_24dp" />
+
+            <com.google.android.material.chip.Chip
                 android:id="@+id/edit_string"
                 style="@style/Widget.Material3.Chip.Assist.Elevated"
                 android:layout_width="wrap_content"

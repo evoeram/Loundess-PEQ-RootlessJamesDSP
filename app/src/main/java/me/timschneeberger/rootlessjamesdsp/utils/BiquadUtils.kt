@@ -203,6 +203,11 @@ object BiquadUtils {
         sampleRate: Double = 48000.0,
         channel: ParametricEqChannel? = null
     ): List<Pair<Double, Double>> {
+        // В fallback-пути PEQ мёрджится в GraphicEQ для AndroidEq (DynamicsProcessing).
+        // Раньше maxFreq был жёстко 20000 Гц — фильтры ВЧ не отрабатывали выше 20 кГц.
+        // Расширяем до Nyquist (sr/2 * 0.98), чтобы покрыть весь слышимый диапазон
+        // и корректно аппроксимировать фильтры вблизи Nyquist.
+        val effectiveMaxFreq = minOf(maxFreq, sampleRate * 0.5 * 0.98)
         val filteredBands = when (channel) {
             null -> bands
             ParametricEqChannel.LEFT ->
@@ -216,7 +221,7 @@ object BiquadUtils {
         if (filteredBands.isEmpty()) return emptyList()
 
         val logMin = ln(minFreq)
-        val logMax = ln(maxFreq)
+        val logMax = ln(effectiveMaxFreq)
         val result = ArrayList<Pair<Double, Double>>(numPoints)
 
         // Precompute coefficients for all bands

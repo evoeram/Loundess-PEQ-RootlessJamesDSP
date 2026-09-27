@@ -246,17 +246,19 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
 
     auto input = env->GetShortArrayElements(inputObj, nullptr);
     auto output = env->GetShortArrayElements(outputObj, nullptr);
+    // DSP пишет в output[0..], поэтому PEQ и loudness тоже должны
+    // читать/писать с начала буфера. Раньше использовался offsetIdx * 2,
+    // что при offset > 0 приводило к обработке мусора и пропуску начала.
     dsp->processInt16Multiplexd(dsp, input + offset, output, inputLength / 2);
 
     // Apply time-domain parametric EQ on int16 path via float conversion
     if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
     {
         size_t frames = inputLength / 2;
-        size_t offsetIdx = (offset < 0 ? 0 : offset);
         // Convert to float, process, convert back
         std::vector<float> tmp(frames * 2);
         for (size_t i = 0; i < frames * 2; ++i)
-            tmp[i] = (float)(output[offsetIdx * 2 + i]) / 32768.0f;
+            tmp[i] = (float)(output[i]) / 32768.0f;
         wrapper->parametricEq->processInterleaved(tmp.data(), frames);
         if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
             wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
@@ -265,23 +267,22 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
             float v = tmp[i] * 32768.0f;
             if (v > 32767.0f) v = 32767.0f;
             if (v < -32768.0f) v = -32768.0f;
-            output[offsetIdx * 2 + i] = (short)v;
+            output[i] = (short)v;
         }
     }
     else if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
     {
         size_t frames = inputLength / 2;
-        size_t offsetIdx = (offset < 0 ? 0 : offset);
         std::vector<float> tmp(frames * 2);
         for (size_t i = 0; i < frames * 2; ++i)
-            tmp[i] = (float)(output[offsetIdx * 2 + i]) / 32768.0f;
+            tmp[i] = (float)(output[i]) / 32768.0f;
         wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
         for (size_t i = 0; i < frames * 2; ++i)
         {
             float v = tmp[i] * 32768.0f;
             if (v > 32767.0f) v = 32767.0f;
             if (v < -32768.0f) v = -32768.0f;
-            output[offsetIdx * 2 + i] = (short)v;
+            output[i] = (short)v;
         }
     }
 
@@ -365,18 +366,21 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
     auto input = env->GetFloatArrayElements(inputObj, nullptr);
     auto output = env->GetFloatArrayElements(outputObj, nullptr);
 
+    // DSP пишет в output[0..], поэтому PEQ и loudness тоже должны
+    // читать/писать с начала буфера. Раньше использовался offset * 2,
+    // что при offset > 0 приводило к обработке мусора и пропуску начала.
     dsp->processFloatMultiplexd(dsp, input + offset, output, inputLength / 2);
 
     // Apply time-domain parametric EQ cascade after main DSP chain
     if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
     {
-        wrapper->parametricEq->processInterleaved(output + (offset < 0 ? 0 : offset * 2), inputLength / 2);
+        wrapper->parametricEq->processInterleaved(output, inputLength / 2);
     }
 
     // Apply loudness correction after parametric EQ
     if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
     {
-        wrapper->loudnessCorrection->processInterleaved(output + (offset < 0 ? 0 : offset * 2), inputLength / 2);
+        wrapper->loudnessCorrection->processInterleaved(output, inputLength / 2);
     }
 
     env->ReleaseFloatArrayElements(inputObj, input, JNI_ABORT);

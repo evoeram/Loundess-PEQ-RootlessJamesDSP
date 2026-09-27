@@ -1,3 +1,11 @@
+### v6.3.1.0 - 9.24.2026
+* KernelSU/SukiSU/APatch support: added sepolicy.rule and post-fs-data.sh
+* Root method detection in customize.sh (Magisk/KSU/APatch)
+* Added SKU configs for modern devices: sun (SD 8 Elite), pistachio, crow, kalama
+* Android 16 (Baklava) detection in AndroidEq.kt — AIDL 32-band limit extends to Android 16
+* audioserver restart fallback via setprop ctl.restart
+* Documentation: AIDL_SUPPORT.md, FAQ_FIR_EQ.md, TROUBLESHOOTING_ANDROID16.md
+
 ### v6.3.0.4 - 9.23.2026
 * Updated libjamesdsp.so from app v1.6.14 build 51 (PEQ+Loudness fork)
 * English strings fix for preset selection overlay

@@ -30,7 +30,7 @@ RootlessJamesDSP operates in three distinct processing modes to balance DSP capa
 
 ### System Limitations & Edge Cases
 * **DSP Scope:** Reverb, convolution, spatial width, and dynamic bass boost are **inactive** because audio does not pass through the C++ JamesDSP engine.
-* **Android 15 AIDL Bug:** Devices running Android 15 with AIDL audio effect implementations (e.g., Pixel 8 and Pixel 9 series following the March 2025 security patch) cap the effective band count to **32 bands**. Higher band counts (>32) are silently ignored or clamped by the DSP hardware. The code automatically detects Android 15 (`SdkCheck.isVanillaIceCream`) and limits `maxBands` to 32 on such devices.
+* **Android 15/16 AIDL Bug:** Devices running Android 15+ with AIDL audio effect implementations (e.g., Pixel 8 and Pixel 9 series following the March 2025 security patch, OnePlus 15 on Android 16) cap the effective band count to **32 bands**. Higher band counts (>32) are silently ignored or clamped by the DSP hardware. The code automatically detects Android 15+ (`SdkCheck.isVanillaIceCream`) and limits `maxBands` to 32 on such devices. На Android 16 (Baklava, API 36) ограничение сохраняется; `SdkCheck.isBaklava` доступен для будущей детекции. На устройствах с AIDL-only HAL legacy C-API эффекты (libjamesdsp.so) могут не загрузиться вообще — см. `docs/AIDL_SUPPORT.md`.
 * **Recovery Mechanism:** A `setEnableStatusListener` keeps the effect active if OEM power management attempts to unload the effect.
 
 ---
