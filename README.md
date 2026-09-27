@@ -32,6 +32,15 @@
   <a href="#credits">Credits</a>
 </p>
 
+<p align="center">
+  <img alt="PEQ" width="200" src="img/PEQ.jpg">
+  <img alt="Loudness" width="200" src="img/loudness.jpg">
+  <img alt="Loudness Manual SPL" width="200" src="img/loudness_manual.jpg">
+  <img alt="MEOW" width="200" src="img/MEOW.jpg">
+  <img alt="Device Preset Selector" width="200" src="img/Device-Preset-Selector.jpg">
+</p>
+<p align="center"><sub>Parametric EQ · Loudness Correction · Manual SPL Calibration · MEOW Wizard · Device Preset Selector</sub></p>
+
 ---
 
 ## Overview
