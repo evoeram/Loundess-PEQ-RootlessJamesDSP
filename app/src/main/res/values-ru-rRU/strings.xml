@@ -643,4 +643,44 @@
     <string name="version_mismatch_root">Пакет JamesDSP для Magisk требует обновления</string>
     <string name="version_mismatch_root_description">Установленный на вашем устройстве пакет JamesDSP для Magisk устарел и больше не поддерживается этим приложением.\n\nПожалуйста, загрузите самый последний ZIP-файл пакета JamesDSP для Magisk и установите его через Magisk.\nОбратите внимание, что пакет Magisk может заменить это приложение на официальное приложение JamesDSP.\n\nХотите посетить веб-сайт загрузки пакетов Magisk сейчас?</string>
     <string name="version_mismatch_root_toast">Не удалось запустить. Установленный пакет JamesDSP для Magisk устарел и больше не поддерживается этим приложением.</string>
+
+    <!-- SquigLink -->
+    <string name="squig_title">Squig Live</string>
+    <string name="squig_summary">AutoEQ по замерам squig.link</string>
+    <string name="squig_search_hint">Поиск IEM/наушников…</string>
+    <string name="squig_search">Поиск</string>
+    <string name="squig_loading">Загрузка…</string>
+    <string name="squig_load_error">Ошибка загрузки: %1$s</string>
+    <string name="squig_no_results">Ничего не найдено</string>
+    <string name="squig_autoeq">AutoEQ</string>
+    <string name="squig_live_eq">Live EQ</string>
+    <string name="squig_apply_to_peq">Применить к PEQ</string>
+    <string name="squig_channel_label">Канал</string>
+    <string name="squig_channel_left">L</string>
+    <string name="squig_channel_right">R</string>
+    <string name="squig_channel_avg">Ср</string>
+    <string name="squig_target_label">Целевая кривая</string>
+    <string name="squig_instance_label">Инстанс</string>
+    <string name="squig_measurement_loaded">Измерение загружено: %1$s</string>
+    <string name="squig_autoeq_done">AutoEQ готово: %1$d полос, макс. отклонение %2$.1f дБ</string>
+    <string name="squig_applied_to_peq">Применено %1$d полос к PEQ</string>
+    <string name="squig_network_error">Сетевая ошибка: %1$s</string>
+    <string name="squig_catalog_info">Каталог: %1$d брендов</string>
+    <string name="squig_results_count">Найдено: %1$d</string>
+    <string name="squig_empty_state">Введите запрос для поиска IEM/наушников…</string>
+    <string name="squig_selected_phone">%1$s %2$s</string>
+    <string name="squig_other_count">Другие (%1$d)</string>
+    <string name="squig_target_loaded">Целевая кривая: %1$s</string>
+    <string name="squig_reset">Сброс</string>
+    <string name="squig_reset_done">Полосы эквалайзера очищены</string>
+    <string name="squig_autoeq_config">Настройка AutoEQ</string>
+    <string name="squig_autoeq_run">Запустить AutoEQ</string>
+    <string name="squig_autoeq_cfg_max_bands">Макс. полос</string>
+    <string name="squig_autoeq_cfg_max_boost">Макс. усиление (дБ)</string>
+    <string name="squig_autoeq_cfg_flatness">Цель плоскостности (дБ)</string>
+    <string name="squig_autoeq_cfg_range_start">Начало диапазона (Гц)</string>
+    <string name="squig_autoeq_cfg_range_end">Конец диапазона (Гц)</string>
+    <string name="squig_autoeq_cfg_nelder_mead">Оптимизация Nelder-Mead</string>
+    <string name="peq_live_eq_add">Добавить</string>
+    <string name="peq_live_eq_delete">Удалить</string>
 </resources>

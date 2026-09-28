@@ -22,6 +22,7 @@ enum class MicType {
     BUILTIN_UNPROCESSED,
     BUILTIN_MIC,
     BUILTIN_BACK,
+    BUILTIN_BOTTOM,
     USB
 }
 
@@ -60,48 +61,57 @@ class MeasurementAudioRecord(
      */
     @SuppressLint("MissingPermission")
     fun record(): FloatArray? {
-        val channelConfig = AudioFormat.CHANNEL_IN_MONO
         val audioFormat = AudioFormat.ENCODING_PCM_FLOAT
 
-        val minBufSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
-        val bufferSize = (sampleRate * durationSec).toInt().coerceAtLeast(minBufSize * 2)
+        // Всегда пишем стерео — HAL отдаёт два микрофона (bottom=L, top=R).
+        // Нужный канал выбираем после записи.
+        val stereoConfig = AudioFormat.CHANNEL_IN_STEREO
+        val minBufStereo = AudioRecord.getMinBufferSize(sampleRate, stereoConfig, audioFormat)
+        val bufferSizeStereo = (sampleRate * durationSec * 2).toInt().coerceAtLeast(minBufStereo * 2)
 
-        // Выбор AudioSource в зависимости от типа микрофона
+        // Выбор AudioSource
         val source = when (micType) {
-            MicType.BUILTIN_UNPROCESSED -> {
+            MicType.BUILTIN_UNPROCESSED, MicType.BUILTIN_BOTTOM -> {
                 if (hasUnprocessedSource()) MediaRecorder.AudioSource.UNPROCESSED
                 else MediaRecorder.AudioSource.MIC
             }
             MicType.BUILTIN_MIC -> MediaRecorder.AudioSource.MIC
             MicType.BUILTIN_BACK -> {
-                // CAMCORDER обычно направлен на задний микрофон
-                MediaRecorder.AudioSource.CAMCORDER
+                if (hasUnprocessedSource()) MediaRecorder.AudioSource.UNPROCESSED
+                else MediaRecorder.AudioSource.CAMCORDER
             }
             MicType.USB -> {
-                // Для USB лучше UNPROCESSED, fallback MIC
                 if (hasUnprocessedSource()) MediaRecorder.AudioSource.UNPROCESSED
                 else MediaRecorder.AudioSource.MIC
             }
         }
 
+        // Какой канал извлекать из стерео: BUILTIN_BACK → правый (top), остальные → левый (bottom)
+        val selectRight = micType == MicType.BUILTIN_BACK
+
+        var channelConfig = stereoConfig
+        var bufferSize = bufferSizeStereo
+        var isStereo = true
+
         try {
-            audioRecord = AudioRecord(
-                source,
-                sampleRate,
-                channelConfig,
-                audioFormat,
-                bufferSize
-            )
+            audioRecord = AudioRecord(source, sampleRate, channelConfig, audioFormat, bufferSize)
+
+            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                // Fallback: mono
+                Log.w(TAG, "Stereo init failed, falling back to mono")
+                channelConfig = AudioFormat.CHANNEL_IN_MONO
+                isStereo = false
+                val minBufMono = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+                bufferSize = (sampleRate * durationSec).toInt().coerceAtLeast(minBufMono * 2)
+                audioRecord = AudioRecord(source, sampleRate, channelConfig, audioFormat, bufferSize)
+            }
 
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
                 Log.e(TAG, "AudioRecord not initialized (source=$source, micType=$micType)")
                 return null
             }
 
-            // Маршрутизация на конкретное устройство ввода (API 23+)
-            if (appContext != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                routeToPreferredDevice()
-            }
+            Log.i(TAG, "Recording: source=$source, stereo=$isStereo, selectRight=$selectRight, bufSize=$bufferSize")
 
         } catch (e: SecurityException) {
             Log.e(TAG, "RECORD_AUDIO permission not granted", e)
@@ -111,27 +121,57 @@ class MeasurementAudioRecord(
             return null
         }
 
-        val totalSamples = (sampleRate * durationSec).toInt()
-        val buffer = FloatArray(totalSamples)
-        var samplesRead = 0
+        val totalMonoSamples = (sampleRate * durationSec).toInt()
+        val monoBuffer = FloatArray(totalMonoSamples)
+        var monoWritten = 0
 
         isRecording = true
         audioRecord?.startRecording()
 
         try {
-            while (isRecording && samplesRead < totalSamples) {
-                val toRead = min(4096, totalSamples - samplesRead)
-                val read = audioRecord?.read(buffer, samplesRead, toRead, AudioRecord.READ_BLOCKING) ?: -1
+            if (isStereo) {
+                // Читаем interleaved стерео, извлекаем нужный канал
+                val stereoChunk = FloatArray(8192) // 4096 frames * 2 channels
+                while (isRecording && monoWritten < totalMonoSamples) {
+                    val framesWanted = min(4096, totalMonoSamples - monoWritten)
+                    val samplesWanted = framesWanted * 2
+                    val read = audioRecord?.read(stereoChunk, 0, samplesWanted, AudioRecord.READ_BLOCKING) ?: -1
 
-                if (read <= 0) {
-                    Log.e(TAG, "AudioRecord.read failed: $read")
-                    break
+                    if (read <= 0) {
+                        Log.e(TAG, "AudioRecord.read failed: $read")
+                        break
+                    }
+
+                    val framesRead = read / 2
+                    // Deinterleave: извлекаем выбранный канал
+                    val monoChunk = FloatArray(framesRead)
+                    for (i in 0 until framesRead) {
+                        monoChunk[i] = if (selectRight) stereoChunk[i * 2 + 1] else stereoChunk[i * 2]
+                    }
+
+                    // Копируем в выходной буфер
+                    val copyLen = min(framesRead, totalMonoSamples - monoWritten)
+                    System.arraycopy(monoChunk, 0, monoBuffer, monoWritten, copyLen)
+
+                    // Стримим в визуализатор
+                    onSamples?.invoke(monoChunk, 0, framesRead)
+
+                    monoWritten += copyLen
                 }
+            } else {
+                // Mono fallback
+                while (isRecording && monoWritten < totalMonoSamples) {
+                    val toRead = min(4096, totalMonoSamples - monoWritten)
+                    val read = audioRecord?.read(monoBuffer, monoWritten, toRead, AudioRecord.READ_BLOCKING) ?: -1
 
-                // Стримим сэмплы в визуализатор (каждый чанк)
-                onSamples?.invoke(buffer, samplesRead, read)
+                    if (read <= 0) {
+                        Log.e(TAG, "AudioRecord.read failed: $read")
+                        break
+                    }
 
-                samplesRead += read
+                    onSamples?.invoke(monoBuffer, monoWritten, read)
+                    monoWritten += read
+                }
             }
         } finally {
             isRecording = false
@@ -140,7 +180,8 @@ class MeasurementAudioRecord(
             audioRecord = null
         }
 
-        return if (samplesRead > 0) buffer.copyOf(samplesRead) else null
+        Log.i(TAG, "Recorded $monoWritten mono samples (from ${if (isStereo) "stereo" else "mono"})")
+        return if (monoWritten > 0) monoBuffer.copyOf(monoWritten) else null
     }
 
     /** Остановить запись досрочно. */
@@ -162,27 +203,34 @@ class MeasurementAudioRecord(
         val devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS)
         val ar = audioRecord ?: return
 
+        // Все встроенные типы маршрутизируем на конкретный физический микрофон по address.
+        // Qualcomm HAL по умолчанию смешивает верхний + нижний в моно — setPreferredDevice
+        // принудительно выбирает один.
         val target: AudioDeviceInfo? = when (micType) {
             MicType.USB -> devices.firstOrNull {
                 it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET
             }
-            MicType.BUILTIN_BACK -> {
-                // Ищем встроенный микрофон с address="back"
-                devices.firstOrNull {
-                    it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC &&
-                    it.address?.contains("back", ignoreCase = true) == true
-                }
+            MicType.BUILTIN_BACK -> devices.firstOrNull {
+                (it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC) &&
+                it.address?.contains("back", ignoreCase = true) == true
             }
-            else -> null
+            MicType.BUILTIN_BOTTOM -> devices.firstOrNull {
+                (it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC) &&
+                it.address?.contains("bottom", ignoreCase = true) == true
+            }
+            // Для BUILTIN_UNPROCESSED и BUILTIN_MIC — выбираем нижний (основной) микрофон
+            MicType.BUILTIN_UNPROCESSED, MicType.BUILTIN_MIC -> devices.firstOrNull {
+                (it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC) &&
+                (it.address?.contains("bottom", ignoreCase = true) == true ||
+                 it.address.isNullOrBlank())
+            }
         }
 
         if (target != null) {
             val ok = ar.setPreferredDevice(target)
             Log.i(TAG, "Route to ${target.productName} (type=${target.type}, addr=${target.address}): $ok")
-        } else if (micType == MicType.USB) {
-            Log.w(TAG, "USB mic requested but no USB input device found")
-        } else if (micType == MicType.BUILTIN_BACK) {
-            Log.w(TAG, "Back mic requested but not found, using default")
+        } else {
+            Log.w(TAG, "No specific input device found for micType=$micType, using default (HAL may mix mics)")
         }
     }
 
@@ -207,7 +255,7 @@ class MeasurementAudioRecord(
                 ?: return result
 
             if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
-                result.add(MicType.BUILTIN_UNPROCESSED to "Встроенный микрофон")
+                result.add(MicType.BUILTIN_UNPROCESSED to "Built-in microphone")
                 return result
             }
 
@@ -220,11 +268,18 @@ class MeasurementAudioRecord(
             }
 
             if (hasUnprocessedSourceStatic()) {
-                result.add(MicType.BUILTIN_UNPROCESSED to "Встроенный (UNPROCESSED)")
+                result.add(MicType.BUILTIN_UNPROCESSED to "Built-in microphone — Bottom (Raw / Unprocessed)")
             }
-            result.add(MicType.BUILTIN_MIC to "Встроенный микрофон")
+            result.add(MicType.BUILTIN_MIC to "Built-in microphone — Bottom (Standard)")
             if (hasBack || devices.any { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC && it.address?.contains("back", ignoreCase = true) == true }) {
-                result.add(MicType.BUILTIN_BACK to "Задний микрофон")
+                result.add(MicType.BUILTIN_BACK to "Built-in microphone — Top / Rear (Raw / Unprocessed)")
+            }
+            // Нижний микрофон (явный выбор)
+            val hasBottom = builtInMics.any {
+                it.address?.contains("bottom", ignoreCase = true) == true
+            }
+            if (hasBottom) {
+                result.add(MicType.BUILTIN_BOTTOM to "Built-in microphone — Bottom (Explicit)")
             }
 
             // USB микрофоны
@@ -232,7 +287,7 @@ class MeasurementAudioRecord(
                 it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET
             }
             usbDevices.forEach { dev ->
-                val name = dev.productName?.toString() ?: "USB микрофон"
+                val name = dev.productName?.toString()?.ifBlank { "USB microphone" } ?: "USB microphone"
                 result.add(MicType.USB to name)
             }
 

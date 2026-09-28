@@ -23,6 +23,7 @@ object Constants {
     const val PREF_STEREOWIDE = "dsp_stereowide"
     const val PREF_TUBE = "dsp_tube"
     const val PREF_MEASUREMENT = "dsp_measurement"
+    const val PREF_SQUIG = "dsp_squig"
 
     // Default string values
     const val DEFAULT_CONVOLVER_ADVIMP = "-80;-100;0;0;0;0"

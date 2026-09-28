@@ -98,6 +98,10 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
                     R.xml.dsp_parametriceq_preferences
                 ))
             .replace(
+                R.id.card_squig, PreferenceGroupFragment.newInstance(Constants.PREF_SQUIG,
+                    R.xml.dsp_squig_preferences
+                ))
+            .replace(
                 R.id.card_geq, PreferenceGroupFragment.newInstance(Constants.PREF_GEQ,
                     R.xml.dsp_graphiceq_preferences
                 ))
@@ -182,6 +186,7 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
         // Output control (limiter) тоже не работает без capture loop
         binding.cardOutputControl.isVisible = !movieMode
         // Measurement (MEOW) бесполезен без capture loop
+        binding.cardSquig.isVisible = !movieMode
         binding.cardMeasurement.isVisible = !movieMode
     }
 

@@ -153,4 +153,11 @@
     <string name="key_limiter_threshold" translatable="false">limiter_threshold</string>
     <string name="key_limiter_release" translatable="false">limiter_release</string>
     <string name="key_output_postgain" translatable="false">output_postgain</string>
+
+    <!-- SquigLink -->
+    <string name="key_squiglink_instance" translatable="false">squiglink_instance</string>
+    <string name="key_squiglink_custom_url" translatable="false">squiglink_custom_url</string>
+    <string name="key_squiglink_default_target" translatable="false">squiglink_default_target</string>
+    <string name="key_squiglink_max_bands" translatable="false">squiglink_max_bands</string>
+    <string name="key_squiglink_normalize_hz" translatable="false">squiglink_normalize_hz</string>
 </resources>

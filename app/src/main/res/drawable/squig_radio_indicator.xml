@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Radio-индикатор для выбранного замера (как в preset-селекторе) -->
+<!-- activated state: заполненный круг, normal: пустой -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_activated="true">
+        <layer-list>
+            <!-- Внешнее кольцо -->
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@android:color/transparent" />
+                    <stroke android:width="2dp" android:color="?attr/colorPrimary" />
+                    <size android:width="20dp" android:height="20dp" />
+                </shape>
+            </item>
+            <!-- Внутренняя точка -->
+            <item android:gravity="center">
+                <shape android:shape="oval">
+                    <solid android:color="?attr/colorPrimary" />
+                    <size android:width="10dp" android:height="10dp" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@android:color/transparent" />
+            <stroke android:width="2dp" android:color="?attr/colorOnSurfaceVariant" />
+            <size android:width="20dp" android:height="20dp" />
+        </shape>
+    </item>
+</selector>

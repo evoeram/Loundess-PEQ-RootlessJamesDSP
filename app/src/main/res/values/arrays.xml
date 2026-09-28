@@ -441,4 +441,28 @@
         <item>spl0</item>
         <item>spl1</item>
     </string-array>
+
+    <!-- SquigLink instances -->
+    <string-array name="squiglink_instances">
+        <item>Super* Review</item>
+        <item>Hawaii Bad Boy</item>
+        <item>Custom</item>
+    </string-array>
+    <string-array name="squiglink_instance_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+    <string-array name="squiglink_targets">
+        <item>Super 22 Target</item>
+        <item>Harman IE 2019</item>
+        <item>IEF Comp</item>
+        <item>Flat</item>
+    </string-array>
+    <string-array name="squiglink_target_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
 </resources>

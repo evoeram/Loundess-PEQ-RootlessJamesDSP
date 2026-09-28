@@ -1,6 +1,28 @@
 package me.timschneeberger.rootlessjamesdsp.measurement
 
 /**
+ * Режим оконной обработки IR.
+ */
+enum class IrWindowMode(val nativeId: Int, val displayName: String) {
+    NONE(0, "No window"),
+    LEFT_RIGHT(1, "Tukey left + Hann right"),
+    HANN(2, "Hann"),
+    TUKEY(3, "Tukey")
+}
+
+/**
+ * Конфигурация деконволюции.
+ */
+data class DeconvConfig(
+    val normalizeIr: Boolean = true,
+    val windowMode: IrWindowMode = IrWindowMode.LEFT_RIGHT,
+    val maxIrLenMs: Int = 1000,
+    val arrivalThreshold: Double = 0.0,
+    val leftWindowMs: Int = 5,
+    val rightWindowPercent: Int = 10
+)
+
+/**
  * Нативный мост к C/NDK measurement engine (libmeasurement.so).
  *
  * Предоставляет:
@@ -45,8 +67,25 @@ class MeasurementNativeEngine {
      */
     external fun deconvolve(handle: Long, recorded: FloatArray, inverseFilter: FloatArray, sampleRate: Int): Int
 
+    /**
+     * Выполнить деконволюцию с расширенной конфигурацией.
+     *
+     * @param normalizeIr нормализовать IR к пику 1.0
+     * @param windowMode режим окон (0=none, 1=left Tukey+right Hann, 2=Hann, 3=Tukey)
+     * @param maxIrLenMs макс. длина IR в мс (0=без обрезки)
+     * @param arrivalThreshold порог поиска прямого звука (0=авто, >0=доля от пика)
+     * @param leftWindowMs левое Tukey окно в мс
+     * @param rightWindowPercent правое Hann окно в % от длины IR
+     * @return 0 при успехе, отрицательный код при ошибке.
+     */
+    external fun deconvolveEx(
+        handle: Long, recorded: FloatArray, inverseFilter: FloatArray, sampleRate: Int,
+        normalizeIr: Boolean, windowMode: Int, maxIrLenMs: Int,
+        arrivalThreshold: Double, leftWindowMs: Int, rightWindowPercent: Int
+    ): Int
+
     /** Получить импульсную характеристику как FloatArray. */
-    external fun getIr(handle: Long): FloatArray
+    external fun getIr(handle: Long): FloatArray?
 
     /**
      * Вычислить SPL и фазу из IR.
@@ -56,10 +95,10 @@ class MeasurementNativeEngine {
     external fun computeSpl(handle: Long, fftSize: Int): Int
 
     /** Получить массив частот (Гц) SPL-спектра. */
-    external fun getSplFrequencies(handle: Long): FloatArray
+    external fun getSplFrequencies(handle: Long): FloatArray?
 
     /** Получить массив SPL (дБ). */
-    external fun getSpl(handle: Long): FloatArray
+    external fun getSpl(handle: Long): FloatArray?
 
     /** Получить массив фазы (градусы). */
     external fun getSplPhase(handle: Long): FloatArray
@@ -77,6 +116,65 @@ class MeasurementNativeEngine {
      * @param type тип сглаживания (см. SmoothingType.nativeId)
      */
     external fun applySmoothingByType(handle: Long, type: Int)
+
+    /**
+     * Вычислить THD (Total Harmonic Distortion) из IR.
+     *
+     * Метод Фарины: после основного импульса в IR содержатся "harmonic IRs"
+     * на кратных частотах. THD(f) вычисляется как отношение энергии
+     * гармоник к энергии основного сигнала на каждой частоте.
+     *
+     * @return 0 при успехе, отрицательный код при ошибке.
+     */
+    external fun computeThd(handle: Long): Int
+
+    /**
+     * Получить массив THD (%) после computeThd.
+     * @return массив THD в процентах (0-100), null если не вычислено
+     */
+    external fun getThd(handle: Long): FloatArray?
+
+    /**
+     * Получить массив частот для THD.
+     * @return массив частот (Гц), null если не вычислено
+     */
+    external fun getThdFrequencies(handle: Long): FloatArray?
+
+    /**
+     * Вычислить RT60 (время реверберации) из IR методом Schroeder backward integration.
+     *
+     * RT60 — время, за которое энергия звукового сигнала падает на 60 дБ.
+     * Вычисляется per octave band.
+     *
+     * @return 0 при успехе, отрицательный код при ошибке.
+     */
+    external fun computeRt60(handle: Long): Int
+
+    /**
+     * Получить массив RT60 (секунды) после computeRt60.
+     * @return массив RT60 per octave band, null если не вычислено
+     */
+    external fun getRt60(handle: Long): FloatArray?
+
+    /**
+     * Получить массив центральных частот для RT60 (octave bands).
+     * @return массив частот (Гц), null если не вычислено
+     */
+    external fun getRt60Frequencies(handle: Long): FloatArray?
+
+    /**
+     * Вычислить group delay из фазы SPL.
+     *
+     * Group delay = -d(phase)/d(frequency), в секундах.
+     * @return 0 при успехе
+     */
+    external fun computeGroupDelay(handle: Long): Int
+
+    /**
+     * Получить массив group delay (секунды) после computeGroupDelay.
+     * @return массив group delay, null если не вычислено
+     */
+    external fun getGroupDelay(handle: Long): FloatArray?
 }
 
 /**
