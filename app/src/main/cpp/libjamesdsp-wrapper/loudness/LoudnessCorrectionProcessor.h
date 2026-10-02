@@ -73,6 +73,20 @@ public:
     void setEnabled(bool enabled);
     bool isEnabled() const { return enabled; }
 
+    // Set user-tunable shelf/contour parameters.
+    // Defaults match the original EqualizerAPO hardcoded values.
+    //   lsFreq     — low shelf center frequency (Hz, default 75)
+    //   lsSlope    — low shelf S slope (default 0.52)
+    //   lsRatio    — low shelf gain ratio (default 0.55)
+    //   hsFreq     — high shelf center frequency (Hz, default 10000)
+    //   hsSlope    — high shelf S slope (default 0.90)
+    //   hsRatio    — high shelf gain ratio (default 0.225)
+    //   isoBasePhon — ISO 226 base phon level (default 80)
+    //   isoQ       — ISO 226 peaking Q (default 4.318)
+    void setTuningParams(double lsFreq, double lsSlope, double lsRatio,
+                         double hsFreq, double hsSlope, double hsRatio,
+                         double isoBasePhon, double isoQ);
+
     // Process interleaved stereo float audio in-place.
     // Each frame is [L, R]. numFrames = number of frames (not samples).
     // Called from the audio thread, AFTER the main JamesDSP chain.
@@ -109,6 +123,16 @@ private:
     BiQuad lowShelfR;
     BiQuad highShelfL;
     BiQuad highShelfR;
+
+    // ---- User-tunable parameters (defaults match original hardcoded values) ----
+    double lsFreq;     // low shelf frequency (Hz)
+    double lsSlope;    // low shelf S slope
+    double lsRatio;    // low shelf gain ratio
+    double hsFreq;     // high shelf frequency (Hz)
+    double hsSlope;    // high shelf S slope
+    double hsRatio;    // high shelf gain ratio
+    double isoBasePhon; // ISO 226 base phon level
+    double isoQ;       // ISO 226 peaking Q
 
     // ---- ISO 226 mode: 29-band peaking EQ cascade ----
     BiQuad isoBandsL[ISO226_NUM_BANDS];

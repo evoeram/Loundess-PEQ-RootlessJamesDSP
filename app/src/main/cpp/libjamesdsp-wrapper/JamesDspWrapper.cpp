@@ -908,6 +908,29 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessCorr
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessTuning(
+    JNIEnv *env, jobject obj,
+    jlong self,
+    jdouble lsFreq, jdouble lsSlope, jdouble lsRatio,
+    jdouble hsFreq, jdouble hsSlope, jdouble hsRatio,
+    jdouble isoBasePhon, jdouble isoQ)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->loudnessCorrection == nullptr)
+        return false;
+
+    wrapper->loudnessCorrection->setTuningParams(
+        lsFreq, lsSlope, lsRatio,
+        hsFreq, hsSlope, hsRatio,
+        isoBasePhon, isoQ);
+
+    LOGD("JamesDspWrapper::setLoudnessTuning: lsFreq=%.0f, lsSlope=%.2f, lsRatio=%.2f, "
+         "hsFreq=%.0f, hsSlope=%.2f, hsRatio=%.3f, isoBasePhon=%.0f, isoQ=%.2f",
+         lsFreq, lsSlope, lsRatio, hsFreq, hsSlope, hsRatio, isoBasePhon, isoQ);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessCorrectionVolume(JNIEnv *env, jobject obj,
     jlong self, jdouble currentVolumeDb)
 {

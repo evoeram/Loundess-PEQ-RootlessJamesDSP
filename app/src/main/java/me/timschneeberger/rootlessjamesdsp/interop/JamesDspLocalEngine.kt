@@ -259,6 +259,18 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         return JamesDspWrapper.setLoudnessCorrectionVolume(handle, currentVolumeDb)
     }
 
+    override fun setLoudnessTuning(
+        lsFreq: Double, lsSlope: Double, lsRatio: Double,
+        hsFreq: Double, hsSlope: Double, hsRatio: Double,
+        isoBasePhon: Double, isoQ: Double
+    ): Boolean {
+        if (handle == 0L) return false
+        return JamesDspWrapper.setLoudnessTuning(
+            handle, lsFreq, lsSlope, lsRatio,
+            hsFreq, hsSlope, hsRatio, isoBasePhon, isoQ
+        )
+    }
+
     // ---- Auto system volume tracking ----
 
     private var volumeReceiverRegistered = false

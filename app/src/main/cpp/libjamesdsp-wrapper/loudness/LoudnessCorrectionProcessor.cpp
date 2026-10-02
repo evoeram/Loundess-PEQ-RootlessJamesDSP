@@ -26,6 +26,14 @@ LoudnessCorrectionProcessor::LoudnessCorrectionProcessor()
     , enabled(false)
     , attFactor(1.0)
     , neutral(true)
+    , lsFreq(75.0)
+    , lsSlope(0.52)
+    , lsRatio(0.55)
+    , hsFreq(10000.0)
+    , hsSlope(0.90)
+    , hsRatio(0.225)
+    , isoBasePhon(80.0)
+    , isoQ(4.318)
     , isoPreampLinear(1.0)
     , isoActiveBandCount(0)
 {
@@ -81,25 +89,40 @@ void LoudnessCorrectionProcessor::setEnabled(bool en)
     enabled = en;
 }
 
+void LoudnessCorrectionProcessor::setTuningParams(
+    double pLsFreq, double pLsSlope, double pLsRatio,
+    double pHsFreq, double pHsSlope, double pHsRatio,
+    double pIsoBasePhon, double pIsoQ)
+{
+    lsFreq     = (pLsFreq < 1.0)     ? 1.0     : pLsFreq;
+    lsSlope    = (pLsSlope < 0.05)   ? 0.05    : (pLsSlope > 1.0 ? 1.0 : pLsSlope);
+    lsRatio    = (pLsRatio < 0.0)    ? 0.0     : (pLsRatio > 1.0 ? 1.0 : pLsRatio);
+    hsFreq     = (pHsFreq < 1.0)     ? 1.0     : pHsFreq;
+    hsSlope    = (pHsSlope < 0.05)   ? 0.05    : (pHsSlope > 1.0 ? 1.0 : pHsSlope);
+    hsRatio    = (pHsRatio < 0.0)    ? 0.0     : (pHsRatio > 1.0 ? 1.0 : pHsRatio);
+    isoBasePhon = (pIsoBasePhon < 20.0) ? 20.0 : (pIsoBasePhon > 90.0 ? 90.0 : pIsoBasePhon);
+    isoQ       = (pIsoQ < 0.1)       ? 0.1    : (pIsoQ > 24.0 ? 24.0 : pIsoQ);
+    coeffsDirty.store(true, std::memory_order_release);
+}
+
 void LoudnessCorrectionProcessor::getLowShelfParams(double volume, double& freq,
                                                      double& s, double& gain,
                                                      double& preAmp)
 {
-    freq = 75.0;
-    s = 0.52;
+    freq = lsFreq;
+    s = lsSlope;
     double volDiff = referenceLevel - referenceOffset - volume;
     if (volDiff > 0.0)
     {
         // Below reference: boost bass.
-        // Original: gain = volDiff * 0.55 / (1 - 0.55) * attenuation
-        gain = volDiff * 0.55 / (1.0 - 0.55) * attenuation;
+        gain = volDiff * lsRatio / (1.0 - lsRatio) * attenuation;
         preAmp = -gain;
     }
     else if (volDiff < 0.0)
     {
         // Above reference: gentle bass cut.
         preAmp = 0.0;
-        gain = volDiff * 0.55 * std::exp(volDiff / 90.0) * attenuation;
+        gain = volDiff * lsRatio * std::exp(volDiff / 90.0) * attenuation;
     }
     else
     {
@@ -111,13 +134,13 @@ void LoudnessCorrectionProcessor::getLowShelfParams(double volume, double& freq,
 void LoudnessCorrectionProcessor::getHighShelfParams(double volume, double& freq,
                                                       double& s, double& gain)
 {
-    freq = 10000.0;
-    s = 0.9;
+    freq = hsFreq;
+    s = hsSlope;
     double volDiff = referenceLevel - referenceOffset - volume;
     if (volDiff > 0.0)
     {
         // Below reference: boost treble (less aggressive than bass).
-        gain = volDiff * 0.225 * std::exp(-volDiff / 100.0) * attenuation;
+        gain = volDiff * hsRatio * std::exp(-volDiff / 100.0) * attenuation;
     }
     else if (volDiff < 0.0)
     {
@@ -153,9 +176,9 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
         }
         neutral = maxAbs < 0.2;
 
-        // Build peaking biquads for each band.
-        // Q for 1/3-octave bands: Q = sqrt(2^(1/3)) / (2^(1/3) - 1) ≈ 4.318
-        const double qThirdOctave = 4.318;
+        /* Build peaking biquads for each band */
+        /* Q for 1/3-octave: Q = sqrt(2^(1/3)) / (2^(1/3) - 1) ≈ 4.318 */
+        const double qThirdOctave = isoQ;
         double nyquist = sampleRate * 0.5;
 
         isoActiveBandCount = 0;
@@ -391,7 +414,7 @@ double LoudnessCorrectionProcessor::computeIso226Gains(double volume,
     // When volDiff = 0 (at reference level), refPhon = curPhon → no correction.
     // When volDiff > 0 (below reference), curPhon < refPhon → boost bass/treble.
 
-    const double basePhon = 80.0;
+    const double basePhon = isoBasePhon;
     double volDiff = referenceLevel - referenceOffset - volume;
     double refPhon = basePhon;
     double curPhon = basePhon - volDiff;

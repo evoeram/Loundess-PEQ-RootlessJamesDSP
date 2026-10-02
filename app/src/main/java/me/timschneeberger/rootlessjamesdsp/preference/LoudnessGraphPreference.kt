@@ -126,7 +126,18 @@ class LoudnessGraphPreference : Preference, SharedPreferences.OnSharedPreference
             prefs.getFloat(context.getString(R.string.key_loudness_volume), 0f).toDouble()
         }
 
-        val result = LoudnessCurveCalculator.compute(mode, refLevel, refOffset, attenuation, volume)
+        val tuning = LoudnessCurveCalculator.TuningParams(
+            lsFreq = prefs.getFloat(context.getString(R.string.key_loudness_ls_freq), 75f).toDouble(),
+            lsSlope = prefs.getFloat(context.getString(R.string.key_loudness_ls_slope), 52f).toDouble() / 100.0,
+            lsRatio = prefs.getFloat(context.getString(R.string.key_loudness_ls_ratio), 55f).toDouble() / 100.0,
+            hsFreq = prefs.getFloat(context.getString(R.string.key_loudness_hs_freq), 10000f).toDouble(),
+            hsSlope = prefs.getFloat(context.getString(R.string.key_loudness_hs_slope), 90f).toDouble() / 100.0,
+            hsRatio = prefs.getFloat(context.getString(R.string.key_loudness_hs_ratio), 225f).toDouble() / 1000.0,
+            isoBasePhon = prefs.getFloat(context.getString(R.string.key_loudness_iso_base_phon), 80f).toDouble(),
+            isoQ = prefs.getFloat(context.getString(R.string.key_loudness_iso_q), 432f).toDouble() / 100.0
+        )
+
+        val result = LoudnessCurveCalculator.compute(mode, refLevel, refOffset, attenuation, volume, tuning)
         s.setCurve(result.frequencies, result.gains, result.preampDb)
     }
 

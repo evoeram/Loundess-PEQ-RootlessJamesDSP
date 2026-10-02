@@ -136,6 +136,15 @@
     <string name="loudness_calibrate_stop_noise">Остановить шум</string>
     <string name="loudness_calibrate_apply">Применить значение SPL</string>
     <string name="loudness_calibrate_manual_warning">Воспроизведите розовый шум через колонки, измерьте SPL внешним прибором в позиции прослушивания, затем введите значение ниже.</string>
+    <string name="loudness_tuning_category">Тонкая настройка</string>
+    <string name="loudness_ls_freq">Частота нижнего шелфа</string>
+    <string name="loudness_ls_slope">Наклон нижнего шелфа (S)</string>
+    <string name="loudness_ls_ratio">Коэффициент усиления нижнего шелфа</string>
+    <string name="loudness_hs_freq">Частота верхнего шелфа</string>
+    <string name="loudness_hs_slope">Наклон верхнего шелфа (S)</string>
+    <string name="loudness_hs_ratio">Коэффициент усиления верхнего шелфа</string>
+    <string name="loudness_iso_base_phon">Базовый уровень фон (ISO 226)</string>
+    <string name="loudness_iso_q">Добротность полос (ISO 226 Q)</string>
     <string name="bass_enable">Динамическое усиление баса</string>
     <string name="bass_max_gain">Уровень усиления</string>
     <string name="reverb_enable">Эффект виртуальной комнаты</string>

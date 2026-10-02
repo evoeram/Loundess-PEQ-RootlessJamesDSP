@@ -74,6 +74,14 @@ object JamesDspWrapper {
         currentVolumeDb: Double
     ): Boolean
 
+    // Set user-tunable loudness shelf/contour parameters.
+    external fun setLoudnessTuning(
+        self: JamesDspHandle,
+        lsFreq: Double, lsSlope: Double, lsRatio: Double,
+        hsFreq: Double, hsSlope: Double, hsRatio: Double,
+        isoBasePhon: Double, isoQ: Double
+    ): Boolean
+
     // EEL VM utilities
     external fun enumerateEelVariables(self: JamesDspHandle): ArrayList<EelVmVariable>
     external fun manipulateEelVariable(self: JamesDspHandle, name: String, value: Float): Boolean

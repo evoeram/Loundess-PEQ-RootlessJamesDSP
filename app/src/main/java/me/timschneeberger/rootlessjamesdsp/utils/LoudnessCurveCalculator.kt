@@ -44,8 +44,6 @@ object LoudnessCurveCalculator {
         -1.3, -4.2, -6.0, -5.4, -1.5, 6.0, 12.6, 13.9, 12.3
     )
 
-    private const val BASE_PHON = 80.0
-
     data class CurveResult(
         val frequencies: DoubleArray,
         val gains: DoubleArray,
@@ -60,6 +58,7 @@ object LoudnessCurveCalculator {
      * @param referenceOffset user reference offset (dB)
      * @param attenuation correction strength [0..2]
      * @param volumeDb current playback volume (dB)
+     * @param tuning user-tunable shelf/contour parameters (null = defaults)
      * @param numPoints resolution of the output curve
      * @return curve result with frequencies and gains in dB
      */
@@ -69,8 +68,10 @@ object LoudnessCurveCalculator {
         referenceOffset: Double,
         attenuation: Double,
         volumeDb: Double,
+        tuning: TuningParams? = null,
         numPoints: Int = 200
     ): CurveResult {
+        val t = tuning ?: TuningParams()
         val att = attenuation.coerceIn(0.0, 2.0)
         val volDiff = referenceLevel - referenceOffset - volumeDb
 
@@ -82,37 +83,46 @@ object LoudnessCurveCalculator {
         }
 
         return if (mode == 1) {
-            computeIso226(volDiff, att, numPoints)
+            computeIso226(volDiff, att, t, numPoints)
         } else {
-            computeClassic(volDiff, att, numPoints)
+            computeClassic(volDiff, att, t, numPoints)
         }
     }
 
+    /** User-tunable shelf/contour parameters. Defaults match original hardcoded values. */
+    data class TuningParams(
+        val lsFreq: Double = 75.0,
+        val lsSlope: Double = 0.52,
+        val lsRatio: Double = 0.55,
+        val hsFreq: Double = 10000.0,
+        val hsSlope: Double = 0.90,
+        val hsRatio: Double = 0.225,
+        val isoBasePhon: Double = 80.0,
+        val isoQ: Double = 4.318
+    )
+
     // ---- Classic mode (Fletcher-Munson two-shelf) ----
 
-    private fun computeClassic(volDiff: Double, att: Double, numPoints: Int): CurveResult {
+    private fun computeClassic(volDiff: Double, att: Double, t: TuningParams, numPoints: Int): CurveResult {
         val freqs = logSpace(20.0, 20000.0, numPoints)
         val gains = DoubleArray(numPoints)
 
         // Low shelf params (mirrors C++ getLowShelfParams)
-        val lsFreq = 75.0
-        val lsS = 0.52
+        val lsFreq = t.lsFreq
+        val lsS = t.lsSlope
         var lsGain = 0.0
         var preAmp = 0.0
 
         if (volDiff > 0.0) {
-            lsGain = volDiff * 0.55 / (1.0 - 0.55) * att
+            lsGain = volDiff * t.lsRatio / (1.0 - t.lsRatio) * att
             preAmp = -lsGain
         } else if (volDiff < 0.0) {
-            lsGain = volDiff * 0.55 * kotlin.math.exp(volDiff / 90.0) * att
+            lsGain = volDiff * t.lsRatio * kotlin.math.exp(volDiff / 90.0) * att
         }
 
         // High shelf params (mirrors C++ getHighShelfParams)
-        // C++ calls getHighShelfParams(volume + preAmp), which inside computes
-        // volDiff = referenceLevel - referenceOffset - (volume + preAmp)
-        //          = volDiff_original - preAmp
-        val hsFreq = 10000.0
-        val hsS = 0.9
+        val hsFreq = t.hsFreq
+        val hsS = t.hsSlope
         val hsVol = volDiff - preAmp
         var hsGain = 0.0
 
@@ -159,9 +169,9 @@ object LoudnessCurveCalculator {
 
     // ---- ISO 226:2023 mode ----
 
-    private fun computeIso226(volDiff: Double, att: Double, numPoints: Int): CurveResult {
-        val refPhon = BASE_PHON
-        val curPhon = (BASE_PHON - volDiff).coerceIn(20.0, 90.0)
+    private fun computeIso226(volDiff: Double, att: Double, t: TuningParams, numPoints: Int): CurveResult {
+        val refPhon = t.isoBasePhon
+        val curPhon = (t.isoBasePhon - volDiff).coerceIn(20.0, 90.0)
 
         // Compute gains at 29 ISO frequencies
         val isoGains = DoubleArray(isoFreqs.size)

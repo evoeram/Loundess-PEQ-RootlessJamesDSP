@@ -124,6 +124,15 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val loudnessVolume = cache.get(R.string.key_loudness_volume, 0f)
             val loudnessAutoVolume = cache.get(R.string.key_loudness_auto_volume, false)
             val loudnessMode = cache.get(R.string.key_loudness_mode, "0").toInt()
+            // Tunable shelf/contour parameters (defaults match original hardcoded values)
+            val lsFreq = cache.get(R.string.key_loudness_ls_freq, 75f).toDouble()
+            val lsSlope = cache.get(R.string.key_loudness_ls_slope, 52f).toDouble() / 100.0
+            val lsRatio = cache.get(R.string.key_loudness_ls_ratio, 55f).toDouble() / 100.0
+            val hsFreq = cache.get(R.string.key_loudness_hs_freq, 10000f).toDouble()
+            val hsSlope = cache.get(R.string.key_loudness_hs_slope, 90f).toDouble() / 100.0
+            val hsRatio = cache.get(R.string.key_loudness_hs_ratio, 225f).toDouble() / 1000.0
+            val isoBasePhon = cache.get(R.string.key_loudness_iso_base_phon, 80f).toDouble()
+            val isoQ = cache.get(R.string.key_loudness_iso_q, 432f).toDouble() / 100.0
 
             cache.select(Constants.PREF_CONVOLVER)
             val convolverEnabled = cache.get(R.string.key_convolver_enable, false)
@@ -170,6 +179,12 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                     Constants.PREF_LIVEPROG -> setLiveprog(liveProgEnabled, liveprogFile)
                     Constants.PREF_LOUDNESS -> {
                         if (supportsLoudnessCorrection()) {
+                            // Apply user-tunable shelf/contour parameters
+                            setLoudnessTuning(
+                                lsFreq, lsSlope, lsRatio,
+                                hsFreq, hsSlope, hsRatio,
+                                isoBasePhon, isoQ
+                            )
                             // Enable/disable system volume tracking
                             setLoudnessAutoVolume(loudnessEnabled && loudnessAutoVolume)
                             // Determine the effective volume: auto-tracked or manual
@@ -536,6 +551,13 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
     // Push a volume-only update without full reconfiguration.
     open fun setLoudnessCorrectionVolume(currentVolumeDb: Double): Boolean = false
+
+    // Set user-tunable loudness shelf/contour parameters.
+    open fun setLoudnessTuning(
+        lsFreq: Double, lsSlope: Double, lsRatio: Double,
+        hsFreq: Double, hsSlope: Double, hsRatio: Double,
+        isoBasePhon: Double, isoQ: Double
+    ): Boolean = false
 
     // Enable/disable automatic system media volume tracking for loudness correction.
     open fun setLoudnessAutoVolume(enable: Boolean) {}

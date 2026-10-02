@@ -150,6 +150,14 @@
     <string name="key_loudness_volume" translatable="false">loudness_volume</string>
     <string name="key_loudness_auto_volume" translatable="false">loudness_auto_volume</string>
     <string name="key_loudness_mode" translatable="false">loudness_mode</string>
+    <string name="key_loudness_ls_freq" translatable="false">loudness_ls_freq</string>
+    <string name="key_loudness_ls_slope" translatable="false">loudness_ls_slope</string>
+    <string name="key_loudness_ls_ratio" translatable="false">loudness_ls_ratio</string>
+    <string name="key_loudness_hs_freq" translatable="false">loudness_hs_freq</string>
+    <string name="key_loudness_hs_slope" translatable="false">loudness_hs_slope</string>
+    <string name="key_loudness_hs_ratio" translatable="false">loudness_hs_ratio</string>
+    <string name="key_loudness_iso_base_phon" translatable="false">loudness_iso_base_phon</string>
+    <string name="key_loudness_iso_q" translatable="false">loudness_iso_q</string>
 
     <string name="key_limiter_threshold" translatable="false">limiter_threshold</string>
     <string name="key_limiter_release" translatable="false">limiter_release</string>

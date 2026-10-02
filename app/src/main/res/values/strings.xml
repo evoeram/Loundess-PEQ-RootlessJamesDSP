@@ -203,6 +203,15 @@
     <string name="loudness_calibrate_stop_noise">Stop noise</string>
     <string name="loudness_calibrate_apply">Apply SPL value</string>
     <string name="loudness_calibrate_manual_warning">Play pink noise through your speakers, measure SPL with an external meter at your listening position, then enter the value below.</string>
+    <string name="loudness_tuning_category">Advanced tuning</string>
+    <string name="loudness_ls_freq">Low shelf frequency</string>
+    <string name="loudness_ls_slope">Low shelf slope (S)</string>
+    <string name="loudness_ls_ratio">Low shelf gain ratio</string>
+    <string name="loudness_hs_freq">High shelf frequency</string>
+    <string name="loudness_hs_slope">High shelf slope (S)</string>
+    <string name="loudness_hs_ratio">High shelf gain ratio</string>
+    <string name="loudness_iso_base_phon">ISO 226 base phon level</string>
+    <string name="loudness_iso_q">ISO 226 band Q</string>
 
     <string name="geq_enable">Arbitrary response equalizer</string>
     <string name="geq_nodes">Magnitude response</string>

@@ -344,6 +344,20 @@ class JamesDspRemoteEngine(
         return effect.setParameterFloatArray(1302, floatArrayOf(currentVolumeDb.toFloat())) == AudioEffect.SUCCESS
     }
 
+    override fun setLoudnessTuning(
+        lsFreq: Double, lsSlope: Double, lsRatio: Double,
+        hsFreq: Double, hsSlope: Double, hsRatio: Double,
+        isoBasePhon: Double, isoQ: Double
+    ): Boolean {
+        // 8 floats: lsFreq, lsSlope, lsRatio, hsFreq, hsSlope, hsRatio, isoBasePhon, isoQ
+        val data = floatArrayOf(
+            lsFreq.toFloat(), lsSlope.toFloat(), lsRatio.toFloat(),
+            hsFreq.toFloat(), hsSlope.toFloat(), hsRatio.toFloat(),
+            isoBasePhon.toFloat(), isoQ.toFloat()
+        )
+        return effect.setParameterFloatArray(1303, data) == AudioEffect.SUCCESS
+    }
+
     // ---- Auto system volume tracking (root/remote engine) ----
 
     private var volumeReceiverRegistered = false
