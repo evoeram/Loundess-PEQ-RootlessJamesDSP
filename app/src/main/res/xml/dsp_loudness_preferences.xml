@@ -8,6 +8,17 @@
         android:summary="@string/loudness_summary"
         android:icon="@drawable/ic_twotone_volume_up_24dp"
         app:iconSpaceReserved="false">
+        <me.timschneeberger.rootlessjamesdsp.preference.LoudnessGraphPreference
+            android:key="loudness_graph"
+            app:iconSpaceReserved="false"/>
+        <ListPreference
+            android:key="@string/key_loudness_mode"
+            android:title="@string/loudness_mode"
+            android:defaultValue="0"
+            android:entries="@array/loudness_modes"
+            android:entryValues="@array/loudness_modes_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false"/>
         <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
             android:key="@string/key_loudness_reference_level"
             android:title="@string/loudness_reference_level"

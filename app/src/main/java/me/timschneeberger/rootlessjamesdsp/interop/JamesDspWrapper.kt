@@ -55,6 +55,7 @@ object JamesDspWrapper {
     ): Boolean
 
     // Loudness correction (Fletcher-Munson compensation, ported from EqualizerAPO)
+    // mode: 0 = classic (Fletcher-Munson two-shelf), 1 = ISO 226:2023 (29-band)
     external fun setLoudnessCorrection(
         self: JamesDspHandle,
         enable: Boolean,
@@ -62,7 +63,8 @@ object JamesDspWrapper {
         referenceLevel: Double,
         referenceOffset: Double,
         attenuation: Double,
-        currentVolumeDb: Double
+        currentVolumeDb: Double,
+        mode: Int
     ): Boolean
 
     // Update only the current playback volume (dB) without reconfiguring.

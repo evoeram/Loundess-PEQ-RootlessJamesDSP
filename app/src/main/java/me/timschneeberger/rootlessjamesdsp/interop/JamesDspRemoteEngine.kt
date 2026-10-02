@@ -315,21 +315,25 @@ class JamesDspRemoteEngine(
 
     // Loudness correction via AudioEffect parameter API.
     // Sends configuration to the system effect (jamesdsp.c) which applies
-    // Fletcher-Munson compensation after the main JamesDSP chain.
+    // Fletcher-Munson or ISO 226:2023 compensation after the main JamesDSP chain.
+    // mode: 0 = classic (Fletcher-Munson), 1 = ISO 226:2023 (29-band)
     override fun setLoudnessCorrection(
         enable: Boolean,
         sampleRate: Double,
         referenceLevel: Double,
         referenceOffset: Double,
         attenuation: Double,
-        currentVolumeDb: Double
+        currentVolumeDb: Double,
+        mode: Int
     ): Boolean {
+        // 6 floats: sampleRate, refLevel, refOffset, attenuation, volume, mode
         val data = floatArrayOf(
             sampleRate.toFloat(),
             referenceLevel.toFloat(),
             referenceOffset.toFloat(),
             attenuation.toFloat(),
-            currentVolumeDb.toFloat()
+            currentVolumeDb.toFloat(),
+            mode.toFloat()
         )
         val configResult = effect.setParameterFloatArray(1301, data) == AudioEffect.SUCCESS
         val enableResult = effect.setParameter(1215, enable.toShort()) == AudioEffect.SUCCESS

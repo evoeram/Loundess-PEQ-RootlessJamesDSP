@@ -123,6 +123,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val loudnessAttenuation = cache.get(R.string.key_loudness_attenuation, 100f) / 100f
             val loudnessVolume = cache.get(R.string.key_loudness_volume, 0f)
             val loudnessAutoVolume = cache.get(R.string.key_loudness_auto_volume, false)
+            val loudnessMode = cache.get(R.string.key_loudness_mode, "0").toInt()
 
             cache.select(Constants.PREF_CONVOLVER)
             val convolverEnabled = cache.get(R.string.key_convolver_enable, false)
@@ -177,7 +178,8 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                             setLoudnessCorrection(
                                 loudnessEnabled, sampleRate.toDouble(),
                                 loudnessRefLevel.toDouble(), loudnessRefOffset.toDouble(),
-                                loudnessAttenuation.toDouble(), effectiveVolume
+                                loudnessAttenuation.toDouble(), effectiveVolume,
+                                loudnessMode
                             )
                         } else {
                             true
@@ -521,13 +523,15 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
     ): Boolean
 
     // Loudness correction (Fletcher-Munson compensation, local engine only)
+    // mode: 0 = classic (Fletcher-Munson two-shelf), 1 = ISO 226:2023 (29-band)
     abstract fun setLoudnessCorrection(
         enable: Boolean,
         sampleRate: Double,
         referenceLevel: Double,
         referenceOffset: Double,
         attenuation: Double,
-        currentVolumeDb: Double
+        currentVolumeDb: Double,
+        mode: Int
     ): Boolean
 
     // Push a volume-only update without full reconfiguration.

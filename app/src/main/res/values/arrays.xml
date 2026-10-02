@@ -179,6 +179,15 @@
         <item>5</item>
     </string-array>
 
+    <string-array name="loudness_modes" translatable="false">
+        <item>@string/loudness_mode_classic</item>
+        <item>@string/loudness_mode_iso226</item>
+    </string-array>
+    <string-array name="loudness_modes_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+    </string-array>
+
     <string-array name="compander_tf_transforms" translatable="false">
         <item>@string/compander_tftransforms_stft</item>
         <item>@string/compander_tftransforms_continuous_wavelet</item>

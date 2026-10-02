@@ -113,6 +113,9 @@
     <string name="loudness_volume">Текущая громкость</string>
     <string name="loudness_auto_volume">Отслеживать системную громкость</string>
     <string name="loudness_auto_volume_summary">Автоматически использовать системную громкость вместо ручного ползунка</string>
+    <string name="loudness_mode">Режим компенсации</string>
+    <string name="loudness_mode_classic">Классический (Флетчер-Мэнсон)</string>
+    <string name="loudness_mode_iso226">ISO 226:2023 (29 полос)</string>
     <string name="loudness_summary">Компенсация по Флетчеру-Мэнсону: усиление НЧ и ВЧ при низкой громкости прослушивания</string>
     <string name="loudness_calibrate">Автокалибровка по микрофону</string>
     <string name="loudness_calibrate_summary">Воспроизвести розовый шум и измерить SPL через микрофон для установки опорного уровня</string>
@@ -681,6 +684,18 @@
     <string name="squig_autoeq_cfg_range_start">Начало диапазона (Гц)</string>
     <string name="squig_autoeq_cfg_range_end">Конец диапазона (Гц)</string>
     <string name="squig_autoeq_cfg_nelder_mead">Оптимизация Nelder-Mead</string>
+    <string name="squig_cache_menu">Офлайн-кэш</string>
+    <string name="squig_cache_dump">Скачать все инстансы (для офлайна)</string>
+    <string name="squig_cache_freshness">Проверить актуальность</string>
+    <string name="squig_cache_clear">Очистить кэш (%1$s)</string>
+    <string name="squig_cache_dump_title">Скачать все инстансы</string>
+    <string name="squig_cache_dump_progress">%1$s (%2$d/%3$d)</string>
+    <string name="squig_cache_dump_done">Готово: %1$s</string>
+    <string name="squig_cache_dump_failed">Ошибка: %1$s</string>
+    <string name="squig_cache_freshness_title">Актуальность кэша</string>
+    <string name="squig_cache_clear_title">Очистить кэш</string>
+    <string name="squig_cache_clear_msg">Удалить все кэшированные данные SquigLink? (%1$s)</string>
+    <string name="squig_cache_cleared">Кэш очищен</string>
     <string name="peq_live_eq_add">Добавить</string>
     <string name="peq_live_eq_delete">Удалить</string>
 </resources>

@@ -180,6 +180,9 @@
     <string name="loudness_volume">Current volume</string>
     <string name="loudness_auto_volume">Track system volume</string>
     <string name="loudness_auto_volume_summary">Automatically use the system media volume instead of the manual slider</string>
+    <string name="loudness_mode">Compensation mode</string>
+    <string name="loudness_mode_classic">Classic (Fletcher-Munson)</string>
+    <string name="loudness_mode_iso226">ISO 226:2023 (29-band)</string>
     <string name="loudness_summary">Fletcher-Munson loudness compensation: boosts bass and treble at low listening volumes</string>
     <string name="loudness_calibrate">Auto-calibrate with microphone</string>
     <string name="loudness_calibrate_summary">Play pink noise and measure SPL via microphone to set reference level</string>
@@ -921,4 +924,16 @@ Please press \'Continue\' below to re-do the setup wizard.</string>
     <string name="squig_autoeq_cfg_range_start">Match range start (Hz)</string>
     <string name="squig_autoeq_cfg_range_end">Match range end (Hz)</string>
     <string name="squig_autoeq_cfg_nelder_mead">Nelder-Mead optimization</string>
+    <string name="squig_cache_menu">Offline cache</string>
+    <string name="squig_cache_dump">Dump all instances (download for offline)</string>
+    <string name="squig_cache_freshness">Check freshness</string>
+    <string name="squig_cache_clear">Clear cache (%1$s)</string>
+    <string name="squig_cache_dump_title">Dump all instances</string>
+    <string name="squig_cache_dump_progress">%1$s (%2$d/%3$d)</string>
+    <string name="squig_cache_dump_done">Dump complete: %1$s</string>
+    <string name="squig_cache_dump_failed">Dump failed: %1$s</string>
+    <string name="squig_cache_freshness_title">Cache Freshness</string>
+    <string name="squig_cache_clear_title">Clear Cache</string>
+    <string name="squig_cache_clear_msg">Delete all cached SquigLink data? (%1$s)</string>
+    <string name="squig_cache_cleared">Cache cleared</string>
 </resources>

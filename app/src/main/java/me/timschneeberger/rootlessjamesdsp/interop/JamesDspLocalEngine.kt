@@ -237,7 +237,8 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         referenceLevel: Double,
         referenceOffset: Double,
         attenuation: Double,
-        currentVolumeDb: Double
+        currentVolumeDb: Double,
+        mode: Int
     ): Boolean {
         // Biquad coefficients depend on sample rate; applying with sr=0 produces
         // invalid coefficients (division by zero) and silences audio. Skip until
@@ -249,7 +250,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
 
         return JamesDspWrapper.setLoudnessCorrection(
             handle, enable, sampleRate,
-            referenceLevel, referenceOffset, attenuation, currentVolumeDb
+            referenceLevel, referenceOffset, attenuation, currentVolumeDb, mode
         )
     }
 

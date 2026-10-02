@@ -391,6 +391,59 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
         }
     }
 
+    /**
+     * Suspend-версия loadDatabase с offline fallback.
+     *
+     * Сначала пытается загрузить с сервера. При успехе — кэширует в постоянное хранилище.
+     * При неудаче — пытается вернуть кэшированные данные (даже если устаревшие).
+     *
+     * @param instance инстанс для ключа кэша
+     * @return список брендов
+     * @throws Exception если нет сети и нет кэша
+     */
+    suspend fun loadDatabaseWithCache(instance: SquigLinkInstance): List<SquigLinkBrand> {
+        return try {
+            val brands = loadDatabaseAsync()
+            SquigLinkCacheManager.savePhoneBook(instance, brands)
+            Timber.d("loadDatabaseWithCache: loaded from network, cached ${brands.size} brands")
+            brands
+        } catch (e: Exception) {
+            val cached = SquigLinkCacheManager.loadPhoneBook(instance)
+            if (cached != null) {
+                Timber.w("loadDatabaseWithCache: network failed, using cached (${cached.size} brands): ${e.message}")
+                cached
+            } else {
+                throw e
+            }
+        }
+    }
+
+    /**
+     * Suspend-загрузка raw TSV целевой кривой (для кэширования).
+     * Возвращает raw TSV строку или null при ошибке.
+     */
+    suspend fun loadTargetCurveRawAsync(targetName: String): String? = suspendCancellableCoroutine { cont ->
+        Timber.d("loadTargetCurveRawAsync: загрузка $targetName")
+        val call = service.getFrequencyResponse(instance.fullDataPath, targetName)
+        call.enqueue(object : Callback<String> {
+            override fun onResponse(call: Call<String>, response: Response<String>) {
+                if (response.code() == 200) {
+                    val tsv = response.body()
+                    if (tsvValid(tsv)) {
+                        cont.resume(tsv)
+                    } else {
+                        cont.resume(null)
+                    }
+                } else {
+                    cont.resume(null)
+                }
+            }
+            override fun onFailure(call: Call<String>, t: Throwable) {
+                cont.resume(null)
+            }
+        })
+    }
+
     /** Suspend-версия loadFrequencyResponse: возвращает FR или бросает Exception. */
     suspend fun loadFrequencyResponseAsync(
         phone: SquigLinkPhone,
@@ -420,4 +473,84 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
                 }
             }
         }
+
+    // ── Offline-cache-aware methods ───────────────────────────────────────
+
+    /**
+     * Загрузка squigsites.json с offline fallback.
+     * Сначала пытается загрузить с сервера. При успехе — кэширует.
+     * При неудаче — возвращает кэшированные данные.
+     *
+     * @return список SquigSite или бросает Exception если нет сети и нет кэша
+     */
+    suspend fun loadSquigSitesWithCache(): List<SquigSite> {
+        return try {
+            val sites = loadSquigSitesAsync()
+            SquigLinkCacheManager.saveSquigSites(sites)
+            Timber.d("loadSquigSitesWithCache: loaded from network, cached ${sites.size} sites")
+            sites
+        } catch (e: Exception) {
+            val cached = SquigLinkCacheManager.loadSquigSites()
+            if (cached != null) {
+                Timber.w("loadSquigSitesWithCache: network failed, using cached (${cached.size} sites): ${e.message}")
+                cached
+            } else {
+                throw e
+            }
+        }
+    }
+
+    /**
+     * Загрузка списка target curves с offline fallback.
+     * Сначала пытается загрузить config.js с сервера. При успехе — кэширует.
+     * При неудаче — возвращает кэшированные данные.
+     *
+     * @param instance инстанс для ключа кэша
+     * @return список имён target curves или бросает Exception если нет сети и нет кэша
+     */
+    suspend fun loadTargetCurvesWithCache(instance: SquigLinkInstance): List<String> {
+        return try {
+            val curves = loadTargetCurvesAsync()
+            SquigLinkCacheManager.saveTargetCurveNames(instance, curves)
+            Timber.d("loadTargetCurvesWithCache: loaded from network, cached ${curves.size} curves")
+            curves
+        } catch (e: Exception) {
+            val cached = SquigLinkCacheManager.loadTargetCurveNames(instance)
+            if (cached != null) {
+                Timber.w("loadTargetCurvesWithCache: network failed, using cached (${cached.size} curves): ${e.message}")
+                cached
+            } else {
+                throw e
+            }
+        }
+    }
+
+    /**
+     * Загрузка целевой кривой с offline fallback.
+     * Сначала пытается загрузить TSV с сервера. При успехе — кэширует.
+     * При неудаче — парсит кэшированный TSV.
+     *
+     * @param targetName имя целевой кривой
+     * @param instance инстанс для ключа кэша
+     * @return FrequencyResponse или бросает Exception если нет сети и нет кэша
+     */
+    suspend fun loadTargetCurveWithCache(
+        targetName: String,
+        instance: SquigLinkInstance
+    ): FrequencyResponse {
+        // Try network first
+        val rawTsv = loadTargetCurveRawAsync(targetName)
+        if (rawTsv != null) {
+            SquigLinkCacheManager.saveTargetCurve(instance, targetName, rawTsv)
+            Timber.d("loadTargetCurveWithCache: loaded from network, cached '$targetName'")
+            return SquigLinkParser.parseFrequencyResponse(rawTsv)
+        }
+        // Fallback to cache
+        val cachedTsv = SquigLinkCacheManager.loadTargetCurve(instance, targetName)
+        if (cachedTsv != null) {
+            Timber.w("loadTargetCurveWithCache: network failed, using cached '$targetName'")
+            return SquigLinkParser.parseFrequencyResponse(cachedTsv)
+        }
+        throw Exception("No network and no cached data for target '$targetName'")
+    }
 }

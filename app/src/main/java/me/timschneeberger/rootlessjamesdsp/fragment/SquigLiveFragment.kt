@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.adapter.SquigPhoneAdapter
+import me.timschneeberger.rootlessjamesdsp.api.SquigLinkCacheManager
 import me.timschneeberger.rootlessjamesdsp.api.SquigLinkClient
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
@@ -163,6 +164,9 @@ class SquigLiveFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // Initialize offline cache manager
+        SquigLinkCacheManager.init(requireContext().applicationContext)
+
         // Привязка UI элементов из XML
         instanceSpinner = view.findViewById(R.id.instanceSpinner)
         targetSpinner = view.findViewById(R.id.targetSpinner)
@@ -179,6 +183,10 @@ class SquigLiveFragment : Fragment() {
         liveEqButton = view.findViewById(R.id.liveEqButton)
         applyButton = view.findViewById(R.id.applyButton)
         resetButton = view.findViewById(R.id.resetButton)
+
+        // Offline cache button
+        view.findViewById<com.google.android.material.button.MaterialButton>(R.id.cacheButton)
+            ?.setOnClickListener { showCacheMenu() }
 
         // Живой поиск: TextWatcher с debounce 350ms
         searchInput.addTextChangedListener(object : TextWatcher {
@@ -251,6 +259,7 @@ class SquigLiveFragment : Fragment() {
 
         setupInstanceSpinner()
         setupTargetSpinner()
+
         loadSquigSites()
         loadTargetCurves()
         loadDatabase()
@@ -260,66 +269,58 @@ class SquigLiveFragment : Fragment() {
 
     /**
      * Загрузка каталога squigsites.json — список всех инстансов.
-     * Грузится с squig.link/squigsites.json?squig
-     * При неудаче используется fallback DEFAULT список.
+     * Использует offline cache: при отсутствии сети — кэшированные данные.
      */
     private fun loadSquigSites() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val sites = currentClient.loadSquigSitesAsync()
+                val sites = currentClient.loadSquigSitesWithCache()
                 val newInstances = SquigLinkInstance.fromSquigSites(sites)
                 if (newInstances.isNotEmpty()) {
                     instances = newInstances
-                    // Обновляем spinner без перезагрузки базы
                     val instanceNames = instances.map { it.name }
                     instanceSpinner.adapter = ArrayAdapter(
                         requireContext(),
                         android.R.layout.simple_spinner_dropdown_item,
                         instanceNames
                     )
-                    Timber.i("squigsites.json загружен: ${instances.size} инстансов")
+                    Timber.i("squigsites загружен: ${instances.size} инстансов")
                 }
             } catch (e: Exception) {
-                Timber.w("squigsites.json недоступен, используется DEFAULT: ${e.message}")
+                Timber.w("squigsites недоступен (нет сети и кэша), используется DEFAULT: ${e.message}")
             }
         }
     }
 
     /**
      * Загрузка списка target curves из config.js.
-     * Грузится с squig.link/config.js, парсит JS-массив targets.
-     * При неудаче используется fallback-список.
+     * Использует offline cache: при отсутствии сети — кэшированные данные.
      */
     private fun loadTargetCurves() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val curves = currentClient.loadTargetCurvesAsync()
+                val curves = currentClient.loadTargetCurvesWithCache(currentInstance)
                 if (curves.isNotEmpty()) {
                     targetCurves = curves
-                    // Сохраняем текущий выбор, если он есть в новом списке
                     val currentSelection = selectedTargetName
                     targetSpinner.adapter = ArrayAdapter(
                         requireContext(),
                         android.R.layout.simple_spinner_dropdown_item,
                         targetCurves
                     )
-                    // Восстанавливаем выбор или берём первый
                     val idx = targetCurves.indexOf(currentSelection)
                     if (idx >= 0) {
                         targetSpinner.setSelection(idx)
-                        // Если выбор не изменился — spinner listener не сработает,
-                        // перезагружаем target вручную
                         loadTargetCurveData()
                     } else {
                         selectedTargetName = targetCurves.first()
                         targetSpinner.setSelection(0)
-                        // setSelection(0) сработает listener, но если previous тоже был 0 — не сработает
                         loadTargetCurveData()
                     }
                     Timber.i("config.js загружен: ${targetCurves.size} target curves")
                 }
             } catch (e: Exception) {
-                Timber.w("config.js недоступен, используется fallback targets: ${e.message}")
+                Timber.w("config.js недоступен (нет сети и кэша), используется fallback targets: ${e.message}")
             }
         }
     }
@@ -391,13 +392,13 @@ class SquigLiveFragment : Fragment() {
 
     /**
      * Загрузка каталога phone_book для текущего инстанса.
-     * Использует suspend-обёртку — линейный код без callback-ада.
+     * Использует offline cache: при отсутствии сети — кэшированные данные.
      */
     private fun loadDatabase() {
         showLoading(getString(R.string.squig_loading))
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val brands = currentClient.loadDatabaseAsync()
+                val brands = currentClient.loadDatabaseWithCache(currentInstance)
                 database = brands
                 Timber.i("Каталог загружен: ${brands.size} брендов")
                 if (isAdded && view != null) {
@@ -519,7 +520,7 @@ class SquigLiveFragment : Fragment() {
                 ensureActive()
                 if (targetFR == null) {
                     try {
-                        val target = currentClient.loadTargetCurveAsync(selectedTargetName)
+                        val target = currentClient.loadTargetCurveWithCache(selectedTargetName, currentInstance)
                         targetFR = target.normalize(normHz)
                     } catch (e: Exception) {
                         Timber.w("Целевая кривая '$selectedTargetName' не загружена: ${e.message}")
@@ -583,15 +584,16 @@ class SquigLiveFragment : Fragment() {
     }
 
     /**
-     * Загрузка данных целевой кривой с сервера и отображение на графике.
+     * Загрузка данных целевой кривой и отображение на графике.
      * Target рисуется всегда — даже без замера.
+     * Использует offline cache: при отсутствии сети — кэшированный TSV.
      * Сдвигается на preamp если есть активные полосы.
      */
     private fun loadTargetCurveData() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val normHz = currentInstance.defaultNormHz
-                val target = currentClient.loadTargetCurveAsync(selectedTargetName)
+                val target = currentClient.loadTargetCurveWithCache(selectedTargetName, currentInstance)
                 targetFR = target.normalize(normHz)
 
                 // Сдвигаем target на preamp если есть активные полосы
@@ -970,6 +972,159 @@ class SquigLiveFragment : Fragment() {
     private fun showEmptyState(show: Boolean) {
         emptyStateText.isVisible = show
         resultsRecyclerView.isVisible = !show
+    }
+
+    // ── Offline cache: dump & freshness ───────────────────────────────────
+
+    /**
+     * Показать диалог управления offline-кэшем.
+     *
+     * Позволяет:
+     * - Dump all: скачать и сохранить все инстансы (phone_book + targets)
+     * - Check freshness: проверить актуальность кэшированных данных
+     * - Clear cache: очистить все кэшированные данные
+     *
+     * Показывает текущий размер кэша.
+     */
+    private fun showCacheMenu() {
+        val cacheSize = SquigLinkCacheManager.cacheSizeFormatted()
+        val items = arrayOf(
+            getString(R.string.squig_cache_dump),
+            getString(R.string.squig_cache_freshness),
+            getString(R.string.squig_cache_clear, cacheSize)
+        )
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.squig_cache_menu)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> performDumpAll()
+                    1 -> showFreshnessReport()
+                    2 -> performClearCache()
+                }
+            }
+            .setNegativeButton(R.string.peq_cancel, null)
+            .show()
+    }
+
+    /**
+     * Dump all: скачать и кэшировать все инстансы, phone_books и target curves.
+     * Долгая операция — выполняется в фоне с прогресс-индикатором.
+     */
+    private fun performDumpAll() {
+        showLoading(getString(R.string.squig_cache_dump_title))
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    SquigLinkCacheManager.dumpAll(
+                        clientFactory = { inst -> SquigLinkClient(inst) },
+                        instances = instances,
+                        onProgress = { current, total, msg ->
+                            if (isAdded && view != null) {
+                                requireActivity().runOnUiThread {
+                                    if (isAdded && view != null) {
+                                        progressBar.visibility = View.VISIBLE
+                                        statusText.text = getString(R.string.squig_cache_dump_progress, msg, current, total)
+                                        statusText.visibility = View.VISIBLE
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
+                if (!isAdded || view == null) return@launch
+                hideLoading()
+                val msg = if (result.success) {
+                    getString(R.string.squig_cache_dump_done, result.summary)
+                } else {
+                    getString(R.string.squig_cache_dump_done, result.summary) +
+                            "\n" + result.errorMessages.take(5).joinToString("\n")
+                }
+                statusText.text = msg
+                statusText.visibility = View.VISIBLE
+                Timber.i("Dump all: $msg")
+            } catch (e: Exception) {
+                if (!isAdded || view == null) return@launch
+                hideLoading()
+                showError(getString(R.string.squig_cache_dump_failed, e.message ?: "unknown"))
+                Timber.e(e, "Dump all failed")
+            }
+        }
+    }
+
+    /**
+     * Показать отчёт об актуальности кэшированных данных.
+     */
+    private fun showFreshnessReport() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val report = withContext(Dispatchers.Default) {
+                SquigLinkCacheManager.checkFreshness(instances)
+            }
+            if (!isAdded || view == null) return@launch
+
+            val sb = StringBuilder()
+            sb.append("Cache size: ${SquigLinkCacheManager.cacheSizeFormatted()}\n\n")
+
+            // SquigSites
+            sb.append("Site list: ")
+            sb.append(when {
+                !report.hasSquigSites -> "NOT CACHED"
+                report.squigSitesFresh -> "FRESH (${formatAge(report.squigSitesAgeMs)})"
+                else -> "STALE (${formatAge(report.squigSitesAgeMs)})"
+            })
+            sb.append("\n\n")
+
+            // Per-instance
+            sb.append("Instances (${report.perInstance.size}):\n")
+            for (inst in report.perInstance) {
+                sb.append("  ${inst.instanceName}:\n")
+                sb.append("    Phonebook: ")
+                sb.append(when {
+                    !inst.hasPhoneBook -> "NOT CACHED"
+                    inst.phoneBookFresh -> "FRESH (${formatAge(inst.phoneBookAgeMs)})"
+                    else -> "STALE (${formatAge(inst.phoneBookAgeMs)})"
+                })
+                sb.append("\n")
+                sb.append("    Targets: ")
+                sb.append(when {
+                    !inst.hasTargetNames -> "NOT CACHED"
+                    inst.targetNamesFresh -> "FRESH (${formatAge(inst.targetNamesAgeMs)})"
+                    else -> "STALE (${formatAge(inst.targetNamesAgeMs)})"
+                })
+                sb.append(" (${inst.cachedTargetCount} curves cached)\n")
+            }
+
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.squig_cache_freshness_title)
+                .setMessage(sb.toString())
+                .setPositiveButton(R.string.peq_done, null)
+                .show()
+        }
+    }
+
+    /** Очистить весь offline-кэш. */
+    private fun performClearCache() {
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.squig_cache_clear_title)
+            .setMessage(getString(R.string.squig_cache_clear_msg, SquigLinkCacheManager.cacheSizeFormatted()))
+            .setPositiveButton(R.string.peq_done) { _, _ ->
+                SquigLinkCacheManager.clearAll()
+                requireContext().toast(getString(R.string.squig_cache_cleared))
+                statusText.text = getString(R.string.squig_cache_cleared)
+                statusText.visibility = View.VISIBLE
+            }
+            .setNegativeButton(R.string.peq_cancel, null)
+            .show()
+    }
+
+    /** Форматировать возраст в человекочитаемый вид. */
+    private fun formatAge(ageMs: Long): String {
+        if (ageMs == Long.MAX_VALUE) return "never"
+        val hours = ageMs / 3_600_000
+        return when {
+            hours < 1 -> "${ageMs / 60_000}m ago"
+            hours < 24 -> "${hours}h ago"
+            else -> "${hours / 24}d ago"
+        }
     }
 
     companion object {

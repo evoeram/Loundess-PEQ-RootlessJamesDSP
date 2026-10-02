@@ -29,6 +29,7 @@ import me.timschneeberger.rootlessjamesdsp.databinding.FragmentMeasurementBindin
 import me.timschneeberger.rootlessjamesdsp.measurement.AudioInputDiagnostics
 import me.timschneeberger.rootlessjamesdsp.measurement.AutoEqEngine
 import me.timschneeberger.rootlessjamesdsp.measurement.DeconvConfig
+import me.timschneeberger.rootlessjamesdsp.measurement.MeasurementDebugExporter
 import me.timschneeberger.rootlessjamesdsp.measurement.IrWindowMode
 import me.timschneeberger.rootlessjamesdsp.measurement.MeasurementMode
 import me.timschneeberger.rootlessjamesdsp.measurement.MeasurementSession
@@ -288,6 +289,11 @@ class MeasurementFragment : Fragment() {
             showRt60Info()
         }
 
+        // Export debug data
+        binding.chipExportDebug.setOnClickListener {
+            exportDebugData()
+        }
+
         // Layer toggles
         binding.toggleMeasured.isChecked = showMeasured
         binding.toggleTarget.isChecked = showTarget
@@ -413,6 +419,7 @@ class MeasurementFragment : Fragment() {
                 val hasRt60 = (result.left?.rt60?.isNotEmpty() == true) || (result.right?.rt60?.isNotEmpty() == true)
                 binding.chipThdInfo.isVisible = hasThd
                 binding.chipRt60Info.isVisible = hasRt60
+                binding.chipExportDebug.isVisible = true
             } else {
                 val msg = result?.errorMessage ?: getString(R.string.measurement_no_result)
                 updateStatusText(getString(R.string.measurement_failed, msg))
@@ -1096,6 +1103,27 @@ class MeasurementFragment : Fragment() {
         }
 
         binding.equalizerSurface.setCorrectedFR(measuredFreqs, predicted)
+    }
+
+    private fun exportDebugData() {
+        val session = measurementSession ?: return
+        val dbg = session.debugData ?: run {
+            requireContext().toast("No debug data available")
+            return
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val dir = withContext(Dispatchers.IO) {
+                MeasurementDebugExporter.export(requireContext(), dbg)
+            }
+            if (dir != null) {
+                requireContext().toast("Debug data exported to ${dir.name}")
+                // Also show in status
+                updateStatusText("Debug data exported to: ${dir.absolutePath}")
+            } else {
+                requireContext().toast("Debug export failed")
+            }
+        }
     }
 
     override fun onResume() {

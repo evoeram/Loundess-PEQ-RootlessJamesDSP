@@ -55,6 +55,11 @@ class MeasurementSession(
     private var currentRecorder: MeasurementAudioRecord? = null
     private var currentPlayer: SweepPlayer? = null
 
+    /** Debug data captured during last measurement (for export). */
+    @Volatile
+    var debugData: MeasurementDebugExporter.DebugData? = null
+        private set
+
     /** Результат измерения одного канала. */
     data class ChannelResult(
         val frequencies: FloatArray,
@@ -121,6 +126,9 @@ class MeasurementSession(
         if (contextHandle == 0L) {
             return@withContext MeasurementResult.error("Failed to create native context")
         }
+
+        // Debug data collection
+        val dbg = DebugCollector()
 
         try {
             // 1. Генерация sweep и inverse filter
@@ -207,6 +215,10 @@ class MeasurementSession(
             Log.i(TAG, "Composite: ${if (compositeStereo != null) "${compositeStereo.size} stereo samples" else "${composite.size} mono samples"} " +
                     "(${compositeDurSec}s), mode=$mode")
 
+            // Capture stimulus for debug
+            dbg.stimulus = if (composite.isNotEmpty()) composite.copyOf() else null
+            dbg.stimulusStereo = compositeStereo?.copyOf()
+
             // 3. Воспроизведение + запись (с усреднением N замеров)
             val numAverages = averageCount.coerceAtLeast(1)
             Log.i(TAG, "Starting playback + recording (averages=$numAverages)")
@@ -259,6 +271,11 @@ class MeasurementSession(
                     continue
                 }
                 Log.i(TAG, "Iteration ${iter + 1}: recorded ${rawRecorded.size} samples")
+
+                // Capture raw recording for debug (first successful iteration)
+                if (dbg.recording == null) {
+                    dbg.recording = rawRecorded.copyOf()
+                }
 
                 // 4. Компенсация задержки и извлечение sweep
                 when (mode) {
@@ -352,20 +369,20 @@ class MeasurementSession(
 
             when (mode) {
                 MeasurementMode.LEFT -> {
-                    leftResult = processChannel(avgRecordedMono!!, inverseFilter, micCalibration, "L")
+                    leftResult = processChannel(avgRecordedMono!!, inverseFilter, micCalibration, "L", dbg)
                     rightResult = null
                 }
                 MeasurementMode.RIGHT -> {
                     leftResult = null
-                    rightResult = processChannel(avgRecordedMono!!, inverseFilter, micCalibration, "R")
+                    rightResult = processChannel(avgRecordedMono!!, inverseFilter, micCalibration, "R", dbg)
                 }
                 MeasurementMode.LR_SEQUENTIAL -> {
-                    leftResult = processChannel(avgRecordedL!!, inverseFilter, micCalibration, "L")
+                    leftResult = processChannel(avgRecordedL!!, inverseFilter, micCalibration, "L", dbg)
                     rightResult = processChannel(avgRecordedR!!, inverseFilter, micCalibration, "R")
                     Log.i(TAG, "Inter-channel delay: ${interChannelDelayMs}ms (averaged)")
                 }
                 MeasurementMode.BOTH -> {
-                    leftResult = processChannel(avgRecordedMono!!, inverseFilter, micCalibration, "L+R")
+                    leftResult = processChannel(avgRecordedMono!!, inverseFilter, micCalibration, "L+R", dbg)
                     rightResult = null
                 }
             }
@@ -460,6 +477,39 @@ class MeasurementSession(
             Log.e(TAG, "Measurement failed", e)
             MeasurementResult.error(e.message ?: "Unknown error")
         } finally {
+            // Store debug data
+            debugData = MeasurementDebugExporter.DebugData(
+                stimulus = dbg.stimulus,
+                stimulusStereo = dbg.stimulusStereo,
+                recording = dbg.recording,
+                deconvolvedIr = dbg.deconvolvedIr,
+                processedIr = dbg.processedIr,
+                frequencies = dbg.frequencies,
+                splRaw = dbg.splRaw,
+                splCalibrated = dbg.splCalibrated,
+                splSmoothed = dbg.splSmoothed,
+                phase = dbg.phase,
+                sampleRate = sampleRate,
+                settings = mapOf(
+                    "sampleRate" to sampleRate,
+                    "sweepF1" to sweepF1,
+                    "sweepF2" to sweepF2,
+                    "sweepDuration" to sweepDuration,
+                    "mode" to mode.name,
+                    "micType" to micType.name,
+                    "smoothingType" to smoothingType.name,
+                    "averageCount" to averageCount,
+                    "deconvConfig" to mapOf(
+                        "normalizeIr" to deconvConfig.normalizeIr,
+                        "windowMode" to deconvConfig.windowMode.name,
+                        "maxIrLenMs" to deconvConfig.maxIrLenMs,
+                        "arrivalThreshold" to deconvConfig.arrivalThreshold,
+                        "leftWindowMs" to deconvConfig.leftWindowMs,
+                        "rightWindowPercent" to deconvConfig.rightWindowPercent
+                    )
+                )
+            )
+
             if (contextHandle != 0L) {
                 nativeEngine.destroyContext(contextHandle)
                 contextHandle = 0L
@@ -478,16 +528,26 @@ class MeasurementSession(
 
     /**
      * Обработать один канал: деконволюция → IR → SPL → калибровка → сглаживание.
+     * Если [dbg] не null, сохраняет промежуточные данные для отладочного экспорта.
      */
     private suspend fun processChannel(
         recorded: FloatArray,
         inverseFilter: FloatArray,
         micCalibration: MicCalibrationLoader.CalibrationData?,
-        label: String
+        label: String,
+        dbg: DebugCollector? = null
     ): ChannelResult = withContext(Dispatchers.IO) {
         Log.i(TAG, "$label: processing ${recorded.size} samples")
 
         // Деконволюция → IR (с расширенной конфигурацией)
+        // For debug: also run plain deconvolution to get raw IR (no windowing/normalization)
+        if (dbg != null) {
+            val rawResult = nativeEngine.deconvolve(contextHandle, recorded, inverseFilter, sampleRate)
+            if (rawResult == 0) {
+                dbg.deconvolvedIr = nativeEngine.getIr(contextHandle)?.copyOf()
+            }
+        }
+
         val deconvResult = nativeEngine.deconvolveEx(
             contextHandle, recorded, inverseFilter, sampleRate,
             deconvConfig.normalizeIr, deconvConfig.windowMode.nativeId,
@@ -503,6 +563,9 @@ class MeasurementSession(
         val ir = nativeEngine.getIr(contextHandle) ?: FloatArray(0)
         Log.i(TAG, "$label: IR ${ir.size} samples")
 
+        // Capture processed IR for debug
+        dbg?.processedIr = ir.copyOf()
+
         // SPL
         val splResult = nativeEngine.computeSpl(contextHandle, 16384)
         if (splResult != 0) {
@@ -515,6 +578,14 @@ class MeasurementSession(
         val splRaw = nativeEngine.getSpl(contextHandle) ?: FloatArray(0)
         Log.i(TAG, "$label: SPL ${freqs.size} bins")
 
+        // Capture SPL data for debug
+        if (dbg != null) {
+            dbg.frequencies = freqs.copyOf()
+            dbg.splRaw = splRaw.copyOf()
+            // Capture phase
+            try { dbg.phase = nativeEngine.getSplPhase(contextHandle).copyOf() } catch (_: Exception) {}
+        }
+
         // Калибровка
         val splCalibrated = if (micCalibration != null && freqs.isNotEmpty()) micCalibration.apply(freqs, splRaw)
                             else splRaw.copyOf()
@@ -522,6 +593,12 @@ class MeasurementSession(
         // Сглаживание выбранного типа
         nativeEngine.applySmoothingByType(contextHandle, smoothingType.nativeId)
         val splSmoothed = nativeEngine.getSpl(contextHandle) ?: FloatArray(0)
+
+        // Capture calibrated + smoothed for debug
+        if (dbg != null) {
+            dbg.splCalibrated = splCalibrated.copyOf()
+            dbg.splSmoothed = splSmoothed.copyOf()
+        }
 
         ChannelResult(
             frequencies = freqs,
@@ -595,6 +672,22 @@ class MeasurementSession(
 
     private fun writeFloat(fos: FileOutputStream, value: Float) {
         writeInt(fos, java.lang.Float.floatToRawIntBits(value))
+    }
+
+    /**
+     * Mutable container for collecting intermediate debug data during measurement.
+     */
+    private class DebugCollector {
+        var stimulus: FloatArray? = null
+        var stimulusStereo: FloatArray? = null
+        var recording: FloatArray? = null
+        var deconvolvedIr: FloatArray? = null
+        var processedIr: FloatArray? = null
+        var frequencies: FloatArray? = null
+        var splRaw: FloatArray? = null
+        var splCalibrated: FloatArray? = null
+        var splSmoothed: FloatArray? = null
+        var phase: FloatArray? = null
     }
 
     companion object {
