@@ -39,6 +39,53 @@ data class TargetCurve(
         ))
 
         /**
+         * Room Curve target с LF Rise и HF Fall.
+         *
+         * LF Rise: линейный подъём (в dB/oct) от lfRiseEnd до lfRiseStart
+         * (низкие частоты получают больше усиления).
+         * HF Fall: линейный спад (в dB/oct) от hfFallStart к высоким частотам.
+         *
+         * @param lfRiseStart частота начала LF Rise (Гц, например 200)
+         * @param lfRiseEnd   частота конца LF Rise (Гц, например 20)
+         * @param lfRiseSlope наклон LF Rise (dB/oct, например 1.0)
+         * @param hfFallStart частота начала HF Fall (Гц, например 1000)
+         * @param hfFallSlope наклон HF Fall (dB/oct, например 0.5)
+         */
+        fun roomCurve(
+            lfRiseStart: Double = 200.0,
+            lfRiseEnd: Double = 20.0,
+            lfRiseSlope: Double = 1.0,
+            hfFallStart: Double = 1000.0,
+            hfFallSlope: Double = 0.5
+        ): TargetCurve {
+            val points = mutableListOf<Point>()
+
+            // LF Rise: от lfRiseEnd до lfRiseStart — подъём с наклоном lfRiseSlope dB/oct
+            // gain на частоте f = lfRiseSlope * log2(lfRiseStart / f)
+            val lfStartGain = lfRiseSlope * (Math.log(lfRiseStart / lfRiseEnd) / Math.log(2.0))
+            points.add(Point(lfRiseEnd, lfStartGain))
+            // Промежуточные точки для плавности
+            val lfMid = Math.sqrt(lfRiseStart * lfRiseEnd)
+            points.add(Point(lfMid, lfRiseSlope * (Math.log(lfRiseStart / lfMid) / Math.log(2.0))))
+            points.add(Point(lfRiseStart, 0.0))
+
+            // Flat от lfRiseStart до hfFallStart
+            if (lfRiseStart < hfFallStart) {
+                points.add(Point(hfFallStart, 0.0))
+            }
+
+            // HF Fall: от hfFallStart до 20 кГц — спад с наклоном hfFallSlope dB/oct
+            val fMax = 20000.0
+            val hfEndGain = -hfFallSlope * (Math.log(fMax / hfFallStart) / Math.log(2.0))
+            val hfMid = Math.sqrt(hfFallStart * fMax)
+            points.add(Point(hfMid, -hfFallSlope * (Math.log(hfMid / hfFallStart) / Math.log(2.0))))
+            points.add(Point(fMax, hfEndGain))
+
+            points.sortBy { it.frequency }
+            return TargetCurve("Room Curve", points)
+        }
+
+        /**
          * Создать целевую кривую из массива частот и усилений.
          * Точки должны быть отсортированы по частоте.
          */

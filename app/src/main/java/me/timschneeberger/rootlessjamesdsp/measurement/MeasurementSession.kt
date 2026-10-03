@@ -44,10 +44,21 @@ class MeasurementSession(
     private val mode: MeasurementMode = MeasurementMode.BOTH,
     private val micType: MicType = MicType.BUILTIN_UNPROCESSED,
     private val smoothingType: SmoothingType = SmoothingType.PSYCHOACOUSTIC,
+    private val deconvConfig: DeconvConfig = DeconvConfig(),
+    private val averageCount: Int = 1,
     private val onInputSamples: ((FloatArray, Int, Int) -> Unit)? = null
 ) {
     private val nativeEngine = MeasurementNativeEngine()
     private var contextHandle: Long = 0L
+    @Volatile
+    private var isCancelled = false
+    private var currentRecorder: MeasurementAudioRecord? = null
+    private var currentPlayer: SweepPlayer? = null
+
+    /** Debug data captured during last measurement (for export). */
+    @Volatile
+    var debugData: MeasurementDebugExporter.DebugData? = null
+        private set
 
     /** Результат измерения одного канала. */
     data class ChannelResult(
@@ -58,7 +69,15 @@ class MeasurementSession(
         val ir: FloatArray,
         val latencyMs: Double,
         val success: Boolean,
-        val errorMessage: String?
+        val errorMessage: String?,
+        // THD data (optional, null if not computed)
+        val thd: FloatArray? = null,
+        val thdFrequencies: FloatArray? = null,
+        // RT60 data (optional, null if not computed)
+        val rt60: FloatArray? = null,
+        val rt60Frequencies: FloatArray? = null,
+        // Group delay (optional, null if not computed)
+        val groupDelay: FloatArray? = null
     )
 
     /** Результат полного измерения (один или два канала). */
@@ -102,10 +121,14 @@ class MeasurementSession(
         micCalibration: MicCalibrationLoader.CalibrationData? = null,
         applyAutoEq: Boolean = true
     ): MeasurementResult = withContext(Dispatchers.IO) {
+        isCancelled = false
         contextHandle = nativeEngine.createContext()
         if (contextHandle == 0L) {
             return@withContext MeasurementResult.error("Failed to create native context")
         }
+
+        // Debug data collection
+        val dbg = DebugCollector()
 
         try {
             // 1. Генерация sweep и inverse filter
@@ -192,125 +215,174 @@ class MeasurementSession(
             Log.i(TAG, "Composite: ${if (compositeStereo != null) "${compositeStereo.size} stereo samples" else "${composite.size} mono samples"} " +
                     "(${compositeDurSec}s), mode=$mode")
 
-            // 3. Воспроизведение + запись
-            Log.i(TAG, "Starting playback + recording")
-            val player = SweepPlayer(sampleRate, 0.3f, outputChannel)
-            val recorder = MeasurementAudioRecord(
-                sampleRate = sampleRate,
-                durationSec = (compositeDurSec + 1.0f),
-                micType = micType,
-                appContext = context,
-                onSamples = onInputSamples
-            )
+            // Capture stimulus for debug
+            dbg.stimulus = if (composite.isNotEmpty()) composite.copyOf() else null
+            dbg.stimulusStereo = compositeStereo?.copyOf()
 
-            val recordedRef = arrayOfNulls<FloatArray>(1)
-            val recThread = Thread { recordedRef[0] = recorder.record() }
-            recThread.start()
-            Thread.sleep(50)
+            // 3. Воспроизведение + запись (с усреднением N замеров)
+            val numAverages = averageCount.coerceAtLeast(1)
+            Log.i(TAG, "Starting playback + recording (averages=$numAverages)")
 
-            // В режиме LR_SEQUENTIAL воспроизводим stereo-interleaved сигнал,
-            // где L-сегмент только на левом канале, R-сегмент только на правом.
-            if (compositeStereo != null) {
-                player.playStereo(compositeStereo)
-            } else {
-                player.play(composite)
+            // Накопители для усреднения записанных sweep-сегментов
+            var avgRecordedL: FloatArray? = null
+            var avgRecordedR: FloatArray? = null
+            var avgRecordedMono: FloatArray? = null
+            var avgInterChannelDelayMs = 0.0
+            var successfulRuns = 0
+
+            for (iter in 0 until numAverages) {
+                if (isCancelled) break
+
+                if (numAverages > 1) {
+                    Log.i(TAG, "=== Measurement iteration ${iter + 1}/$numAverages ===")
+                }
+
+                val player = SweepPlayer(sampleRate, 0.3f, outputChannel)
+                currentPlayer = player
+                val recorder = MeasurementAudioRecord(
+                    sampleRate = sampleRate,
+                    durationSec = (compositeDurSec + 1.0f),
+                    micType = micType,
+                    appContext = context,
+                    onSamples = onInputSamples
+                )
+                currentRecorder = recorder
+
+                val recordedRef = arrayOfNulls<FloatArray>(1)
+                val recThread = Thread { recordedRef[0] = recorder.record() }
+                recThread.start()
+                Thread.sleep(50)
+
+                // В режиме LR_SEQUENTIAL воспроизводим stereo-interleaved сигнал
+                if (compositeStereo != null) {
+                    player.playStereo(compositeStereo)
+                } else {
+                    player.play(composite)
+                }
+                recThread.join(30000)
+
+                val rawRecorded = recordedRef[0]
+                if (isCancelled) {
+                    Log.i(TAG, "Measurement cancelled by user")
+                    return@withContext MeasurementResult.error("Cancelled")
+                }
+                if (rawRecorded == null || rawRecorded.isEmpty()) {
+                    Log.w(TAG, "Iteration ${iter + 1}: recording failed, skipping")
+                    continue
+                }
+                Log.i(TAG, "Iteration ${iter + 1}: recorded ${rawRecorded.size} samples")
+
+                // Capture raw recording for debug (first successful iteration)
+                if (dbg.recording == null) {
+                    dbg.recording = rawRecorded.copyOf()
+                }
+
+                // 4. Компенсация задержки и извлечение sweep
+                when (mode) {
+                    MeasurementMode.LEFT -> {
+                        val probeStart = findProbeStart(rawRecorded, probe, sampleRate)
+                        val sweepStart = probeStart + probe.size + gapSamples
+                        val sweepEnd = minOf(sweepStart + sweep.size, rawRecorded.size)
+                        if (sweepStart >= rawRecorded.size) {
+                            Log.w(TAG, "Iteration ${iter + 1}: L sweep out of bounds, skipping")
+                            continue
+                        }
+                        val recorded = rawRecorded.copyOfRange(sweepStart, sweepEnd)
+                        avgRecordedMono = averageArrays(avgRecordedMono, recorded, successfulRuns)
+                        successfulRuns++
+                    }
+                    MeasurementMode.RIGHT -> {
+                        val probeStart = findProbeStart(rawRecorded, probe, sampleRate)
+                        val sweepStart = probeStart + probe.size + gapSamples
+                        val sweepEnd = minOf(sweepStart + sweep.size, rawRecorded.size)
+                        if (sweepStart >= rawRecorded.size) {
+                            Log.w(TAG, "Iteration ${iter + 1}: R sweep out of bounds, skipping")
+                            continue
+                        }
+                        val recorded = rawRecorded.copyOfRange(sweepStart, sweepEnd)
+                        avgRecordedMono = averageArrays(avgRecordedMono, recorded, successfulRuns)
+                        successfulRuns++
+                    }
+                    MeasurementMode.LR_SEQUENTIAL -> {
+                        val segmentLen = preSilenceSamples + probe.size + gapSamples + sweep.size
+                        val interSegmentSilence = sampleRate / 10
+
+                        val searchEndL = minOf(rawRecorded.size - probe.size, segmentLen + interSegmentSilence)
+                        val probeLStart = findProbeStartInRange(rawRecorded, probe, 0, searchEndL, sampleRate)
+                        val sweepLStart = probeLStart + probe.size + gapSamples
+                        val sweepLEnd = minOf(sweepLStart + sweep.size, rawRecorded.size)
+                        if (sweepLStart >= rawRecorded.size) {
+                            Log.w(TAG, "Iteration ${iter + 1}: L sweep out of bounds, skipping")
+                            continue
+                        }
+                        val recordedL = rawRecorded.copyOfRange(sweepLStart, sweepLEnd)
+
+                        val searchStartR = segmentLen + interSegmentSilence - sampleRate
+                        val searchStartRClamped = maxOf(0, searchStartR)
+                        val probeRStart = findProbeStartInRange(rawRecorded, probe, searchStartRClamped, rawRecorded.size - probe.size, sampleRate)
+                        val sweepRStart = probeRStart + probe.size + gapSamples
+                        val sweepREnd = minOf(sweepRStart + sweep.size, rawRecorded.size)
+                        if (sweepRStart >= rawRecorded.size) {
+                            Log.w(TAG, "Iteration ${iter + 1}: R sweep out of bounds, skipping")
+                            continue
+                        }
+                        val recordedR = rawRecorded.copyOfRange(sweepRStart, sweepREnd)
+
+                        val latencyL = (probeLStart - preSilenceSamples) * 1000.0 / sampleRate
+                        val latencyR = (probeRStart - (preSilenceSamples + segmentLen + interSegmentSilence)) * 1000.0 / sampleRate
+                        avgInterChannelDelayMs += (latencyR - latencyL)
+
+                        avgRecordedL = averageArrays(avgRecordedL, recordedL, successfulRuns)
+                        avgRecordedR = averageArrays(avgRecordedR, recordedR, successfulRuns)
+                        successfulRuns++
+                    }
+                    MeasurementMode.BOTH -> {
+                        val probeStart = findProbeStart(rawRecorded, probe, sampleRate)
+                        val sweepStart = probeStart + probe.size + gapSamples
+                        val sweepEnd = minOf(sweepStart + sweep.size, rawRecorded.size)
+                        if (sweepStart >= rawRecorded.size) {
+                            Log.w(TAG, "Iteration ${iter + 1}: L+R sweep out of bounds, skipping")
+                            continue
+                        }
+                        val recorded = rawRecorded.copyOfRange(sweepStart, sweepEnd)
+                        avgRecordedMono = averageArrays(avgRecordedMono, recorded, successfulRuns)
+                        successfulRuns++
+                    }
+                }
             }
-            recThread.join(30000)
 
-            val rawRecorded = recordedRef[0]
-            if (rawRecorded == null || rawRecorded.isEmpty()) {
-                return@withContext MeasurementResult.error("Recording failed")
+            if (successfulRuns == 0) {
+                return@withContext MeasurementResult.error("All measurement iterations failed")
             }
-            Log.i(TAG, "Recorded ${rawRecorded.size} samples")
 
-            // 4. Компенсация задержки и извлечение sweep
+            if (numAverages > 1) {
+                Log.i(TAG, "Averaged $successfulRuns successful runs")
+            }
+
+            val interChannelDelayMs = if (mode == MeasurementMode.LR_SEQUENTIAL) {
+                avgInterChannelDelayMs / successfulRuns
+            } else 0.0
+
+            // 5. Деконволюция усреднённых данных
             val leftResult: ChannelResult?
             val rightResult: ChannelResult?
-            var interChannelDelayMs = 0.0
 
             when (mode) {
                 MeasurementMode.LEFT -> {
-                    val probeStart = findProbeStart(rawRecorded, probe, sampleRate)
-                    val latencyMs = (probeStart - preSilenceSamples) * 1000.0 / sampleRate
-                    Log.i(TAG, "L: probe at $probeStart, latency=${latencyMs}ms")
-                    val sweepStart = probeStart + probe.size + gapSamples
-                    val sweepEnd = minOf(sweepStart + sweep.size, rawRecorded.size)
-                    if (sweepStart >= rawRecorded.size) {
-                        return@withContext MeasurementResult.error("L: sweep region out of bounds")
-                    }
-                    val recorded = rawRecorded.copyOfRange(sweepStart, sweepEnd)
-                    leftResult = processChannel(recorded, inverseFilter, micCalibration, "L")
+                    leftResult = processChannel(avgRecordedMono!!, inverseFilter, micCalibration, "L", dbg)
                     rightResult = null
                 }
                 MeasurementMode.RIGHT -> {
-                    val probeStart = findProbeStart(rawRecorded, probe, sampleRate)
-                    val latencyMs = (probeStart - preSilenceSamples) * 1000.0 / sampleRate
-                    Log.i(TAG, "R: probe at $probeStart, latency=${latencyMs}ms")
-                    val sweepStart = probeStart + probe.size + gapSamples
-                    val sweepEnd = minOf(sweepStart + sweep.size, rawRecorded.size)
-                    if (sweepStart >= rawRecorded.size) {
-                        return@withContext MeasurementResult.error("R: sweep region out of bounds")
-                    }
-                    val recorded = rawRecorded.copyOfRange(sweepStart, sweepEnd)
                     leftResult = null
-                    rightResult = processChannel(recorded, inverseFilter, micCalibration, "R")
+                    rightResult = processChannel(avgRecordedMono!!, inverseFilter, micCalibration, "R", dbg)
                 }
                 MeasurementMode.LR_SEQUENTIAL -> {
-                    // Последовательный режим: два probe в записи.
-                    // Сегмент L: [тишина 100мс][probe L 100мс][тишина 300мс][sweep L 5с]
-                    // Сегмент R: [тишина 100мс][probe R 100мс][тишина 300мс][sweep R 5с]
-                    val segmentLen = preSilenceSamples + probe.size + gapSamples + sweep.size
-                    val interSegmentSilence = sampleRate / 10
-
-                    // Поиск probe L в первой половине записи
-                    val searchEndL = minOf(rawRecorded.size - probe.size, segmentLen + interSegmentSilence)
-                    val probeLStart = findProbeStartInRange(rawRecorded, probe, 0, searchEndL, sampleRate)
-                    val latencyL = (probeLStart - preSilenceSamples) * 1000.0 / sampleRate
-                    Log.i(TAG, "L: probe at $probeLStart, latency=${latencyL}ms")
-
-                    val sweepLStart = probeLStart + probe.size + gapSamples
-                    val sweepLEnd = minOf(sweepLStart + sweep.size, rawRecorded.size)
-                    if (sweepLStart >= rawRecorded.size) {
-                        return@withContext MeasurementResult.error("L: sweep region out of bounds")
-                    }
-                    val recordedL = rawRecorded.copyOfRange(sweepLStart, sweepLEnd)
-
-                    // Поиск probe R во второй половине записи
-                    val searchStartR = segmentLen + interSegmentSilence - sampleRate // запас
-                    val searchStartRClamped = maxOf(0, searchStartR)
-                    val probeRStart = findProbeStartInRange(rawRecorded, probe, searchStartRClamped, rawRecorded.size - probe.size, sampleRate)
-                    val latencyR = (probeRStart - (preSilenceSamples + segmentLen + interSegmentSilence)) * 1000.0 / sampleRate
-                    Log.i(TAG, "R: probe at $probeRStart, latency=${latencyR}ms")
-
-                    val sweepRStart = probeRStart + probe.size + gapSamples
-                    val sweepREnd = minOf(sweepRStart + sweep.size, rawRecorded.size)
-                    if (sweepRStart >= rawRecorded.size) {
-                        return@withContext MeasurementResult.error("R: sweep region out of bounds")
-                    }
-                    val recordedR = rawRecorded.copyOfRange(sweepRStart, sweepREnd)
-
-                    // Межканальная задержка — разница между латентностью L и R
-                    interChannelDelayMs = latencyR - latencyL
-                    Log.i(TAG, "Inter-channel delay: ${interChannelDelayMs}ms " +
-                            "(L=${latencyL}ms, R=${latencyR}ms)")
-
-                    leftResult = processChannel(recordedL, inverseFilter, micCalibration, "L")
-                    rightResult = processChannel(recordedR, inverseFilter, micCalibration, "R")
+                    leftResult = processChannel(avgRecordedL!!, inverseFilter, micCalibration, "L", dbg)
+                    rightResult = processChannel(avgRecordedR!!, inverseFilter, micCalibration, "R")
+                    Log.i(TAG, "Inter-channel delay: ${interChannelDelayMs}ms (averaged)")
                 }
                 MeasurementMode.BOTH -> {
-                    // Одновременный режим: один probe + один sweep на оба канала.
-                    // Запись обрабатывается как моно-сумма L+R.
-                    val probeStart = findProbeStart(rawRecorded, probe, sampleRate)
-                    val latencyMs = (probeStart - preSilenceSamples) * 1000.0 / sampleRate
-                    Log.i(TAG, "L+R: probe at $probeStart, latency=${latencyMs}ms")
-                    val sweepStart = probeStart + probe.size + gapSamples
-                    val sweepEnd = minOf(sweepStart + sweep.size, rawRecorded.size)
-                    if (sweepStart >= rawRecorded.size) {
-                        return@withContext MeasurementResult.error("L+R: sweep region out of bounds")
-                    }
-                    val recorded = rawRecorded.copyOfRange(sweepStart, sweepEnd)
-                    // Один канал, но помечаем как "L+R"
-                    leftResult = processChannel(recorded, inverseFilter, micCalibration, "L+R")
+                    leftResult = processChannel(avgRecordedMono!!, inverseFilter, micCalibration, "L+R", dbg)
                     rightResult = null
                 }
             }
@@ -405,54 +477,128 @@ class MeasurementSession(
             Log.e(TAG, "Measurement failed", e)
             MeasurementResult.error(e.message ?: "Unknown error")
         } finally {
+            // Store debug data
+            debugData = MeasurementDebugExporter.DebugData(
+                stimulus = dbg.stimulus,
+                stimulusStereo = dbg.stimulusStereo,
+                recording = dbg.recording,
+                deconvolvedIr = dbg.deconvolvedIr,
+                processedIr = dbg.processedIr,
+                frequencies = dbg.frequencies,
+                splRaw = dbg.splRaw,
+                splCalibrated = dbg.splCalibrated,
+                splSmoothed = dbg.splSmoothed,
+                phase = dbg.phase,
+                sampleRate = sampleRate,
+                settings = mapOf(
+                    "sampleRate" to sampleRate,
+                    "sweepF1" to sweepF1,
+                    "sweepF2" to sweepF2,
+                    "sweepDuration" to sweepDuration,
+                    "mode" to mode.name,
+                    "micType" to micType.name,
+                    "smoothingType" to smoothingType.name,
+                    "averageCount" to averageCount,
+                    "deconvConfig" to mapOf(
+                        "normalizeIr" to deconvConfig.normalizeIr,
+                        "windowMode" to deconvConfig.windowMode.name,
+                        "maxIrLenMs" to deconvConfig.maxIrLenMs,
+                        "arrivalThreshold" to deconvConfig.arrivalThreshold,
+                        "leftWindowMs" to deconvConfig.leftWindowMs,
+                        "rightWindowPercent" to deconvConfig.rightWindowPercent
+                    )
+                )
+            )
+
             if (contextHandle != 0L) {
                 nativeEngine.destroyContext(contextHandle)
                 contextHandle = 0L
             }
+            currentRecorder = null
+            currentPlayer = null
         }
+    }
+
+    /** Отменить измерение: останавливает запись и воспроизведение. */
+    fun cancel() {
+        isCancelled = true
+        currentRecorder?.stop()
+        currentPlayer?.stop()
     }
 
     /**
      * Обработать один канал: деконволюция → IR → SPL → калибровка → сглаживание.
+     * Если [dbg] не null, сохраняет промежуточные данные для отладочного экспорта.
      */
     private suspend fun processChannel(
         recorded: FloatArray,
         inverseFilter: FloatArray,
         micCalibration: MicCalibrationLoader.CalibrationData?,
-        label: String
+        label: String,
+        dbg: DebugCollector? = null
     ): ChannelResult = withContext(Dispatchers.IO) {
         Log.i(TAG, "$label: processing ${recorded.size} samples")
 
-        // Деконволюция → IR
-        val deconvResult = nativeEngine.deconvolve(contextHandle, recorded, inverseFilter, sampleRate)
+        // Деконволюция → IR (с расширенной конфигурацией)
+        // For debug: also run plain deconvolution to get raw IR (no windowing/normalization)
+        if (dbg != null) {
+            val rawResult = nativeEngine.deconvolve(contextHandle, recorded, inverseFilter, sampleRate)
+            if (rawResult == 0) {
+                dbg.deconvolvedIr = nativeEngine.getIr(contextHandle)?.copyOf()
+            }
+        }
+
+        val deconvResult = nativeEngine.deconvolveEx(
+            contextHandle, recorded, inverseFilter, sampleRate,
+            deconvConfig.normalizeIr, deconvConfig.windowMode.nativeId,
+            deconvConfig.maxIrLenMs, deconvConfig.arrivalThreshold,
+            deconvConfig.leftWindowMs, deconvConfig.rightWindowPercent
+        )
         if (deconvResult != 0) {
             return@withContext ChannelResult(
                 FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0),
                 FloatArray(0), 0.0, false, "$label deconvolution failed: $deconvResult"
             )
         }
-        val ir = nativeEngine.getIr(contextHandle)
-        Log.i(TAG, "$label: IR ${ir?.size ?: 0} samples")
+        val ir = nativeEngine.getIr(contextHandle) ?: FloatArray(0)
+        Log.i(TAG, "$label: IR ${ir.size} samples")
+
+        // Capture processed IR for debug
+        dbg?.processedIr = ir.copyOf()
 
         // SPL
         val splResult = nativeEngine.computeSpl(contextHandle, 16384)
         if (splResult != 0) {
             return@withContext ChannelResult(
                 FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0),
-                ir ?: FloatArray(0), 0.0, false, "$label SPL failed: $splResult"
+                ir, 0.0, false, "$label SPL failed: $splResult"
             )
         }
-        val freqs = nativeEngine.getSplFrequencies(contextHandle)
-        val splRaw = nativeEngine.getSpl(contextHandle)
+        val freqs = nativeEngine.getSplFrequencies(contextHandle) ?: FloatArray(0)
+        val splRaw = nativeEngine.getSpl(contextHandle) ?: FloatArray(0)
         Log.i(TAG, "$label: SPL ${freqs.size} bins")
 
+        // Capture SPL data for debug
+        if (dbg != null) {
+            dbg.frequencies = freqs.copyOf()
+            dbg.splRaw = splRaw.copyOf()
+            // Capture phase
+            try { dbg.phase = nativeEngine.getSplPhase(contextHandle).copyOf() } catch (_: Exception) {}
+        }
+
         // Калибровка
-        val splCalibrated = if (micCalibration != null) micCalibration.apply(freqs, splRaw)
+        val splCalibrated = if (micCalibration != null && freqs.isNotEmpty()) micCalibration.apply(freqs, splRaw)
                             else splRaw.copyOf()
 
         // Сглаживание выбранного типа
         nativeEngine.applySmoothingByType(contextHandle, smoothingType.nativeId)
-        val splSmoothed = nativeEngine.getSpl(contextHandle)
+        val splSmoothed = nativeEngine.getSpl(contextHandle) ?: FloatArray(0)
+
+        // Capture calibrated + smoothed for debug
+        if (dbg != null) {
+            dbg.splCalibrated = splCalibrated.copyOf()
+            dbg.splSmoothed = splSmoothed.copyOf()
+        }
 
         ChannelResult(
             frequencies = freqs,
@@ -462,7 +608,21 @@ class MeasurementSession(
             ir = ir ?: FloatArray(0),
             latencyMs = 0.0,
             success = true,
-            errorMessage = null
+            errorMessage = null,
+            // THD (optional — fails silently if native not available)
+            thd = try {
+                if (nativeEngine.computeThd(contextHandle) == 0) nativeEngine.getThd(contextHandle) else null
+            } catch (e: Exception) { null },
+            thdFrequencies = try { nativeEngine.getThdFrequencies(contextHandle) } catch (e: Exception) { null },
+            // RT60 (optional)
+            rt60 = try {
+                if (nativeEngine.computeRt60(contextHandle) == 0) nativeEngine.getRt60(contextHandle) else null
+            } catch (e: Exception) { null },
+            rt60Frequencies = try { nativeEngine.getRt60Frequencies(contextHandle) } catch (e: Exception) { null },
+            // Group delay (optional)
+            groupDelay = try {
+                if (nativeEngine.computeGroupDelay(contextHandle) == 0) nativeEngine.getGroupDelay(contextHandle) else null
+            } catch (e: Exception) { null }
         )
     }
 
@@ -514,8 +674,39 @@ class MeasurementSession(
         writeInt(fos, java.lang.Float.floatToRawIntBits(value))
     }
 
+    /**
+     * Mutable container for collecting intermediate debug data during measurement.
+     */
+    private class DebugCollector {
+        var stimulus: FloatArray? = null
+        var stimulusStereo: FloatArray? = null
+        var recording: FloatArray? = null
+        var deconvolvedIr: FloatArray? = null
+        var processedIr: FloatArray? = null
+        var frequencies: FloatArray? = null
+        var splRaw: FloatArray? = null
+        var splCalibrated: FloatArray? = null
+        var splSmoothed: FloatArray? = null
+        var phase: FloatArray? = null
+    }
+
     companion object {
         private const val TAG = "MeasurementSession"
+
+        /**
+         * Усреднить новый массив с накопленным средним.
+         * avg = (avg * count + newArray) / (count + 1)
+         * Если avg == null, возвращает копию newArray.
+         */
+        private fun averageArrays(avg: FloatArray?, newArray: FloatArray, count: Int): FloatArray {
+            if (avg == null || avg.size == 0) return newArray.copyOf()
+            val result = FloatArray(avg.size)
+            val n = count + 1
+            for (i in result.indices) {
+                result[i] = (avg[i] * count + newArray.getOrElse(i) { 0f }) / n
+            }
+            return result
+        }
 
         /**
          * Сгенерировать probe-сигнал: sine-всплеск заданной длительности.

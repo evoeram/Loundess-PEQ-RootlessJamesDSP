@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Карточка Squig Live на главном экране.
+     Одна кнопка-преференс, открывает SquigActivity.
+     Аналог dsp_measurement_preferences.xml. -->
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <Preference
+        android:key="@string/key_squig_open"
+        android:title="@string/squig_title"
+        android:summary="@string/squig_summary"
+        android:icon="@drawable/ic_twotone_auto_fix_high_24"
+        app:iconSpaceReserved="false" />
+</PreferenceScreen>

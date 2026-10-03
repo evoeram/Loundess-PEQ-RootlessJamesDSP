@@ -147,6 +147,8 @@
     <string name="peq_q_range">Value between 0.1 and 30.0</string>
     <string name="peq_live_eq">Live EQ</string>
     <string name="peq_live_eq_hint">Tap a band above to adjust its parameters</string>
+    <string name="peq_live_eq_add">Add</string>
+    <string name="peq_live_eq_delete">Delete</string>
     <string name="peq_filter_type">Filter type</string>
     <string name="peq_filter_type_peaking">Peaking</string>
     <string name="peq_filter_type_low_shelf">Low shelf</string>
@@ -178,6 +180,9 @@
     <string name="loudness_volume">Current volume</string>
     <string name="loudness_auto_volume">Track system volume</string>
     <string name="loudness_auto_volume_summary">Automatically use the system media volume instead of the manual slider</string>
+    <string name="loudness_mode">Compensation mode</string>
+    <string name="loudness_mode_classic">Classic (Fletcher-Munson)</string>
+    <string name="loudness_mode_iso226">ISO 226:2023 (29-band)</string>
     <string name="loudness_summary">Fletcher-Munson loudness compensation: boosts bass and treble at low listening volumes</string>
     <string name="loudness_calibrate">Auto-calibrate with microphone</string>
     <string name="loudness_calibrate_summary">Play pink noise and measure SPL via microphone to set reference level</string>
@@ -198,6 +203,15 @@
     <string name="loudness_calibrate_stop_noise">Stop noise</string>
     <string name="loudness_calibrate_apply">Apply SPL value</string>
     <string name="loudness_calibrate_manual_warning">Play pink noise through your speakers, measure SPL with an external meter at your listening position, then enter the value below.</string>
+    <string name="loudness_tuning_category">Advanced tuning</string>
+    <string name="loudness_ls_freq">Low shelf frequency</string>
+    <string name="loudness_ls_slope">Low shelf slope (S)</string>
+    <string name="loudness_ls_ratio">Low shelf gain ratio</string>
+    <string name="loudness_hs_freq">High shelf frequency</string>
+    <string name="loudness_hs_slope">High shelf slope (S)</string>
+    <string name="loudness_hs_ratio">High shelf gain ratio</string>
+    <string name="loudness_iso_base_phon">ISO 226 base phon level</string>
+    <string name="loudness_iso_q">ISO 226 band Q</string>
 
     <string name="geq_enable">Arbitrary response equalizer</string>
     <string name="geq_nodes">Magnitude response</string>
@@ -803,6 +817,7 @@
     <string name="measurement_summary">Measure frequency response with a log sweep and auto-equalize your headphones</string>
     <string name="key_measurement_enable">measurement_enable</string>
     <string name="key_measurement_open">measurement_open</string>
+    <string name="key_squig_open">squig_open</string>
     <string name="title_activity_measurement">🐱 MEOW</string>
     <string name="measurement_start">🐱 MEOW!</string>
     <string name="measurement_stop">Stop</string>
@@ -861,13 +876,14 @@
     <string name="measurement_show_target">Show target</string>
     <string name="measurement_show_filter">Show filter</string>
     <string name="measurement_warning">🐱 MEOW wizard: Keep the room quiet during measurement. Use a measurement microphone (e.g. UMIK-1) for best results.</string>
-    <string name="measurement_input_signal">Input signal</string>
+    <string name="measurement_input_signal">Microphone input</string>
     <string name="measurement_input_idle">Idle</string>
     <string name="measurement_input_recording">Recording…</string>
-    <string name="measurement_input_level">Level: %1$.1f dB</string>
-    <string name="measurement_input_clipping">CLIPPING!</string>
-    <string name="measurement_mic_default">Mic: Auto</string>
+    <string name="measurement_input_level">Level: %1$.1f dBFS</string>
+    <string name="measurement_input_clipping">⚠ CLIPPING — reduce volume!</string>
+    <string name="measurement_mic_default">Microphone: Auto</string>
     <string name="measurement_mic_select">Select microphone</string>
+    <string name="measurement_audio_info">Audio input info</string>
 
     <!-- Android 15 screenshare restriction warning -->
     <string name="android_15_screenshare_warning_title">Android 15 compatibility notice</string>
@@ -879,4 +895,54 @@ Tap on \'Tutorial\' below for detailed instructions.</string>
     <string name="android_15_screenshare_keyguard_warning">Android 15 introduces a restriction that stops screen sharing when the device is locked. To workaround this issue, the \'PROJECT_MEDIA\' permission must be granted using Shizuku or ADB.
 
 Please press \'Continue\' below to re-do the setup wizard.</string>
+
+    <!-- SquigLink -->
+    <string name="squig_title">Squig Live</string>
+    <string name="squig_summary">AutoEQ from squig.link measurements</string>
+    <string name="squig_search_hint">Search IEM/headphones…</string>
+    <string name="squig_search">Search</string>
+    <string name="squig_loading">Loading…</string>
+    <string name="squig_load_error">Failed to load: %1$s</string>
+    <string name="squig_no_results">No results found</string>
+    <string name="squig_autoeq">AutoEQ</string>
+    <string name="squig_live_eq">Live EQ</string>
+    <string name="squig_apply_to_peq">Apply to PEQ</string>
+    <string name="squig_channel_label">Channel</string>
+    <string name="squig_channel_left">L</string>
+    <string name="squig_channel_right">R</string>
+    <string name="squig_channel_avg">Avg</string>
+    <string name="squig_target_label">Target</string>
+    <string name="squig_instance_label">Instance</string>
+    <string name="squig_measurement_loaded">Measurement loaded: %1$s</string>
+    <string name="squig_autoeq_done">AutoEQ computed: %1$d bands, max deviation %2$.1f dB</string>
+    <string name="squig_applied_to_peq">Applied %1$d bands to Parametric EQ</string>
+    <string name="squig_network_error">Network error: %1$s</string>
+    <string name="squig_catalog_info">Catalog: %1$d brands</string>
+    <string name="squig_results_count">Found: %1$d</string>
+    <string name="squig_empty_state">Type to search IEM/headphones…</string>
+    <string name="squig_selected_phone">%1$s %2$s</string>
+    <string name="squig_other_count">Other (%1$d)</string>
+    <string name="squig_target_loaded">Target: %1$s</string>
+    <string name="squig_reset">Reset</string>
+    <string name="squig_reset_done">EQ bands cleared</string>
+    <string name="squig_autoeq_config">AutoEQ Configuration</string>
+    <string name="squig_autoeq_run">Run AutoEQ</string>
+    <string name="squig_autoeq_cfg_max_bands">Max bands</string>
+    <string name="squig_autoeq_cfg_max_boost">Max boost (dB)</string>
+    <string name="squig_autoeq_cfg_flatness">Flatness target (dB)</string>
+    <string name="squig_autoeq_cfg_range_start">Match range start (Hz)</string>
+    <string name="squig_autoeq_cfg_range_end">Match range end (Hz)</string>
+    <string name="squig_autoeq_cfg_nelder_mead">Nelder-Mead optimization</string>
+    <string name="squig_cache_menu">Offline cache</string>
+    <string name="squig_cache_dump">Dump all instances (download for offline)</string>
+    <string name="squig_cache_freshness">Check freshness</string>
+    <string name="squig_cache_clear">Clear cache (%1$s)</string>
+    <string name="squig_cache_dump_title">Dump all instances</string>
+    <string name="squig_cache_dump_progress">%1$s (%2$d/%3$d)</string>
+    <string name="squig_cache_dump_done">Dump complete: %1$s</string>
+    <string name="squig_cache_dump_failed">Dump failed: %1$s</string>
+    <string name="squig_cache_freshness_title">Cache Freshness</string>
+    <string name="squig_cache_clear_title">Clear Cache</string>
+    <string name="squig_cache_clear_msg">Delete all cached SquigLink data? (%1$s)</string>
+    <string name="squig_cache_cleared">Cache cleared</string>
 </resources>

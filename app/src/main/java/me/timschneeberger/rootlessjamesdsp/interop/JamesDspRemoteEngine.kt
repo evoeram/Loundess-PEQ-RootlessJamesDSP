@@ -315,21 +315,25 @@ class JamesDspRemoteEngine(
 
     // Loudness correction via AudioEffect parameter API.
     // Sends configuration to the system effect (jamesdsp.c) which applies
-    // Fletcher-Munson compensation after the main JamesDSP chain.
+    // Fletcher-Munson or ISO 226:2023 compensation after the main JamesDSP chain.
+    // mode: 0 = classic (Fletcher-Munson), 1 = ISO 226:2023 (29-band)
     override fun setLoudnessCorrection(
         enable: Boolean,
         sampleRate: Double,
         referenceLevel: Double,
         referenceOffset: Double,
         attenuation: Double,
-        currentVolumeDb: Double
+        currentVolumeDb: Double,
+        mode: Int
     ): Boolean {
+        // 6 floats: sampleRate, refLevel, refOffset, attenuation, volume, mode
         val data = floatArrayOf(
             sampleRate.toFloat(),
             referenceLevel.toFloat(),
             referenceOffset.toFloat(),
             attenuation.toFloat(),
-            currentVolumeDb.toFloat()
+            currentVolumeDb.toFloat(),
+            mode.toFloat()
         )
         val configResult = effect.setParameterFloatArray(1301, data) == AudioEffect.SUCCESS
         val enableResult = effect.setParameter(1215, enable.toShort()) == AudioEffect.SUCCESS
@@ -338,6 +342,20 @@ class JamesDspRemoteEngine(
 
     override fun setLoudnessCorrectionVolume(currentVolumeDb: Double): Boolean {
         return effect.setParameterFloatArray(1302, floatArrayOf(currentVolumeDb.toFloat())) == AudioEffect.SUCCESS
+    }
+
+    override fun setLoudnessTuning(
+        lsFreq: Double, lsSlope: Double, lsRatio: Double,
+        hsFreq: Double, hsSlope: Double, hsRatio: Double,
+        isoBasePhon: Double, isoQ: Double
+    ): Boolean {
+        // 8 floats: lsFreq, lsSlope, lsRatio, hsFreq, hsSlope, hsRatio, isoBasePhon, isoQ
+        val data = floatArrayOf(
+            lsFreq.toFloat(), lsSlope.toFloat(), lsRatio.toFloat(),
+            hsFreq.toFloat(), hsSlope.toFloat(), hsRatio.toFloat(),
+            isoBasePhon.toFloat(), isoQ.toFloat()
+        )
+        return effect.setParameterFloatArray(1303, data) == AudioEffect.SUCCESS
     }
 
     // ---- Auto system volume tracking (root/remote engine) ----

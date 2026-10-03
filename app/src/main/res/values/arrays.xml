@@ -179,6 +179,15 @@
         <item>5</item>
     </string-array>
 
+    <string-array name="loudness_modes" translatable="false">
+        <item>@string/loudness_mode_classic</item>
+        <item>@string/loudness_mode_iso226</item>
+    </string-array>
+    <string-array name="loudness_modes_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+    </string-array>
+
     <string-array name="compander_tf_transforms" translatable="false">
         <item>@string/compander_tftransforms_stft</item>
         <item>@string/compander_tftransforms_continuous_wavelet</item>
@@ -440,5 +449,29 @@
         <item>srate</item>
         <item>spl0</item>
         <item>spl1</item>
+    </string-array>
+
+    <!-- SquigLink instances -->
+    <string-array name="squiglink_instances">
+        <item>Super* Review</item>
+        <item>Hawaii Bad Boy</item>
+        <item>Custom</item>
+    </string-array>
+    <string-array name="squiglink_instance_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+    <string-array name="squiglink_targets">
+        <item>Super 22 Target</item>
+        <item>Harman IE 2019</item>
+        <item>IEF Comp</item>
+        <item>Flat</item>
+    </string-array>
+    <string-array name="squiglink_target_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
     </string-array>
 </resources>

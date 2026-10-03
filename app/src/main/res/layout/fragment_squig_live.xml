@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Фрагмент Squig Live: компактный mobile-first UI.
+  — Верхняя строка: инстанс (spinner) + метаданные каталога
+  — Поле поиска с иконкой (живой поиск с debounce)
+  — График АЧХ — главный визуальный элемент (320dp)
+  — Статус / прогресс (одна строка)
+  — Выбранный телефон (видно после клика на результат)
+  — Список результатов (сворачиваемый, scroll) + empty state
+  — Кнопки AutoEQ / Live EQ / Reset / Apply
+-->
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:animateLayoutChanges="true">
+
+    <!-- ── Верхняя строка: инстанс + метаданные каталога ── -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/squig_instance_label"
+            android:textAppearance="?attr/textAppearanceLabelSmall"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:layout_marginEnd="6dp" />
+
+        <Spinner
+            android:id="@+id/instanceSpinner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:id="@+id/catalogInfo"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textAppearance="?attr/textAppearanceLabelSmall"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:gravity="end" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/cacheButton"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="4dp"
+            android:padding="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:contentDescription="@string/squig_cache_menu"
+            app:icon="@drawable/ic_baseline_cloud_download_24"
+            app:iconSize="20dp"
+            app:iconGravity="textTop"
+            app:iconPadding="0dp"
+            app:strokeWidth="0dp"
+            app:cornerRadius="18dp" />
+    </LinearLayout>
+
+    <!-- ── Строка выбора target curve ── -->
+    <LinearLayout
+        android:id="@+id/targetBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="4dp"
+        app:layout_constraintTop_toBottomOf="@id/topBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/squig_target_label"
+            android:textAppearance="?attr/textAppearanceLabelSmall"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:layout_marginEnd="6dp" />
+
+        <Spinner
+            android:id="@+id/targetSpinner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <!-- ── Поле поиска с иконкой ── -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/searchLayout"
+        style="?attr/textInputOutlinedDenseStyle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="6dp"
+        app:endIconMode="custom"
+        app:endIconDrawable="@drawable/ic_search_24dp"
+        app:endIconContentDescription="@string/squig_search"
+        app:layout_constraintTop_toBottomOf="@id/targetBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/searchInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/squig_search_hint"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:maxLines="1"
+            android:singleLine="true" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- ── График АЧХ — главный визуальный элемент (320dp) ── -->
+    <me.timschneeberger.rootlessjamesdsp.view.ParametricEqSurface
+        android:id="@+id/squigSurface"
+        android:layout_width="0dp"
+        android:layout_height="320dp"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginTop="6dp"
+        app:layout_constraintTop_toBottomOf="@id/searchLayout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- ── Статус / прогресс (одна строка) ── -->
+    <LinearLayout
+        android:id="@+id/statusBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="4dp"
+        app:layout_constraintTop_toBottomOf="@id/squigSurface"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ProgressBar
+            android:id="@+id/loadingProgress"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginEnd="6dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textAppearance="?attr/textAppearanceLabelSmall"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- ── Выбранный телефон (видно после клика на результат) ── -->
+    <TextView
+        android:id="@+id/selectedPhoneText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="2dp"
+        android:textAppearance="?attr/textAppearanceLabelMedium"
+        android:textColor="?attr/colorPrimary"
+        android:singleLine="true"
+        android:ellipsize="end"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/statusBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- ── Результаты поиска ── -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/resultsList"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="4dp"
+        android:maxHeight="180dp"
+        android:nestedScrollingEnabled="true"
+        android:overScrollMode="ifContentScrolls"
+        app:layout_constraintTop_toBottomOf="@id/selectedPhoneText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constrainedHeight="true" />
+
+    <!-- ── Empty state: "Введите запрос для поиска" ── -->
+    <TextView
+        android:id="@+id/emptyStateText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="8dp"
+        android:text="@string/squig_empty_state"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:gravity="center"
+        android:visibility="visible"
+        app:layout_constraintTop_toBottomOf="@id/selectedPhoneText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- ── Кнопки действий: AutoEQ / Live EQ (ряд 1), Reset / Apply (ряд 2) ── -->
+    <LinearLayout
+        android:id="@+id/actionBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintTop_toBottomOf="@id/resultsList"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Ряд 1: AutoEQ + Live EQ -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginBottom="4dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/autoeqButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="@string/squig_autoeq"
+                android:textAppearance="?attr/textAppearanceLabelMedium"
+                android:enabled="false"
+                app:icon="@drawable/ic_twotone_auto_fix_high_24"
+                app:iconGravity="textStart"
+                app:iconSize="18dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/liveEqButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/squig_live_eq"
+                android:textAppearance="?attr/textAppearanceLabelMedium"
+                android:enabled="false"
+                app:icon="@drawable/ic_baseline_equalizer_24dp"
+                app:iconGravity="textStart"
+                app:iconSize="18dp" />
+        </LinearLayout>
+
+        <!-- Ряд 2: Reset + Apply -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/resetButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="@string/squig_reset"
+                android:textAppearance="?attr/textAppearanceLabelMedium"
+                android:enabled="false"
+                app:icon="@drawable/ic_baseline_refresh_24dp"
+                app:iconGravity="textStart"
+                app:iconSize="18dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/applyButton"
+                style="?attr/materialButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/squig_apply_to_peq"
+                android:textAppearance="?attr/textAppearanceLabelMedium"
+                android:enabled="false"
+                app:icon="@drawable/ic_twotone_check_24dp"
+                app:iconGravity="textStart"
+                app:iconSize="18dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

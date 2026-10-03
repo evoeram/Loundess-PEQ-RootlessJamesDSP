@@ -875,7 +875,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setParametricEq
 extern "C" JNIEXPORT jboolean JNICALL
 Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessCorrection(JNIEnv *env, jobject obj,
     jlong self, jboolean enable, jdouble sampleRate, jdouble referenceLevel,
-    jdouble referenceOffset, jdouble attenuation, jdouble currentVolumeDb)
+    jdouble referenceOffset, jdouble attenuation, jdouble currentVolumeDb,
+    jint mode)
 {
     DECLARE_WRAPPER_B
     if (wrapper->loudnessCorrection == nullptr)
@@ -896,12 +897,36 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessCorr
     }
 
     wrapper->loudnessCorrection->configure(sampleRate, referenceLevel,
-                                           referenceOffset, attenuation);
+                                           referenceOffset, attenuation,
+                                           (int)mode);
     wrapper->loudnessCorrection->setVolume(currentVolumeDb);
     wrapper->loudnessCorrection->setEnabled(true);
 
-    LOGD("JamesDspWrapper::setLoudnessCorrection: refLevel=%.1f dB, refOffset=%.1f dB, att=%.2f, vol=%.1f dB, sr=%.0f",
-         referenceLevel, referenceOffset, attenuation, currentVolumeDb, sampleRate);
+    LOGD("JamesDspWrapper::setLoudnessCorrection: refLevel=%.1f dB, refOffset=%.1f dB, att=%.2f, vol=%.1f dB, sr=%.0f, mode=%d",
+         referenceLevel, referenceOffset, attenuation, currentVolumeDb, sampleRate, (int)mode);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessTuning(
+    JNIEnv *env, jobject obj,
+    jlong self,
+    jdouble lsFreq, jdouble lsSlope, jdouble lsRatio,
+    jdouble hsFreq, jdouble hsSlope, jdouble hsRatio,
+    jdouble isoBasePhon, jdouble isoQ)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->loudnessCorrection == nullptr)
+        return false;
+
+    wrapper->loudnessCorrection->setTuningParams(
+        lsFreq, lsSlope, lsRatio,
+        hsFreq, hsSlope, hsRatio,
+        isoBasePhon, isoQ);
+
+    LOGD("JamesDspWrapper::setLoudnessTuning: lsFreq=%.0f, lsSlope=%.2f, lsRatio=%.2f, "
+         "hsFreq=%.0f, hsSlope=%.2f, hsRatio=%.3f, isoBasePhon=%.0f, isoQ=%.2f",
+         lsFreq, lsSlope, lsRatio, hsFreq, hsSlope, hsRatio, isoBasePhon, isoQ);
     return true;
 }
 

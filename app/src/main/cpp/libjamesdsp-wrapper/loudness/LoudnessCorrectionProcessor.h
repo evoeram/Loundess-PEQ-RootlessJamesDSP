@@ -13,6 +13,14 @@
  *  scales with that difference. A pre-amp attenuation keeps the overall
  *  loudness roughly constant.
  *
+ * Two modes are supported:
+ *  - Mode 0 (Classic): Fletcher-Munson heuristic with two shelves (original).
+ *  - Mode 1 (ISO 226:2023): Uses the ISO 226:2023 equal-loudness-level contour
+ *    formula to compute the exact frequency-dependent gain curve that
+ *    compensates for the perceptual difference between the reference and
+ *    current listening level. Applied as a 29-band 1/3-octave peaking-EQ
+ *    cascade (20 Hz – 12.5 kHz).
+ *
  * Differences from the EqualizerAPO original:
  *  - No Windows VolumeController / background polling thread. The current
  *    playback volume is pushed in from the Kotlin layer (which can read the
@@ -33,6 +41,13 @@
 #include <cstdint>
 #include <vector>
 
+/* Loudness compensation mode */
+#define LOUDNESS_MODE_CLASSIC   0  /* Fletcher-Munson: two-shelf heuristic */
+#define LOUDNESS_MODE_ISO226    1  /* ISO 226:2023: 29-band contour-based */
+
+/* Number of ISO 226 frequency bands */
+#define ISO226_NUM_BANDS 29
+
 class LoudnessCorrectionProcessor
 {
 public:
@@ -45,8 +60,10 @@ public:
     //   referenceLevel  — volume level at which no correction is needed (dB)
     //   referenceOffset — offset subtracted from the reference level (dB)
     //   attenuation     — correction strength scaler, clamped to [0, 2]
+    //   mode            — 0 = classic (Fletcher-Munson), 1 = ISO 226:2023
     void configure(double sampleRate, double referenceLevel,
-                   double referenceOffset, double attenuation);
+                   double referenceOffset, double attenuation,
+                   int mode = LOUDNESS_MODE_CLASSIC);
 
     // Push the current playback volume (dB). Safe to call from any thread.
     // Coefficients are recomputed lazily on the next process() call.
@@ -55,6 +72,20 @@ public:
     // Enable / disable the entire loudness correction.
     void setEnabled(bool enabled);
     bool isEnabled() const { return enabled; }
+
+    // Set user-tunable shelf/contour parameters.
+    // Defaults match the original EqualizerAPO hardcoded values.
+    //   lsFreq     — low shelf center frequency (Hz, default 75)
+    //   lsSlope    — low shelf S slope (default 0.52)
+    //   lsRatio    — low shelf gain ratio (default 0.55)
+    //   hsFreq     — high shelf center frequency (Hz, default 10000)
+    //   hsSlope    — high shelf S slope (default 0.90)
+    //   hsRatio    — high shelf gain ratio (default 0.225)
+    //   isoBasePhon — ISO 226 base phon level (default 80)
+    //   isoQ       — ISO 226 peaking Q (default 4.318)
+    void setTuningParams(double lsFreq, double lsSlope, double lsRatio,
+                         double hsFreq, double hsSlope, double hsRatio,
+                         double isoBasePhon, double isoQ);
 
     // Process interleaved stereo float audio in-place.
     // Each frame is [L, R]. numFrames = number of frames (not samples).
@@ -71,6 +102,7 @@ private:
     double referenceLevel;
     double referenceOffset;
     double attenuation;
+    int mode;
 
     // Current volume — written from config thread, read on audio thread
     std::atomic<double> volumeDb;
@@ -92,6 +124,23 @@ private:
     BiQuad highShelfL;
     BiQuad highShelfR;
 
+    // ---- User-tunable parameters (defaults match original hardcoded values) ----
+    double lsFreq;     // low shelf frequency (Hz)
+    double lsSlope;    // low shelf S slope
+    double lsRatio;    // low shelf gain ratio
+    double hsFreq;     // high shelf frequency (Hz)
+    double hsSlope;    // high shelf S slope
+    double hsRatio;    // high shelf gain ratio
+    double isoBasePhon; // ISO 226 base phon level
+    double isoQ;       // ISO 226 peaking Q
+
+    // ---- ISO 226 mode: 29-band peaking EQ cascade ----
+    BiQuad isoBandsL[ISO226_NUM_BANDS];
+    BiQuad isoBandsR[ISO226_NUM_BANDS];
+    double isoGains[ISO226_NUM_BANDS];
+    double isoPreampLinear;
+    int isoActiveBandCount;
+
     // Temp buffers for deinterleaved processing
     std::vector<float> tmpL;
     std::vector<float> tmpR;
@@ -106,4 +155,14 @@ private:
     // Recompute biquad coefficients from the current volume + parameters.
     // Audio-thread only.
     void recomputeCoefficients(double volume);
+
+    // Compute ISO 226:2023 loudness correction gains for all 29 bands.
+    // Returns the max positive gain (for pre-amp computation).
+    double computeIso226Gains(double volume, double gains[ISO226_NUM_BANDS]);
+
+    // ISO 226:2023 Table 1 data (29 one-third-octave bands)
+    static const double iso226Freqs[ISO226_NUM_BANDS];
+    static const double iso226Af[ISO226_NUM_BANDS];
+    static const double iso226Lu[ISO226_NUM_BANDS];
+    static const double iso226Tf[ISO226_NUM_BANDS];
 };

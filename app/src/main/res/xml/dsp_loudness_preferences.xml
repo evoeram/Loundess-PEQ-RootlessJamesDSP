@@ -8,6 +8,17 @@
         android:summary="@string/loudness_summary"
         android:icon="@drawable/ic_twotone_volume_up_24dp"
         app:iconSpaceReserved="false">
+        <me.timschneeberger.rootlessjamesdsp.preference.LoudnessGraphPreference
+            android:key="loudness_graph"
+            app:iconSpaceReserved="false"/>
+        <ListPreference
+            android:key="@string/key_loudness_mode"
+            android:title="@string/loudness_mode"
+            android:defaultValue="0"
+            android:entries="@array/loudness_modes"
+            android:entryValues="@array/loudness_modes_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false"/>
         <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
             android:key="@string/key_loudness_reference_level"
             android:title="@string/loudness_reference_level"
@@ -63,5 +74,97 @@
             android:title="@string/loudness_calibrate"
             android:summary="@string/loudness_calibrate_summary"
             app:iconSpaceReserved="false"/>
+        <PreferenceCategory
+            android:title="@string/loudness_tuning_category"
+            app:iconSpaceReserved="false">
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_ls_freq"
+                android:title="@string/loudness_ls_freq"
+                android:defaultValue="75"
+                app:minValue="20"
+                app:maxValue="500"
+                app:unit="Hz"
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_ls_slope"
+                android:title="@string/loudness_ls_slope"
+                android:defaultValue="52"
+                app:minValue="5"
+                app:maxValue="100"
+                app:unit=""
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_ls_ratio"
+                android:title="@string/loudness_ls_ratio"
+                android:defaultValue="55"
+                app:minValue="0"
+                app:maxValue="100"
+                app:unit=""
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_hs_freq"
+                android:title="@string/loudness_hs_freq"
+                android:defaultValue="10000"
+                app:minValue="2000"
+                app:maxValue="20000"
+                app:unit="Hz"
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_hs_slope"
+                android:title="@string/loudness_hs_slope"
+                android:defaultValue="90"
+                app:minValue="5"
+                app:maxValue="100"
+                app:unit=""
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_hs_ratio"
+                android:title="@string/loudness_hs_ratio"
+                android:defaultValue="225"
+                app:minValue="0"
+                app:maxValue="1000"
+                app:unit=""
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_iso_base_phon"
+                android:title="@string/loudness_iso_base_phon"
+                android:defaultValue="80"
+                app:minValue="20"
+                app:maxValue="90"
+                app:unit="phon"
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_iso_q"
+                android:title="@string/loudness_iso_q"
+                android:defaultValue="432"
+                app:minValue="10"
+                app:maxValue="2400"
+                app:unit=""
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+        </PreferenceCategory>
     </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>
