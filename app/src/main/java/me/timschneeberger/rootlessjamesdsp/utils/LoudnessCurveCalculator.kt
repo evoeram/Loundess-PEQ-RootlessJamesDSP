@@ -1,10 +1,13 @@
 package me.timschneeberger.rootlessjamesdsp.utils
 
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
@@ -280,7 +283,50 @@ object LoudnessCurveCalculator {
             if (gain > maxGain) maxGain = gain
         }
 
-        val preAmpDb = -maxGain * att
+        // Pre-amp: offset by the ACTUAL peak of the combined cascade.
+        // Adjacent peaking filters overlap and sum, so the cascade peak
+        // is higher than any individual band gain.
+        val sr = 48000.0
+        val q = t.isoQ
+        val nyquist = sr * 0.5
+        var cascadePeak = maxGain // floor: at least the max individual gain
+        for (i in isoFreqs.indices) {
+            // Test at band center and geometric mean with next band
+            val testFreqs = mutableListOf(isoFreqs[i])
+            if (i < isoFreqs.size - 1)
+                testFreqs.add(sqrt(isoFreqs[i] * isoFreqs[i + 1]))
+            for (f in testFreqs) {
+                if (f <= 0.0) continue
+                val w = 2.0 * PI * f / sr
+                var total = 0.0
+                for (j in isoFreqs.indices) {
+                    val gain = isoGains[j]
+                    if (abs(gain) < 0.05) continue
+                    if (isoFreqs[j] > nyquist * 0.98) continue
+                    val w0 = 2.0 * PI * isoFreqs[j] / sr
+                    val A = 10.0.pow(gain / 40.0)
+                    val alpha = sin(w0) / (2.0 * q)
+                    val b0 = 1.0 + alpha * A
+                    val b1 = -2.0 * cos(w0)
+                    val b2 = 1.0 - alpha * A
+                    val a0 = 1.0 + alpha / A
+                    val a1 = -2.0 * cos(w0)
+                    val a2 = 1.0 - alpha / A
+                    val cosw = cos(w); val cos2w = cos(2.0 * w)
+                    val sinw = sin(w); val sin2w = sin(2.0 * w)
+                    val numRe = b0 + b1 * cosw + b2 * cos2w
+                    val numIm = b1 * sinw + b2 * sin2w
+                    val denRe = a0 + a1 * cosw + a2 * cos2w
+                    val denIm = a1 * sinw + a2 * sin2w
+                    val numSq = numRe * numRe + numIm * numIm
+                    val denSq = denRe * denRe + denIm * denIm
+                    if (denSq > 1e-20 && numSq > 0.0)
+                        total += 10.0 * log10(numSq / denSq)
+                }
+                if (total > cascadePeak) cascadePeak = total
+            }
+        }
+        val preAmpDb = -cascadePeak
 
         // Interpolate to a smooth curve from 20 Hz to 20 kHz.
         // ISO data only goes to 12.5 kHz — extrapolate beyond that

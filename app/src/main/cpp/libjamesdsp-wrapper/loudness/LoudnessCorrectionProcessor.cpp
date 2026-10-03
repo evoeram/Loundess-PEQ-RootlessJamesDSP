@@ -174,11 +174,6 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
         // Compute the loudness correction gains for all 29 bands.
         double maxGain = computeIso226Gains(volume, isoGains);
 
-        // Pre-amp: offset by the max positive gain to prevent clipping.
-        // attFactor applies this as a linear gain before the EQ cascade.
-        double preAmpDb = -maxGain * attenuation;
-        attFactor = std::exp(preAmpDb / 6.0 * std::log(2.0));
-
         // Check if correction is near-zero (bypass for best quality)
         double maxAbs = 0.0;
         for (int i = 0; i < ISO226_NUM_BANDS; i++)
@@ -217,6 +212,59 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
                                   qThirdOctave, false);
             isoActiveBandCount++;
         }
+
+        // Pre-amp: offset by the ACTUAL peak of the combined cascade.
+        // Adjacent peaking filters overlap and sum, so the cascade peak
+        // is higher than any individual band gain. Evaluate the combined
+        // response at each band center and between adjacent centers.
+        double cascadePeak = maxGain; // floor: at least the max individual gain
+        if (isoActiveBandCount > 0)
+        {
+            for (int i = 0; i < ISO226_NUM_BANDS; i++)
+            {
+                // Test at band center and geometric mean with next band
+                double testFreqs[2] = {iso226Freqs[i], 0.0};
+                if (i < ISO226_NUM_BANDS - 1)
+                    testFreqs[1] = std::sqrt(iso226Freqs[i] * iso226Freqs[i + 1]);
+
+                for (int tf = 0; tf < 2; tf++)
+                {
+                    double f = testFreqs[tf];
+                    if (f <= 0.0) continue;
+                    double w = 2.0 * M_PI * f / sampleRate;
+                    double total = 0.0;
+                    for (int j = 0; j < ISO226_NUM_BANDS; j++)
+                    {
+                        double gain = isoGains[j] * attenuation;
+                        if (std::abs(gain) < 0.05) continue;
+                        if (iso226Freqs[j] > nyquist * 0.98) continue;
+                        double w0 = 2.0 * M_PI * iso226Freqs[j] / sampleRate;
+                        double A = std::pow(10.0, gain / 40.0);
+                        double alpha = std::sin(w0) / (2.0 * qThirdOctave);
+                        double b0 = 1.0 + alpha * A;
+                        double b1 = -2.0 * std::cos(w0);
+                        double b2 = 1.0 - alpha * A;
+                        double a0 = 1.0 + alpha / A;
+                        double a1 = -2.0 * std::cos(w0);
+                        double a2 = 1.0 - alpha / A;
+                        double cosw = std::cos(w), cos2w = std::cos(2.0 * w);
+                        double sinw = std::sin(w), sin2w = std::sin(2.0 * w);
+                        double num_re = b0 + b1 * cosw + b2 * cos2w;
+                        double num_im = b1 * sinw + b2 * sin2w;
+                        double den_re = a0 + a1 * cosw + a2 * cos2w;
+                        double den_im = a1 * sinw + a2 * sin2w;
+                        double num_sq = num_re * num_re + num_im * num_im;
+                        double den_sq = den_re * den_re + den_im * den_im;
+                        if (den_sq > 1e-20 && num_sq > 0.0)
+                            total += 10.0 * std::log10(num_sq / den_sq);
+                    }
+                    if (total > cascadePeak)
+                        cascadePeak = total;
+                }
+            }
+        }
+        double preAmpDb = -cascadePeak;
+        attFactor = std::exp(preAmpDb / 6.0 * std::log(2.0));
 
         isoPreampLinear = attFactor;
         // Fall through to subsonic filter rebuild below (don't return)
