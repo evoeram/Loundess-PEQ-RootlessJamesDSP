@@ -166,5 +166,49 @@
                 app:showSeekBarValue="true"
                 app:iconSpaceReserved="false"/>
         </PreferenceCategory>
+        <PreferenceCategory
+            android:title="@string/loudness_subsonic_category"
+            app:iconSpaceReserved="false">
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+                android:key="@string/key_loudness_subsonic_enable"
+                android:title="@string/loudness_subsonic_enable"
+                android:summary="@string/loudness_subsonic_enable_summary"
+                android:defaultValue="false"
+                app:iconSpaceReserved="false"/>
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_subsonic_freq"
+                android:title="@string/loudness_subsonic_freq"
+                android:defaultValue="20"
+                app:minValue="10"
+                app:maxValue="100"
+                app:unit="Hz"
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_subsonic_order"
+                android:title="@string/loudness_subsonic_order"
+                android:defaultValue="4"
+                app:minValue="1"
+                app:maxValue="8"
+                app:seekBarIncrement="1"
+                app:unit=" order"
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+            <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+                android:key="@string/key_loudness_subsonic_q"
+                android:title="@string/loudness_subsonic_q"
+                android:defaultValue="707"
+                app:minValue="100"
+                app:maxValue="2000"
+                app:unit=""
+                app:allowDividerAbove="false"
+                app:updatesContinuously="true"
+                app:showSeekBarValue="true"
+                app:iconSpaceReserved="false"/>
+        </PreferenceCategory>
     </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

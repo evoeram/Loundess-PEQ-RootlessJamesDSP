@@ -36,6 +36,10 @@ LoudnessCorrectionProcessor::LoudnessCorrectionProcessor()
     , isoQ(4.318)
     , isoPreampLinear(1.0)
     , isoActiveBandCount(0)
+    , subsonicEnabled(false)
+    , subsonicFreq(20.0)
+    , subsonicOrder(4)
+    , subsonicQ(0.707)
 {
     for (int i = 0; i < ISO226_NUM_BANDS; i++)
         isoGains[i] = 0.0;
@@ -102,6 +106,15 @@ void LoudnessCorrectionProcessor::setTuningParams(
     hsRatio    = (pHsRatio < 0.0)    ? 0.0     : (pHsRatio > 1.0 ? 1.0 : pHsRatio);
     isoBasePhon = (pIsoBasePhon < 20.0) ? 20.0 : (pIsoBasePhon > 90.0 ? 90.0 : pIsoBasePhon);
     isoQ       = (pIsoQ < 0.1)       ? 0.1    : (pIsoQ > 24.0 ? 24.0 : pIsoQ);
+    coeffsDirty.store(true, std::memory_order_release);
+}
+
+void LoudnessCorrectionProcessor::setSubsonicFilter(bool enable, double freq, int order, double qFactor)
+{
+    subsonicEnabled = enable;
+    subsonicFreq    = (freq < 5.0)     ? 5.0     : (freq > 200.0 ? 200.0 : freq);
+    subsonicOrder   = (order < 1)      ? 1       : (order > 8 ? 8 : order);
+    subsonicQ       = (qFactor < 0.1)  ? 0.1     : (qFactor > 2.0 ? 2.0 : qFactor);
     coeffsDirty.store(true, std::memory_order_release);
 }
 
@@ -206,8 +219,10 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
         }
 
         isoPreampLinear = attFactor;
-        return;
+        // Fall through to subsonic filter rebuild below (don't return)
     }
+    else
+    {
 
     // ---- Classic mode (original) ----
     double freqLS, sLS, gainLS, preAmp;
@@ -234,6 +249,32 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
     lowShelfR = BiQuad(BiQuad::LOW_SHELF, gainLS, freqLS, sampleRate, sLS, true);
     highShelfL = BiQuad(BiQuad::HIGH_SHELF, gainHS, freqHS, sampleRate, sHS, true);
     highShelfR = BiQuad(BiQuad::HIGH_SHELF, gainHS, freqHS, sampleRate, sHS, true);
+    }
+
+    // ---- Subsonic (infrasonic) high-pass filter ----
+    // Rebuild regardless of mode; applied before loudness correction.
+    if (subsonicEnabled)
+    {
+        double nyquist = sampleRate * 0.5;
+        double f = subsonicFreq;
+        if (f < 1.0) f = 1.0;
+        if (f > nyquist * 0.98) f = nyquist * 0.98;
+
+        int numStages = (subsonicOrder + 1) / 2; // ceil(order/2)
+        for (int i = 0; i < numStages && i < MAX_SUBSONIC_STAGES; i++)
+        {
+            subsonicL[i] = BiQuad(BiQuad::HIGH_PASS, 0.0, f, sampleRate,
+                                  subsonicQ, false);
+            subsonicR[i] = BiQuad(BiQuad::HIGH_PASS, 0.0, f, sampleRate,
+                                  subsonicQ, false);
+        }
+        // Clear unused stages
+        for (int i = numStages; i < MAX_SUBSONIC_STAGES; i++)
+        {
+            subsonicL[i] = BiQuad();
+            subsonicR[i] = BiQuad();
+        }
+    }
 }
 
 void LoudnessCorrectionProcessor::processInterleaved(float* data, size_t numFrames)
@@ -293,8 +334,36 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
         coeffsDirty.store(false, std::memory_order_release);
     }
 
-    if (neutral)
+    // Subsonic filter runs independently of loudness neutral/bypass
+    int numSubsonicStages = 0;
+    if (subsonicEnabled)
+        numSubsonicStages = (subsonicOrder + 1) / 2;
+
+    if (neutral && numSubsonicStages == 0)
         return;
+
+    // If only subsonic is active (neutral loudness), apply just the HP cascade
+    if (neutral)
+    {
+        for (size_t i = 0; i < numFrames; ++i)
+        {
+            double sL = left[i];
+            double sR = right[i];
+            for (int s = 0; s < numSubsonicStages && s < MAX_SUBSONIC_STAGES; s++)
+            {
+                sL = subsonicL[s].process(sL);
+                sR = subsonicR[s].process(sR);
+            }
+            left[i]  = (float)sL;
+            right[i] = (float)sR;
+        }
+        for (int s = 0; s < numSubsonicStages && s < MAX_SUBSONIC_STAGES; s++)
+        {
+            subsonicL[s].removeDenormals();
+            subsonicR[s].removeDenormals();
+        }
+        return;
+    }
 
     if (mode == LOUDNESS_MODE_ISO226)
     {
@@ -305,8 +374,18 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
         double preamp = isoPreampLinear;
         for (size_t i = 0; i < numFrames; ++i)
         {
-            double sampleL = left[i] * preamp;
-            double sampleR = right[i] * preamp;
+            double sampleL = left[i];
+            double sampleR = right[i];
+
+            // Subsonic HP filter before loudness correction
+            for (int s = 0; s < numSubsonicStages && s < MAX_SUBSONIC_STAGES; s++)
+            {
+                sampleL = subsonicL[s].process(sampleL);
+                sampleR = subsonicR[s].process(sampleR);
+            }
+
+            sampleL *= preamp;
+            sampleR *= preamp;
 
             for (int b = 0; b < ISO226_NUM_BANDS; b++)
             {
@@ -324,6 +403,11 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
             isoBandsL[b].removeDenormals();
             isoBandsR[b].removeDenormals();
         }
+        for (int s = 0; s < numSubsonicStages && s < MAX_SUBSONIC_STAGES; s++)
+        {
+            subsonicL[s].removeDenormals();
+            subsonicR[s].removeDenormals();
+        }
         return;
     }
 
@@ -332,6 +416,13 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
     {
         double sampleL = left[i];
         double sampleR = right[i];
+
+        // Subsonic HP filter before loudness correction
+        for (int s = 0; s < numSubsonicStages && s < MAX_SUBSONIC_STAGES; s++)
+        {
+            sampleL = subsonicL[s].process(sampleL);
+            sampleR = subsonicR[s].process(sampleR);
+        }
 
         // Low shelf → pre-amp attenuation → high shelf
         sampleL = lowShelfL.process(sampleL);
@@ -352,6 +443,11 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
     lowShelfR.removeDenormals();
     highShelfL.removeDenormals();
     highShelfR.removeDenormals();
+    for (int s = 0; s < numSubsonicStages && s < MAX_SUBSONIC_STAGES; s++)
+    {
+        subsonicL[s].removeDenormals();
+        subsonicR[s].removeDenormals();
+    }
 }
 
 /* ================================================================ */

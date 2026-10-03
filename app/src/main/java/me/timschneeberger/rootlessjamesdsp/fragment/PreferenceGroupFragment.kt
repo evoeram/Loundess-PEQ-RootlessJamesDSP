@@ -104,7 +104,10 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
 
         when(args.getInt(BUNDLE_XML_RES)) {
             R.xml.dsp_convolver_preferences -> setupConvolverSampleRateFiles()
-            R.xml.dsp_loudness_preferences -> setupLoudnessCalibration()
+            R.xml.dsp_loudness_preferences -> {
+                setupLoudnessCalibration()
+                setupLoudnessTuningLabels()
+            }
             R.xml.dsp_compander_preferences -> {
                 findPreference<MaterialSeekbarPreference>(getString(R.string.key_compander_granularity))?.valueLabelOverride =
                     fun(it: Float): String {
@@ -515,6 +518,41 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
         } catch (_: IllegalStateException) {
             // Fragment may be detached
         }
+    }
+
+    /**
+     * Отображение значений slope/ratio/isoQ слайдеров в человекочитаемом виде.
+     * Внутри SharedPreferences значения хранятся "масштабированными" целыми
+     * (52 → 0.52, 225 → 0.225, 432 → 4.32), поэтому нужен override.
+     */
+    private fun setupLoudnessTuningLabels() {
+        // ls_slope: stored /100 → 0.05..1.00
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_loudness_ls_slope))?.valueLabelOverride =
+            fun(it: Float): String { return "%.2f".format(it / 100f) }
+
+        // ls_ratio: stored /100 → 0.00..1.00
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_loudness_ls_ratio))?.valueLabelOverride =
+            fun(it: Float): String { return "%.2f".format(it / 100f) }
+
+        // hs_slope: stored /100 → 0.05..1.00
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_loudness_hs_slope))?.valueLabelOverride =
+            fun(it: Float): String { return "%.2f".format(it / 100f) }
+
+        // hs_ratio: stored /1000 → 0.000..1.000
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_loudness_hs_ratio))?.valueLabelOverride =
+            fun(it: Float): String { return "%.3f".format(it / 1000f) }
+
+        // iso_q: stored /100 → 0.10..24.00
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_loudness_iso_q))?.valueLabelOverride =
+            fun(it: Float): String { return "%.2f".format(it / 100f) }
+
+        // subsonic_order: integer 1..8, no decimals
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_loudness_subsonic_order))?.valueLabelOverride =
+            fun(it: Float): String { return it.roundToInt().toString() }
+
+        // subsonic_q: stored /1000 → 0.10..2.00
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_loudness_subsonic_q))?.valueLabelOverride =
+            fun(it: Float): String { return "%.2f".format(it / 1000f) }
     }
 
     private fun setupConvolverSampleRateFiles() {

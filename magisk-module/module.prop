@@ -1,8 +1,0 @@
-id=ainur_jamesdsp
-name=JamesDSP Manager (PEQ+Loudness Enhanced)
-version=v6.3.1.1-peq-loudness (2026-09-27)
-versionCode=107
-author=james34602, zackptg5, ahrion, evoeram
-description=JamesDSP with PEQ biquad cascade and loudness correction (Fletcher-Munson) support via AudioEffect API. Based on RootlessJamesDSP fork Loundess-PEQ. Now supports KernelSU/SukiSU/APatch.
-support=https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP
-updateJson=https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases/download/v1.6.15-peq-loudness/update.json

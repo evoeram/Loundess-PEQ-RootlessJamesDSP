@@ -5,6 +5,7 @@ import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sqrt
 
 /**
  * Computes the loudness correction frequency response curve for visualization.
@@ -69,24 +70,114 @@ object LoudnessCurveCalculator {
         attenuation: Double,
         volumeDb: Double,
         tuning: TuningParams? = null,
+        subsonic: SubsonicParams? = null,
         numPoints: Int = 200
     ): CurveResult {
         val t = tuning ?: TuningParams()
         val att = attenuation.coerceIn(0.0, 2.0)
         val volDiff = referenceLevel - referenceOffset - volumeDb
 
+        // Build subsonic HP response curve (applied regardless of volDiff)
+        val subsonicResponse = if (subsonic?.enable == true) {
+            buildSubsonicResponse(subsonic, numPoints)
+        } else null
+
         if (abs(volDiff) < 0.01) {
-            // No correction needed — flat line at 0 dB
+            // No loudness correction needed — but still show subsonic filter if enabled
             val freqs = logSpace(20.0, 20000.0, numPoints)
-            val gains = DoubleArray(numPoints) { 0.0 }
-            return CurveResult(freqs, gains, 0.0)
+            val gains = if (subsonicResponse != null) subsonicResponse.copyOf() else DoubleArray(numPoints) { 0.0 }
+            // Bring peak to 0.0 dB
+            val maxGain0 = gains.maxOrNull() ?: 0.0
+            val correction0 = -maxGain0
+            if (abs(correction0) > 0.001) {
+                for (i in gains.indices) gains[i] += correction0
+            }
+            return CurveResult(freqs, gains, correction0)
         }
 
-        return if (mode == 1) {
+        val result = if (mode == 1) {
             computeIso226(volDiff, att, t, numPoints)
         } else {
             computeClassic(volDiff, att, t, numPoints)
         }
+
+        // Apply subsonic filter response on top of loudness curve
+        if (subsonicResponse != null) {
+            for (i in result.gains.indices) {
+                result.gains[i] += subsonicResponse[i]
+            }
+        }
+
+        // Recompute preamp: find actual peak of the combined curve (LS + HS + subsonic)
+        // and bring it to 0.0 dB. This accounts for subsonic filter, LS/HS slope and Q,
+        // and any filter interactions that the initial preamp estimate didn't cover.
+        val maxGain = result.gains.maxOrNull() ?: 0.0
+        val correction = -maxGain
+        if (abs(correction) > 0.001) {
+            for (i in result.gains.indices) {
+                result.gains[i] += correction
+            }
+        }
+
+        return result.copy(preampDb = result.preampDb + correction)
+    }
+
+    /** Subsonic (infrasonic) high-pass filter parameters. */
+    data class SubsonicParams(
+        val enable: Boolean = false,
+        val freq: Double = 20.0,
+        val order: Int = 4,        // 1–8
+        val qFactor: Double = 0.707
+    )
+
+    /**
+     * Build the frequency response (dB) of a cascaded high-pass filter.
+     * Each 2nd-order stage uses an RBJ biquad HP response.
+     * Total attenuation at DC = order × 6 dB.
+     */
+    private fun buildSubsonicResponse(s: SubsonicParams, numPoints: Int): DoubleArray {
+        val freqs = logSpace(20.0, 20000.0, numPoints)
+        val response = DoubleArray(numPoints)
+        val numStages = (s.order + 1) / 2 // ceil(order/2)
+        val f = s.freq.coerceIn(1.0, 20000.0)
+        val q = s.qFactor.coerceIn(0.1, 10.0)
+
+        for (i in freqs.indices) {
+            var gainDb = 0.0
+            for (stage in 0 until numStages) {
+                gainDb += highPassBiquadResponseDb(freqs[i], f, q)
+            }
+            // For odd order, add a 1st-order RC response (−6 dB/oct)
+            if (s.order % 2 == 1) {
+                gainDb += firstOrderHighPassDb(freqs[i], f)
+            }
+            response[i] = gainDb
+        }
+        return response
+    }
+
+    /** RBJ 2nd-order high-pass biquad magnitude response in dB. */
+    private fun highPassBiquadResponseDb(f: Double, fc: Double, q: Double): Double {
+        val ratio = f / fc
+        if (ratio <= 0.0) return -120.0
+        // w = f/fc; normalized biquad HP transfer function magnitude
+        val w = ratio
+        val w2 = w * w
+        val q2 = q * q
+        // |H(jw)|^2 for RBJ HP: (w^4) / (w^4 + w^2*(1/Q^2 - 2) + 1)
+        val num = w2 * w2
+        val den = w2 * w2 + w2 * (1.0 / q2 - 2.0) + 1.0
+        if (den <= 0.0) return 0.0
+        val mag = num / den
+        return if (mag > 0.0) 10.0 * log10(mag) else -120.0
+    }
+
+    /** 1st-order RC high-pass magnitude response in dB. */
+    private fun firstOrderHighPassDb(f: Double, fc: Double): Double {
+        val ratio = f / fc
+        if (ratio <= 0.0) return -120.0
+        val mag = ratio / sqrt(1.0 + ratio * ratio)
+        return if (mag > 0.0) 20.0 * log10(mag) else -120.0
     }
 
     /** User-tunable shelf/contour parameters. Defaults match original hardcoded values. */
@@ -127,7 +218,7 @@ object LoudnessCurveCalculator {
         var hsGain = 0.0
 
         if (hsVol > 0.0) {
-            hsGain = hsVol * 0.225 * kotlin.math.exp(-hsVol / 100.0) * att
+            hsGain = hsVol * t.hsRatio * kotlin.math.exp(-hsVol / 100.0) * att
         } else if (hsVol < 0.0) {
             hsGain = hsVol * 0.175 * kotlin.math.exp(hsVol / 80.0) * att
         }
@@ -135,8 +226,8 @@ object LoudnessCurveCalculator {
         // Approximate the combined shelf response at each frequency
         for (i in freqs.indices) {
             val f = freqs[i]
-            val lsResponse = lowShelfResponse(f, lsFreq, lsGain)
-            val hsResponse = highShelfResponse(f, hsFreq, hsGain)
+            val lsResponse = lowShelfResponse(f, lsFreq, lsGain, lsS)
+            val hsResponse = highShelfResponse(f, hsFreq, hsGain, hsS)
             gains[i] = lsResponse + hsResponse + preAmp
         }
 
@@ -146,24 +237,29 @@ object LoudnessCurveCalculator {
     /**
      * Approximate low shelf filter magnitude response at frequency f.
      * Below shelfFreq: gain approaches lsGain. Above: approaches 0 dB.
-     * Transition width ≈ 1.2 octaves, matching a real biquad shelf with S≈0.5.
+     * Transition width derived from the S slope parameter, matching a real
+     * biquad shelf where smaller S = steeper transition.
      */
-    private fun lowShelfResponse(f: Double, shelfFreq: Double, gain: Double): Double {
+    private fun lowShelfResponse(f: Double, shelfFreq: Double, gain: Double, slope: Double): Double {
         if (abs(gain) < 0.001) return 0.0
         val ratio = log10(f / shelfFreq)
-        val t = 1.0 / (1.0 + 10.0.pow(ratio / 0.2))
+        // slope ≈ 0.5 → ~1 octave transition; slope ≈ 1.0 → ~2 octaves
+        val transitionWidth = (0.2 + slope * 0.2).coerceIn(0.05, 0.6)
+        val t = 1.0 / (1.0 + 10.0.pow(ratio / transitionWidth))
         return gain * t
     }
 
     /**
      * Approximate high shelf filter magnitude response at frequency f.
      * Above shelfFreq: gain approaches hsGain. Below: approaches 0 dB.
-     * Transition width ≈ 1.2 octaves, matching a real biquad shelf with S≈0.9.
+     * Transition width derived from the S slope parameter, matching a real
+     * biquad shelf where smaller S = steeper transition.
      */
-    private fun highShelfResponse(f: Double, shelfFreq: Double, gain: Double): Double {
+    private fun highShelfResponse(f: Double, shelfFreq: Double, gain: Double, slope: Double): Double {
         if (abs(gain) < 0.001) return 0.0
         val ratio = log10(f / shelfFreq)
-        val t = 1.0 / (1.0 + 10.0.pow(-ratio / 0.2))
+        val transitionWidth = (0.2 + slope * 0.2).coerceIn(0.05, 0.6)
+        val t = 1.0 / (1.0 + 10.0.pow(-ratio / transitionWidth))
         return gain * t
     }
 

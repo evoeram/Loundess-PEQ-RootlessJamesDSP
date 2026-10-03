@@ -137,7 +137,14 @@ class LoudnessGraphPreference : Preference, SharedPreferences.OnSharedPreference
             isoQ = prefs.getFloat(context.getString(R.string.key_loudness_iso_q), 432f).toDouble() / 100.0
         )
 
-        val result = LoudnessCurveCalculator.compute(mode, refLevel, refOffset, attenuation, volume, tuning)
+        val subsonic = LoudnessCurveCalculator.SubsonicParams(
+            enable = prefs.getBoolean(context.getString(R.string.key_loudness_subsonic_enable), false),
+            freq = prefs.getFloat(context.getString(R.string.key_loudness_subsonic_freq), 20f).toDouble(),
+            order = prefs.getFloat(context.getString(R.string.key_loudness_subsonic_order), 4f).toInt(),
+            qFactor = prefs.getFloat(context.getString(R.string.key_loudness_subsonic_q), 707f).toDouble() / 1000.0
+        )
+
+        val result = LoudnessCurveCalculator.compute(mode, refLevel, refOffset, attenuation, volume, tuning, subsonic)
         s.setCurve(result.frequencies, result.gains, result.preampDb)
     }
 

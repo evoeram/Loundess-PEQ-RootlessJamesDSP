@@ -931,6 +931,23 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessTuni
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessSubsonic(
+    JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble freq, jint order, jdouble qFactor)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->loudnessCorrection == nullptr)
+        return false;
+
+    wrapper->loudnessCorrection->setSubsonicFilter(
+        enable, freq, (int)order, qFactor);
+
+    LOGD("JamesDspWrapper::setLoudnessSubsonic: enable=%d, freq=%.1f Hz, order=%d, Q=%.3f",
+         enable, freq, (int)order, qFactor);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessCorrectionVolume(JNIEnv *env, jobject obj,
     jlong self, jdouble currentVolumeDb)
 {

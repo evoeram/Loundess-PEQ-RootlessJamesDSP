@@ -358,6 +358,19 @@ class JamesDspRemoteEngine(
         return effect.setParameterFloatArray(1303, data) == AudioEffect.SUCCESS
     }
 
+    override fun setLoudnessSubsonic(
+        enable: Boolean, freq: Double, order: Int, qFactor: Double
+    ): Boolean {
+        // 4 floats: enable(0/1), freq, order, qFactor
+        val data = floatArrayOf(
+            if (enable) 1f else 0f,
+            freq.toFloat(),
+            order.toFloat(),
+            qFactor.toFloat()
+        )
+        return effect.setParameterFloatArray(1304, data) == AudioEffect.SUCCESS
+    }
+
     // ---- Auto system volume tracking (root/remote engine) ----
 
     private var volumeReceiverRegistered = false

@@ -212,6 +212,12 @@
     <string name="loudness_hs_ratio">High shelf gain ratio</string>
     <string name="loudness_iso_base_phon">ISO 226 base phon level</string>
     <string name="loudness_iso_q">ISO 226 band Q</string>
+    <string name="loudness_subsonic_category">Subsonic filter (speaker protection)</string>
+    <string name="loudness_subsonic_enable">Enable subsonic filter</string>
+    <string name="loudness_subsonic_enable_summary">High-pass filter to protect speakers from infrasonic frequencies</string>
+    <string name="loudness_subsonic_freq">Cutoff frequency</string>
+    <string name="loudness_subsonic_order">Filter order (slope)</string>
+    <string name="loudness_subsonic_q">Q factor</string>
 
     <string name="geq_enable">Arbitrary response equalizer</string>
     <string name="geq_nodes">Magnitude response</string>

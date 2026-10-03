@@ -271,6 +271,13 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         )
     }
 
+    override fun setLoudnessSubsonic(
+        enable: Boolean, freq: Double, order: Int, qFactor: Double
+    ): Boolean {
+        if (handle == 0L) return false
+        return JamesDspWrapper.setLoudnessSubsonic(handle, enable, freq, order, qFactor)
+    }
+
     // ---- Auto system volume tracking ----
 
     private var volumeReceiverRegistered = false

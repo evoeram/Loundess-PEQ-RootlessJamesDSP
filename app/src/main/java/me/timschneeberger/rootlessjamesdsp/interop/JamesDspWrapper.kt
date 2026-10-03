@@ -82,6 +82,15 @@ object JamesDspWrapper {
         isoBasePhon: Double, isoQ: Double
     ): Boolean
 
+    // Set subsonic (infrasonic) high-pass filter for loudness module.
+    external fun setLoudnessSubsonic(
+        self: JamesDspHandle,
+        enable: Boolean,
+        freq: Double,
+        order: Int,
+        qFactor: Double
+    ): Boolean
+
     // EEL VM utilities
     external fun enumerateEelVariables(self: JamesDspHandle): ArrayList<EelVmVariable>
     external fun manipulateEelVariable(self: JamesDspHandle, name: String, value: Float): Boolean

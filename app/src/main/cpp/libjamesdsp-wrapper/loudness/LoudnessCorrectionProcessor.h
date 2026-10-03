@@ -87,6 +87,13 @@ public:
                          double hsFreq, double hsSlope, double hsRatio,
                          double isoBasePhon, double isoQ);
 
+    // Set subsonic (infrasonic) high-pass filter parameters.
+    //   enable  — whether the subsonic filter is active
+    //   freq    — cutoff frequency (Hz, 10–100)
+    //   order   — filter order 1–8 (each step = 12 dB/oct, 2nd-order biquad stages)
+    //   qFactor — Q of each 2nd-order stage (0.1–2.0, Butterworth = 0.707)
+    void setSubsonicFilter(bool enable, double freq, int order, double qFactor);
+
     // Process interleaved stereo float audio in-place.
     // Each frame is [L, R]. numFrames = number of frames (not samples).
     // Called from the audio thread, AFTER the main JamesDSP chain.
@@ -133,6 +140,15 @@ private:
     double hsRatio;    // high shelf gain ratio
     double isoBasePhon; // ISO 226 base phon level
     double isoQ;       // ISO 226 peaking Q
+
+    // ---- Subsonic (infrasonic) high-pass filter ----
+    bool subsonicEnabled;
+    double subsonicFreq;    // cutoff Hz
+    int subsonicOrder;      // 1–8 (biquad stages = ceil(order/2))
+    double subsonicQ;       // Q per 2nd-order stage
+    static const int MAX_SUBSONIC_STAGES = 4; // 4 biquads = 8th order
+    BiQuad subsonicL[MAX_SUBSONIC_STAGES];
+    BiQuad subsonicR[MAX_SUBSONIC_STAGES];
 
     // ---- ISO 226 mode: 29-band peaking EQ cascade ----
     BiQuad isoBandsL[ISO226_NUM_BANDS];

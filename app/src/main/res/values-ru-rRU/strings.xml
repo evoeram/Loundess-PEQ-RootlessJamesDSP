@@ -145,6 +145,12 @@
     <string name="loudness_hs_ratio">Коэффициент усиления верхнего шелфа</string>
     <string name="loudness_iso_base_phon">Базовый уровень фон (ISO 226)</string>
     <string name="loudness_iso_q">Добротность полос (ISO 226 Q)</string>
+    <string name="loudness_subsonic_category">Сабсоник-фильтр (защита АС)</string>
+    <string name="loudness_subsonic_enable">Включить сабсоник-фильтр</string>
+    <string name="loudness_subsonic_enable_summary">Фильтр высоких частот для защиты АС от инфранизких частот</string>
+    <string name="loudness_subsonic_freq">Частота среза</string>
+    <string name="loudness_subsonic_order">Порядок фильтра (крутизна)</string>
+    <string name="loudness_subsonic_q">Добротность (Q)</string>
     <string name="bass_enable">Динамическое усиление баса</string>
     <string name="bass_max_gain">Уровень усиления</string>
     <string name="reverb_enable">Эффект виртуальной комнаты</string>

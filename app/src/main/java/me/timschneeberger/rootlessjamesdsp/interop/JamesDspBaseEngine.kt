@@ -133,6 +133,10 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val hsRatio = cache.get(R.string.key_loudness_hs_ratio, 225f).toDouble() / 1000.0
             val isoBasePhon = cache.get(R.string.key_loudness_iso_base_phon, 80f).toDouble()
             val isoQ = cache.get(R.string.key_loudness_iso_q, 432f).toDouble() / 100.0
+            val subsonicEnabled = cache.get(R.string.key_loudness_subsonic_enable, false)
+            val subsonicFreq = cache.get(R.string.key_loudness_subsonic_freq, 20f).toDouble()
+            val subsonicOrder = cache.get(R.string.key_loudness_subsonic_order, 4f).toInt()
+            val subsonicQ = cache.get(R.string.key_loudness_subsonic_q, 707f).toDouble() / 1000.0
 
             cache.select(Constants.PREF_CONVOLVER)
             val convolverEnabled = cache.get(R.string.key_convolver_enable, false)
@@ -184,6 +188,10 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                                 lsFreq, lsSlope, lsRatio,
                                 hsFreq, hsSlope, hsRatio,
                                 isoBasePhon, isoQ
+                            )
+                            // Apply subsonic filter parameters
+                            setLoudnessSubsonic(
+                                subsonicEnabled, subsonicFreq, subsonicOrder, subsonicQ
                             )
                             // Enable/disable system volume tracking
                             setLoudnessAutoVolume(loudnessEnabled && loudnessAutoVolume)
@@ -557,6 +565,11 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         lsFreq: Double, lsSlope: Double, lsRatio: Double,
         hsFreq: Double, hsSlope: Double, hsRatio: Double,
         isoBasePhon: Double, isoQ: Double
+    ): Boolean = false
+
+    // Set subsonic (infrasonic) high-pass filter for loudness module.
+    open fun setLoudnessSubsonic(
+        enable: Boolean, freq: Double, order: Int, qFactor: Double
     ): Boolean = false
 
     // Enable/disable automatic system media volume tracking for loudness correction.
