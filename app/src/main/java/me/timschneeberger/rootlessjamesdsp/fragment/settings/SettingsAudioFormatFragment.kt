@@ -13,6 +13,7 @@ import me.timschneeberger.rootlessjamesdsp.interop.BenchmarkManager
 import me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
 import me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
 import me.timschneeberger.rootlessjamesdsp.service.RootAudioProcessorService
+import me.timschneeberger.rootlessjamesdsp.utils.AccessibilityServiceHelper
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.requestIgnoreBatteryOptimizations
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
@@ -205,8 +206,7 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
         val smoothVolumeSettings = findPreference<Preference>("smooth_volume_accessibility_settings")
 
         smoothVolumeSettings?.setOnPreferenceClickListener {
-            val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            startActivity(intent)
+            startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
             true
         }
 
@@ -215,22 +215,102 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                 // Check if accessibility service is enabled
                 val enabled = isAccessibilityServiceEnabled()
                 if (!enabled) {
-                    context?.let { ctx ->
-                        com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
-                            .setTitle(R.string.smooth_volume_header)
-                            .setMessage(R.string.smooth_volume_accessibility_hint)
-                            .setPositiveButton(R.string.smooth_volume_open_settings) { dialog, _ ->
-                                startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                                dialog.dismiss()
+                    // Try to enable automatically first
+                    val ctx = context
+                    if (ctx != null) {
+                        val result = AccessibilityServiceHelper.tryEnableService(ctx)
+                        when (result) {
+                            AccessibilityServiceHelper.Result.SUCCESS -> {
+                                // Service enabled! Update switch state
+                                true
                             }
-                            .setNegativeButton(android.R.string.cancel) { dialog, _ ->
-                                dialog.dismiss()
+                            AccessibilityServiceHelper.Result.NEEDS_MANUAL_SETUP -> {
+                                showAccessibilitySetupDialog()
+                                // Don't toggle the switch yet
+                                false
                             }
-                            .show()
+                            else -> {
+                                // Failed - show dialog
+                                showAccessibilitySetupDialog()
+                                false
+                            }
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    true
+                }
+            } else {
+                // Disabling - also try to disable the accessibility service
+                context?.let { ctx ->
+                    val component = "${ctx.packageName}/${me.timschneeberger.rootlessjamesdsp.service.VolumeKeyAccessibilityService::class.java.name}"
+                    val existing = android.provider.Settings.Secure.getString(
+                        ctx.contentResolver,
+                        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                    ) ?: ""
+                    if (existing.contains(component)) {
+                        val newServices = existing.split(":")
+                            .filter { it != component }
+                            .joinToString(":")
+                        try {
+                            android.provider.Settings.Secure.putString(
+                                ctx.contentResolver,
+                                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                                newServices
+                            )
+                        } catch (e: SecurityException) {
+                            // No WRITE_SECURE_SETTINGS - can't disable via settings
+                            // User will need to disable manually
+                        }
                     }
                 }
+                true
             }
-            true
+        }
+    }
+
+    private fun showAccessibilitySetupDialog() {
+        val ctx = context ?: return
+        val isRestricted = AccessibilityServiceHelper.isRestricted(ctx)
+        val hasWriteSecure = ctx.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (isRestricted && !hasWriteSecure) {
+            // Show the restricted dialog with ADB instructions
+            val adbCommands = AccessibilityServiceHelper.getAdbEnableCommands(ctx)
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
+                .setTitle(R.string.smooth_volume_restricted_title)
+                .setMessage(getString(R.string.smooth_volume_restricted_message, adbCommands))
+                .setPositiveButton(R.string.smooth_volume_auto_enable) { dialog, _ ->
+                    // Try auto-enable (maybe Shizuku was set up)
+                    val result = AccessibilityServiceHelper.tryEnableService(ctx)
+                    if (result != AccessibilityServiceHelper.Result.SUCCESS) {
+                        // Fall back to opening system settings
+                        startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    }
+                    dialog.dismiss()
+                }
+                .setNegativeButton(android.R.string.cancel) { dialog, _ ->
+                    dialog.dismiss()
+                }
+                .show()
+        } else {
+            // Not restricted or has WRITE_SECURE_SETTINGS - try to enable directly
+            val result = AccessibilityServiceHelper.tryEnableService(ctx)
+            if (result != AccessibilityServiceHelper.Result.SUCCESS) {
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
+                    .setTitle(R.string.smooth_volume_header)
+                    .setMessage(R.string.smooth_volume_accessibility_hint)
+                    .setPositiveButton(R.string.smooth_volume_open_settings) { dialog, _ ->
+                        startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton(android.R.string.cancel) { dialog, _ ->
+                        dialog.dismiss()
+                    }
+                    .show()
+            }
         }
     }
 

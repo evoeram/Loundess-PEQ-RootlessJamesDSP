@@ -527,6 +527,9 @@
     <string name="smooth_volume_enable_summary_off">Standard system volume steps are used</string>
     <string name="smooth_volume_accessibility_hint">To use smooth volume, enable the \"Smooth Volume\" accessibility service in system settings</string>
     <string name="smooth_volume_open_settings">Open accessibility settings</string>
+    <string name="smooth_volume_restricted_title">Accessibility service restricted</string>
+    <string name="smooth_volume_restricted_message">Android 13+ blocks accessibility services for apps not installed from Play Store.\n\nTo enable smooth volume automatically, use one of these methods:\n\n<b>Method 1: ADB</b>\nConnect your phone to a computer and run:\n\n%1$s\n\n<b>Method 2: Shizuku</b>\nInstall the Shizuku app from Google Play, start it via wireless debugging, then grant this app access to Shizuku.</string>
+    <string name="smooth_volume_auto_enable">Try to enable automatically</string>
     <string name="smooth_volume_status">Status: %1$s</string>
     <string name="smooth_volume_status_active">Active (0.5 dB steps)</string>
     <string name="smooth_volume_status_inactive">Inactive</string>

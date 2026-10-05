@@ -8,33 +8,52 @@ import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import kotlin.math.abs
 
 /**
  * System overlay HUD that shows the current smooth volume level on top of any app.
  * Displays a horizontal volume bar + dB value, auto-hides after [AUTO_HIDE_MS].
+ *
+ * Supports:
+ * - Vertical swipe to adjust volume (up = louder, down = quieter)
+ * - Shows on lock screen via FLAG_SHOW_WHEN_LOCKED
+ * - Touch-and-drag for continuous fine-grained control
+ *
  * Uses TYPE_APPLICATION_OVERLAY (requires SYSTEM_ALERT_WINDOW permission).
  */
-class VolumeOverlay(private val context: Context) {
+class VolumeOverlay(
+    private val context: Context,
+    private val onVolumeDelta: (Double) -> Unit
+) {
 
     companion object {
         private const val AUTO_HIDE_MS = 1500L
         private const val MIN_DB = -60.0
         private const val MAX_DB = 0.0
+
+        /** Pixels of vertical movement per 0.5 dB step when swiping. */
+        private const val PX_PER_STEP_DP = 6
+        /** dB change per swipe step. */
+        private const val STEP_DB = 0.5
     }
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val handler = Handler(Looper.getMainLooper())
     private var overlayView: View? = null
     private var isShowing = false
+    private var isTouching = false
 
     private val hideRunnable = Runnable { hide() }
+
+    // Swipe tracking
+    private var lastTouchY = 0f
+    private var accumulatedDelta = 0f
+    private val pxPerStep: Int = dp(PX_PER_STEP_DP).coerceAtLeast(4)
 
     fun show(volumeDb: Double) {
         handler.post {
@@ -51,19 +70,28 @@ class VolumeOverlay(private val context: Context) {
                     .coerceIn(0.0, 100.0).toInt()
                 bar.progress = pct
 
-                val dbStr = if (volumeDb >= 0) "0 dB" else "${volumeDb.toInt()} dB"
+                val dbStr = String.format("%.1f dB", volumeDb)
                 text.text = dbStr
             }
 
-            // Reset auto-hide timer
+            // Reset auto-hide timer (unless user is actively touching)
             handler.removeCallbacks(hideRunnable)
-            handler.postDelayed(hideRunnable, AUTO_HIDE_MS)
+            if (!isTouching) {
+                handler.postDelayed(hideRunnable, AUTO_HIDE_MS)
+            }
         }
     }
 
     fun hide() {
-        handler.post {
+        // Execute synchronously if possible, otherwise post.
+        // This prevents the overlay view from outliving the service
+        // (which causes a Context leak via WindowManager).
+        if (Looper.myLooper() == handler.looper) {
             removeOverlay()
+        } else {
+            handler.post {
+                removeOverlay()
+            }
         }
     }
 
@@ -72,12 +100,12 @@ class VolumeOverlay(private val context: Context) {
 
         val view = buildOverlayView()
 
+        @Suppress("DEPRECATION")
         val layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -95,6 +123,8 @@ class VolumeOverlay(private val context: Context) {
     }
 
     private fun removeOverlay() {
+        // Cancel any pending hide runnable first
+        handler.removeCallbacks(hideRunnable)
         overlayView?.let { view ->
             try {
                 windowManager.removeView(view)
@@ -104,7 +134,7 @@ class VolumeOverlay(private val context: Context) {
         }
         overlayView = null
         isShowing = false
-        handler.removeCallbacks(hideRunnable)
+        isTouching = false
     }
 
     private fun buildOverlayView(): View {
@@ -113,6 +143,8 @@ class VolumeOverlay(private val context: Context) {
             setPadding(dp(24), dp(16), dp(24), dp(16))
             background = createBackground()
             elevation = dp(6).toFloat()
+            isClickable = true
+            isFocusable = false
         }
 
         val dbText = TextView(context).apply {
@@ -135,6 +167,39 @@ class VolumeOverlay(private val context: Context) {
             layoutParams = LinearLayout.LayoutParams(dp(200), dp(6))
         }
         layout.addView(bar)
+
+        // Swipe-to-adjust touch handler: swipe up = louder, down = quieter
+        layout.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    lastTouchY = event.rawY
+                    accumulatedDelta = 0f
+                    isTouching = true
+                    handler.removeCallbacks(hideRunnable)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val delta = lastTouchY - event.rawY // positive = swipe up = louder
+                    accumulatedDelta += delta
+                    lastTouchY = event.rawY
+
+                    val steps = (accumulatedDelta / pxPerStep).toInt()
+                    if (steps != 0) {
+                        val dbChange = steps * STEP_DB
+                        onVolumeDelta(dbChange)
+                        accumulatedDelta -= steps * pxPerStep
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    isTouching = false
+                    handler.removeCallbacks(hideRunnable)
+                    handler.postDelayed(hideRunnable, AUTO_HIDE_MS)
+                    true
+                }
+                else -> false
+            }
+        }
 
         return layout
     }
