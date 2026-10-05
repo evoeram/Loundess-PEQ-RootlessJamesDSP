@@ -38,6 +38,7 @@ class JamesDspRemoteEngine(
             when (intent.action) {
                 Constants.ACTION_SAMPLE_RATE_UPDATED -> syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_LOUDNESS))
                 Constants.ACTION_PREFERENCES_UPDATED -> syncWithPreferences()
+                Constants.ACTION_SQUIG_PEQ_CHANGED -> syncWithPreferences(arrayOf(Constants.PREF_SQUIG, Constants.PREF_PEQ))
                 Constants.ACTION_SERVICE_RELOAD_LIVEPROG -> syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
                 Constants.ACTION_SERVICE_HARD_REBOOT_CORE -> rebootEngine()
                 Constants.ACTION_SERVICE_SOFT_REBOOT_CORE -> { clearCache(); syncWithPreferences() }
@@ -64,6 +65,7 @@ class JamesDspRemoteEngine(
         val filter = IntentFilter()
         filter.addAction(Constants.ACTION_PREFERENCES_UPDATED)
         filter.addAction(Constants.ACTION_SAMPLE_RATE_UPDATED)
+        filter.addAction(Constants.ACTION_SQUIG_PEQ_CHANGED)
         filter.addAction(Constants.ACTION_SERVICE_RELOAD_LIVEPROG)
         filter.addAction(Constants.ACTION_SERVICE_HARD_REBOOT_CORE)
         filter.addAction(Constants.ACTION_SERVICE_SOFT_REBOOT_CORE)
@@ -191,24 +193,57 @@ class JamesDspRemoteEngine(
     }
 
     override fun setHarmonicExpander(enable: Boolean, harmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean {
-        // Harmonic Expander is a local-engine-only effect (no AudioEffect HAL command codes).
-        // Remote engine ignores it — returns true to avoid blocking other effects.
-        return true
+        if (enable) {
+            val gains = FloatArray(9)
+            for (i in harmonicGains.indices) gains[i] = harmonicGains[i]
+            val data = FloatArray(11)
+            for (i in 0 until 9) data[i] = gains[i]
+            data[9] = crossoverFreq
+            data[10] = mix
+            val configResult = effect.setParameterFloatArray(1305, data) == AudioEffect.SUCCESS
+            val enableResult = effect.setParameter(1216, enable.toShort()) == AudioEffect.SUCCESS
+            return configResult && enableResult
+        }
+        return effect.setParameter(1216, enable.toShort()) == AudioEffect.SUCCESS
     }
 
     override fun setSubHarmonicExpander(enable: Boolean, subHarmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean {
-        // Sub-Harmonic Expander is a local-engine-only effect (no AudioEffect HAL command codes).
-        // Remote engine ignores it — returns true to avoid blocking other effects.
-        return true
+        if (enable) {
+            val gains = FloatArray(9)
+            for (i in subHarmonicGains.indices) gains[i] = subHarmonicGains[i]
+            val data = FloatArray(11)
+            for (i in 0 until 9) data[i] = gains[i]
+            data[9] = crossoverFreq
+            data[10] = mix
+            val configResult = effect.setParameterFloatArray(1306, data) == AudioEffect.SUCCESS
+            val enableResult = effect.setParameter(1217, enable.toShort()) == AudioEffect.SUCCESS
+            return configResult && enableResult
+        }
+        return effect.setParameter(1217, enable.toShort()) == AudioEffect.SUCCESS
     }
 
     override fun setNosR2R(enable: Boolean, targetRate: Double, bitDepth: Int,
                            resistorTolerance: Double, deviationGrowth: Int,
                            harmony: Int, serialNumber: Long,
                            jitterAmount: Double, harmonicsAmount: Double, invertPhase: Boolean): Boolean {
-        // NOS R2R is a local-engine-only effect (no AudioEffect HAL command codes).
-        // Remote engine ignores it — returns true to avoid blocking other effects.
-        return true
+        if (enable) {
+            val data = FloatArray(11)
+            data[0] = targetRate.toFloat()
+            data[1] = bitDepth.toFloat()
+            data[2] = resistorTolerance.toFloat()
+            data[3] = deviationGrowth.toFloat()
+            data[4] = harmony.toFloat()
+            data[5] = (serialNumber and 0xFFFFFFFFL).toFloat()
+            data[6] = (serialNumber ushr 32).toFloat()
+            data[7] = jitterAmount.toFloat()
+            data[8] = harmonicsAmount.toFloat()
+            data[9] = if (invertPhase) 1f else 0f
+            data[10] = 0f
+            val configResult = effect.setParameterFloatArray(1307, data) == AudioEffect.SUCCESS
+            val enableResult = effect.setParameter(1218, enable.toShort()) == AudioEffect.SUCCESS
+            return configResult && enableResult
+        }
+        return effect.setParameter(1218, enable.toShort()) == AudioEffect.SUCCESS
     }
 
     override fun setMultiEqualizerInternal(
