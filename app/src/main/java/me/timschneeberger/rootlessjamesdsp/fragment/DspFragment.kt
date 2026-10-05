@@ -105,6 +105,10 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
                 R.id.card_squig_preview, SquigPreviewFragment.newInstance()
             )
             .replace(
+                R.id.card_nosr2r, PreferenceGroupFragment.newInstance(Constants.PREF_NOSR2R,
+                    R.xml.dsp_nosr2r_preferences
+                ))
+            .replace(
                 R.id.card_geq, PreferenceGroupFragment.newInstance(Constants.PREF_GEQ,
                     R.xml.dsp_graphiceq_preferences
                 ))
@@ -123,6 +127,14 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
             .replace(
                 R.id.card_tube, PreferenceGroupFragment.newInstance(Constants.PREF_TUBE,
                     R.xml.dsp_tube_preferences
+                ))
+            .replace(
+                R.id.card_harmonic_expander, PreferenceGroupFragment.newInstance(Constants.PREF_HARMONIC_EXPANDER,
+                    R.xml.dsp_harmonic_expander_preferences
+                ))
+            .replace(
+                R.id.card_subharmonic_expander, PreferenceGroupFragment.newInstance(Constants.PREF_SUBHARMONIC_EXPANDER,
+                    R.xml.dsp_subharmonic_expander_preferences
                 ))
             .replace(
                 R.id.card_stereowide, PreferenceGroupFragment.newInstance(Constants.PREF_STEREOWIDE,
@@ -182,6 +194,9 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
         binding.cardConvolver.isVisible = !movieMode
         binding.cardLiveprog.isVisible = !movieMode
         binding.cardTube.isVisible = !movieMode
+        binding.cardHarmonicExpander.isVisible = !movieMode
+        binding.cardSubharmonicExpander.isVisible = !movieMode
+        binding.cardNosr2r.isVisible = !movieMode
         binding.cardStereowide.isVisible = !movieMode
         binding.cardCrossfeed.isVisible = !movieMode
         binding.cardReverb.isVisible = !movieMode

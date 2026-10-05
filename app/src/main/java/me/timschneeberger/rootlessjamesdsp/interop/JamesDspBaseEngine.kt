@@ -114,6 +114,47 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val tubeEnabled = cache.get(R.string.key_tube_enable, false)
             val tubeDrive = cache.get(R.string.key_tube_drive, 2f)
 
+            // Harmonic Expander
+            cache.select(Constants.PREF_HARMONIC_EXPANDER)
+            val harmExpEnabled = cache.get(R.string.key_harmonic_expander_enable, false)
+            val harmExpGainIds = intArrayOf(
+                R.string.key_harmonic_expander_gain_2, R.string.key_harmonic_expander_gain_3,
+                R.string.key_harmonic_expander_gain_4, R.string.key_harmonic_expander_gain_5,
+                R.string.key_harmonic_expander_gain_6, R.string.key_harmonic_expander_gain_7,
+                R.string.key_harmonic_expander_gain_8, R.string.key_harmonic_expander_gain_9,
+                R.string.key_harmonic_expander_gain_10
+            )
+            val harmExpGains = FloatArray(9) { idx -> cache.get(harmExpGainIds[idx], 0.001f) }
+            val harmExpCrossover = cache.get(R.string.key_harmonic_expander_crossover, 2000f)
+            val harmExpMix = cache.get(R.string.key_harmonic_expander_mix, 50f)
+
+            // Sub-Harmonic Expander
+            cache.select(Constants.PREF_SUBHARMONIC_EXPANDER)
+            val subHarmExpEnabled = cache.get(R.string.key_subharmonic_expander_enable, false)
+            val subHarmExpGainIds = intArrayOf(
+                R.string.key_subharmonic_expander_gain_1, R.string.key_subharmonic_expander_gain_2,
+                R.string.key_subharmonic_expander_gain_3, R.string.key_subharmonic_expander_gain_4,
+                R.string.key_subharmonic_expander_gain_5, R.string.key_subharmonic_expander_gain_6,
+                R.string.key_subharmonic_expander_gain_7, R.string.key_subharmonic_expander_gain_8,
+                R.string.key_subharmonic_expander_gain_9
+            )
+            val subHarmExpGains = FloatArray(9) { idx -> cache.get(subHarmExpGainIds[idx], 0.001f) }
+            val subHarmExpCrossover = cache.get(R.string.key_subharmonic_expander_crossover, 120f)
+            val subHarmExpMix = cache.get(R.string.key_subharmonic_expander_mix, 50f)
+
+            // NOS R2R Simulator
+            cache.select(Constants.PREF_NOSR2R)
+            val nosR2REnabled = cache.get(R.string.key_nosr2r_enable, false)
+            val nosR2RTargetRate = cache.get(R.string.key_nosr2r_target_rate, "44100").toDouble()
+            val nosR2RBitDepth = cache.get(R.string.key_nosr2r_bit_depth, 24f).toInt()
+            val nosR2RTolerance = cache.get(R.string.key_nosr2r_tolerance, 0f) / 100.0
+            val nosR2RDeviationGrowth = cache.get(R.string.key_nosr2r_deviation_growth, 1f).toInt()
+            val nosR2RHarmony = cache.get(R.string.key_nosr2r_harmony, "0").toInt()
+            val nosR2RSerial = cache.get(R.string.key_nosr2r_serial, "11").toLongOrNull() ?: 11L
+            val nosR2RJitter = cache.get(R.string.key_nosr2r_jitter, 0f) / 100.0
+            val nosR2RAddHarmonics = cache.get(R.string.key_nosr2r_add_harmonics, 0f) / 100.0
+            val nosR2RInvertPhase = cache.get(R.string.key_nosr2r_invert_phase, false)
+
             cache.select(Constants.PREF_DDC)
             val ddcEnabled = cache.get(R.string.key_ddc_enable, false)
             val ddcFile = cache.get(R.string.key_ddc_file, "")
@@ -217,6 +258,11 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                     Constants.PREF_STEREOWIDE -> setStereoEnhancement(swEnabled, swMode)
                     Constants.PREF_CROSSFEED -> setCrossfeed(crossfeedEnabled, crossfeedMode)
                     Constants.PREF_TUBE -> setVacuumTube(tubeEnabled, tubeDrive)
+                    Constants.PREF_HARMONIC_EXPANDER -> setHarmonicExpander(harmExpEnabled, harmExpGains, harmExpCrossover, harmExpMix)
+                    Constants.PREF_SUBHARMONIC_EXPANDER -> setSubHarmonicExpander(subHarmExpEnabled, subHarmExpGains, subHarmExpCrossover, subHarmExpMix)
+                    Constants.PREF_NOSR2R -> setNosR2R(nosR2REnabled, nosR2RTargetRate, nosR2RBitDepth,
+                        nosR2RTolerance, nosR2RDeviationGrowth, nosR2RHarmony, nosR2RSerial,
+                        nosR2RJitter, nosR2RAddHarmonics, nosR2RInvertPhase)
                     Constants.PREF_DDC -> setVdc(ddcEnabled, ddcFile)
                     Constants.PREF_LIVEPROG -> setLiveprog(liveProgEnabled, liveprogFile)
                     Constants.PREF_SQUIG -> {
@@ -599,6 +645,12 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
     abstract fun setBassBoost(enable: Boolean, maxGain: Float): Boolean
     abstract fun setStereoEnhancement(enable: Boolean, level: Float): Boolean
     abstract fun setVacuumTube(enable: Boolean, level: Float): Boolean
+    abstract fun setHarmonicExpander(enable: Boolean, harmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean
+    abstract fun setSubHarmonicExpander(enable: Boolean, subHarmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean
+    abstract fun setNosR2R(enable: Boolean, targetRate: Double, bitDepth: Int,
+                           resistorTolerance: Double, deviationGrowth: Int,
+                           harmony: Int, serialNumber: Long,
+                           jitterAmount: Double, harmonicsAmount: Double, invertPhase: Boolean): Boolean
 
     protected abstract fun setMultiEqualizerInternal(enable: Boolean, filterType: Int, interpolationMode: Int, bands: DoubleArray): Boolean
     protected abstract fun setCompanderInternal(enable: Boolean, timeConstant: Float, granularity: Int, tfTransforms: Int, bands: DoubleArray): Boolean

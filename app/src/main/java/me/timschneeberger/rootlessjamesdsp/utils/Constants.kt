@@ -22,6 +22,9 @@ object Constants {
     const val PREF_REVERB = "dsp_reverb"
     const val PREF_STEREOWIDE = "dsp_stereowide"
     const val PREF_TUBE = "dsp_tube"
+    const val PREF_HARMONIC_EXPANDER = "dsp_harmonic_expander"
+    const val PREF_SUBHARMONIC_EXPANDER = "dsp_subharmonic_expander"
+    const val PREF_NOSR2R = "dsp_nosr2r"
     const val PREF_MEASUREMENT = "dsp_measurement"
     const val PREF_SQUIG = "dsp_squig"
 

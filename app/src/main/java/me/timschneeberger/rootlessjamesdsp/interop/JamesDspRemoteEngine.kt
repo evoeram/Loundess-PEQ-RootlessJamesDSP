@@ -190,6 +190,27 @@ class JamesDspRemoteEngine(
         return ret and (effect.setParameter(1206, enable.toShort()) == AudioEffect.SUCCESS)
     }
 
+    override fun setHarmonicExpander(enable: Boolean, harmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean {
+        // Harmonic Expander is a local-engine-only effect (no AudioEffect HAL command codes).
+        // Remote engine ignores it — returns true to avoid blocking other effects.
+        return true
+    }
+
+    override fun setSubHarmonicExpander(enable: Boolean, subHarmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean {
+        // Sub-Harmonic Expander is a local-engine-only effect (no AudioEffect HAL command codes).
+        // Remote engine ignores it — returns true to avoid blocking other effects.
+        return true
+    }
+
+    override fun setNosR2R(enable: Boolean, targetRate: Double, bitDepth: Int,
+                           resistorTolerance: Double, deviationGrowth: Int,
+                           harmony: Int, serialNumber: Long,
+                           jitterAmount: Double, harmonicsAmount: Double, invertPhase: Boolean): Boolean {
+        // NOS R2R is a local-engine-only effect (no AudioEffect HAL command codes).
+        // Remote engine ignores it — returns true to avoid blocking other effects.
+        return true
+    }
+
     override fun setMultiEqualizerInternal(
         enable: Boolean,
         filterType: Int,

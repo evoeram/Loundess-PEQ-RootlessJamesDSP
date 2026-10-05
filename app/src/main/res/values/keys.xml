@@ -138,6 +138,45 @@
 
     <string name="key_tube_enable" translatable="false">tube_enable</string>
     <string name="key_tube_drive" translatable="false">tube_drive</string>
+    <!-- Harmonic Expander -->
+    <string name="key_harmonic_expander_enable" translatable="false">harmonic_expander_enable</string>
+    <string name="key_harmonic_expander_gain_1" translatable="false">harmonic_expander_gain_1</string>
+    <string name="key_harmonic_expander_gain_2" translatable="false">harmonic_expander_gain_2</string>
+    <string name="key_harmonic_expander_gain_3" translatable="false">harmonic_expander_gain_3</string>
+    <string name="key_harmonic_expander_gain_4" translatable="false">harmonic_expander_gain_4</string>
+    <string name="key_harmonic_expander_gain_5" translatable="false">harmonic_expander_gain_5</string>
+    <string name="key_harmonic_expander_gain_6" translatable="false">harmonic_expander_gain_6</string>
+    <string name="key_harmonic_expander_gain_7" translatable="false">harmonic_expander_gain_7</string>
+    <string name="key_harmonic_expander_gain_8" translatable="false">harmonic_expander_gain_8</string>
+    <string name="key_harmonic_expander_gain_9" translatable="false">harmonic_expander_gain_9</string>
+    <string name="key_harmonic_expander_gain_10" translatable="false">harmonic_expander_gain_10</string>
+    <string name="key_harmonic_expander_crossover" translatable="false">harmonic_expander_crossover</string>
+    <string name="key_harmonic_expander_mix" translatable="false">harmonic_expander_mix</string>
+    <!-- Sub-Harmonic Expander -->
+    <string name="key_subharmonic_expander_enable" translatable="false">subharmonic_expander_enable</string>
+    <string name="key_subharmonic_expander_gain_1" translatable="false">subharmonic_expander_gain_1</string>
+    <string name="key_subharmonic_expander_gain_2" translatable="false">subharmonic_expander_gain_2</string>
+    <string name="key_subharmonic_expander_gain_3" translatable="false">subharmonic_expander_gain_3</string>
+    <string name="key_subharmonic_expander_gain_4" translatable="false">subharmonic_expander_gain_4</string>
+    <string name="key_subharmonic_expander_gain_5" translatable="false">subharmonic_expander_gain_5</string>
+    <string name="key_subharmonic_expander_gain_6" translatable="false">subharmonic_expander_gain_6</string>
+    <string name="key_subharmonic_expander_gain_7" translatable="false">subharmonic_expander_gain_7</string>
+    <string name="key_subharmonic_expander_gain_8" translatable="false">subharmonic_expander_gain_8</string>
+    <string name="key_subharmonic_expander_gain_9" translatable="false">subharmonic_expander_gain_9</string>
+    <string name="key_subharmonic_expander_gain_10" translatable="false">subharmonic_expander_gain_10</string>
+    <string name="key_subharmonic_expander_crossover" translatable="false">subharmonic_expander_crossover</string>
+    <string name="key_subharmonic_expander_mix" translatable="false">subharmonic_expander_mix</string>
+    <!-- NOS R2R Simulator -->
+    <string name="key_nosr2r_enable" translatable="false">nosr2r_enable</string>
+    <string name="key_nosr2r_target_rate" translatable="false">nosr2r_target_rate</string>
+    <string name="key_nosr2r_bit_depth" translatable="false">nosr2r_bit_depth</string>
+    <string name="key_nosr2r_tolerance" translatable="false">nosr2r_tolerance</string>
+    <string name="key_nosr2r_deviation_growth" translatable="false">nosr2r_deviation_growth</string>
+    <string name="key_nosr2r_harmony" translatable="false">nosr2r_harmony</string>
+    <string name="key_nosr2r_serial" translatable="false">nosr2r_serial</string>
+    <string name="key_nosr2r_jitter" translatable="false">nosr2r_jitter</string>
+    <string name="key_nosr2r_add_harmonics" translatable="false">nosr2r_add_harmonics</string>
+    <string name="key_nosr2r_invert_phase" translatable="false">nosr2r_invert_phase</string>
 
     <string name="key_ddc_enable" translatable="false">ddc_enable</string>
     <string name="key_ddc_file" translatable="false">ddc_file</string>

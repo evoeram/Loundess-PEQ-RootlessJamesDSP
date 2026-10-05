@@ -10,6 +10,9 @@
         <attr name="unit" format="string" />
         <attr name="precision" format="integer" />
         <attr name="labelMinWidth" format="dimension" />
+        <attr name="isLogarithmic" format="boolean" />
+        <attr name="dualScale" format="boolean" />
+        <attr name="logMinValue" format="float" />
     </declare-styleable>
 
     <declare-styleable name="EqualizerPreference">

@@ -42,6 +42,9 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import timber.log.Timber
 import java.io.File
+import kotlin.math.pow
+import kotlin.math.sqrt
+import kotlin.math.log10
 import kotlin.math.roundToInt
 
 
@@ -154,6 +157,36 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
                             it.toString()
                     }
             }
+            R.xml.dsp_harmonic_expander_preferences -> setupExpanderThdSummary(
+                isSubharmonic = false,
+                gainKeyStrings = listOf(
+                    getString(R.string.key_harmonic_expander_gain_2),
+                    getString(R.string.key_harmonic_expander_gain_3),
+                    getString(R.string.key_harmonic_expander_gain_4),
+                    getString(R.string.key_harmonic_expander_gain_5),
+                    getString(R.string.key_harmonic_expander_gain_6),
+                    getString(R.string.key_harmonic_expander_gain_7),
+                    getString(R.string.key_harmonic_expander_gain_8),
+                    getString(R.string.key_harmonic_expander_gain_9),
+                    getString(R.string.key_harmonic_expander_gain_10),
+                ),
+                thdPrefKey = "harmonic_expander_thd_summary"
+            )
+            R.xml.dsp_subharmonic_expander_preferences -> setupExpanderThdSummary(
+                isSubharmonic = true,
+                gainKeyStrings = listOf(
+                    getString(R.string.key_subharmonic_expander_gain_1),
+                    getString(R.string.key_subharmonic_expander_gain_2),
+                    getString(R.string.key_subharmonic_expander_gain_3),
+                    getString(R.string.key_subharmonic_expander_gain_4),
+                    getString(R.string.key_subharmonic_expander_gain_5),
+                    getString(R.string.key_subharmonic_expander_gain_6),
+                    getString(R.string.key_subharmonic_expander_gain_7),
+                    getString(R.string.key_subharmonic_expander_gain_8),
+                    getString(R.string.key_subharmonic_expander_gain_9),
+                ),
+                thdPrefKey = "subharmonic_expander_thd_summary"
+            )
             R.xml.dsp_liveprog_preferences -> {
                 val liveprogParams = findPreference<Preference>(getString(R.string.key_liveprog_params))
                 val liveprogEdit = findPreference<Preference>(getString(R.string.key_liveprog_edit))
@@ -576,6 +609,58 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
         // subsonic_q: stored /1000 → 0.10..2.00
         findPreference<MaterialSeekbarPreference>(getString(R.string.key_loudness_subsonic_q))?.valueLabelOverride =
             fun(it: Float): String { return "%.2f".format(it / 1000f) }
+    }
+
+    /**
+     * Setup live THD summary for harmonic/subharmonic expander.
+     * THD = sqrt(sum(gain_i^2)) where gain_i is the percentage value (0..100)
+     * converted to amplitude ratio. Only non-zero harmonics are counted.
+     * Display shows total THD in % and dB.
+     */
+    private fun setupExpanderThdSummary(
+        isSubharmonic: Boolean,
+        gainKeyStrings: List<String>,
+        thdPrefKey: String
+    ) {
+        val prefs = preferenceManager.sharedPreferences ?: return
+        val thdPref = findPreference<Preference>(thdPrefKey) ?: return
+
+        fun updateThd() {
+            try {
+                val gains = gainKeyStrings.map { key ->
+                    prefs.getFloat(key, 0.001f)
+                }
+                // THD calculation: sum of squared amplitudes / fundamental amplitude
+                // gain (%) → amplitude ratio = gain/100
+                // THD = sqrt(sum(ratio_i^2)) * 100  (in %)
+                // Only count harmonics with gain > 0.001 (effectively "selected")
+                val activeGains = gains.filter { it > 0.001f }
+                val sumSquares = activeGains.sumOf { (it / 100.0).pow(2.0) }
+                val thdPct = (sqrt(sumSquares) * 100.0)
+                val thdDb = if (thdPct > 0) 20.0 * log10(thdPct / 100.0) else -120.0
+
+                thdPref.summary = if (activeGains.isEmpty()) {
+                    getString(R.string.expander_thd_no_harmonics)
+                } else {
+                    getString(R.string.expander_thd_value, thdPct, thdDb, activeGains.size)
+                }
+            } catch (e: IllegalStateException) {
+                Timber.d(e, "Fragment detached during THD update")
+            }
+        }
+
+        // Initial update
+        updateThd()
+
+        // Update on any gain change
+        gainKeyStrings.forEach { key ->
+            findPreference<MaterialSeekbarPreference>(key)?.setOnPreferenceChangeListener { pref, newValue ->
+                val result = true
+                // Update after the value is persisted
+                recyclerView?.post { updateThd() }
+                result
+            }
+        }
     }
 
     private fun setupConvolverSampleRateFiles() {

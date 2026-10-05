@@ -152,6 +152,17 @@
             android:layout_marginHorizontal="1dp">
 
             <androidx.fragment.app.FragmentContainerView
+                android:id="@+id/card_nosr2r"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="1dp">
+
+            <androidx.fragment.app.FragmentContainerView
                 android:id="@+id/card_geq"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
@@ -197,6 +208,28 @@
 
             <androidx.fragment.app.FragmentContainerView
                 android:id="@+id/card_tube"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="1dp">
+
+            <androidx.fragment.app.FragmentContainerView
+                android:id="@+id/card_harmonic_expander"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="1dp">
+
+            <androidx.fragment.app.FragmentContainerView
+                android:id="@+id/card_subharmonic_expander"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
         </com.google.android.material.card.MaterialCardView>

@@ -39,6 +39,12 @@ object JamesDspWrapper {
     external fun setBassBoost(self: JamesDspHandle, enable: Boolean, maxGain: Float): Boolean
     external fun setStereoEnhancement(self: JamesDspHandle, enable: Boolean, level: Float): Boolean
     external fun setVacuumTube(self: JamesDspHandle, enable: Boolean, level: Float): Boolean
+    external fun setHarmonicExpander(self: JamesDspHandle, enable: Boolean, harmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean
+    external fun setSubHarmonicExpander(self: JamesDspHandle, enable: Boolean, subHarmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean
+    external fun setNosR2R(self: JamesDspHandle, enable: Boolean, targetRate: Double, bitDepth: Int,
+                           resistorTolerance: Double, deviationGrowth: Int,
+                           harmony: Int, serialNumber: Long,
+                           jitterAmount: Double, harmonicsAmount: Double, invertPhase: Boolean): Boolean
     external fun setLiveprog(self: JamesDspHandle, enable: Boolean, id: String, liveprogContent: String): Boolean
 
     // Time-domain parametric EQ (biquad cascade)

@@ -474,4 +474,48 @@
         <item>2</item>
         <item>3</item>
     </string-array>
+
+    <!-- NOS R2R Simulator target sample rates -->
+    <string-array name="nosr2r_rate_entries">
+        <item>@string/nosr2r_rate_44100</item>
+        <item>@string/nosr2r_rate_88200</item>
+        <item>@string/nosr2r_rate_176400</item>
+        <item>@string/nosr2r_rate_352800</item>
+        <item>@string/nosr2r_rate_705600</item>
+        <item>@string/nosr2r_rate_384000</item>
+        <item>@string/nosr2r_rate_768000</item>
+    </string-array>
+    <string-array name="nosr2r_rate_values">
+        <item>44100</item>
+        <item>88200</item>
+        <item>176400</item>
+        <item>352800</item>
+        <item>705600</item>
+        <item>384000</item>
+        <item>768000</item>
+    </string-array>
+    <string-array name="nosr2r_tolerance_entries">
+        <item>@string/nosr2r_tolerance_perfect</item>
+        <item>@string/nosr2r_tolerance_0005</item>
+        <item>@string/nosr2r_tolerance_005</item>
+        <item>@string/nosr2r_tolerance_01</item>
+        <item>@string/nosr2r_tolerance_1</item>
+    </string-array>
+    <string-array name="nosr2r_tolerance_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="nosr2r_harmony_entries">
+        <item>@string/nosr2r_harmony_random</item>
+        <item>@string/nosr2r_harmony_even</item>
+        <item>@string/nosr2r_harmony_odd</item>
+    </string-array>
+    <string-array name="nosr2r_harmony_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
 </resources>

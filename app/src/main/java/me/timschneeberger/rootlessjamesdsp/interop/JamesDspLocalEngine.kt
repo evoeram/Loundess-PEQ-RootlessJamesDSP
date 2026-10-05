@@ -132,6 +132,26 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         return JamesDspWrapper.setVacuumTube(handle, enable, level)
     }
 
+    override fun setHarmonicExpander(enable: Boolean, harmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean
+    {
+        return JamesDspWrapper.setHarmonicExpander(handle, enable, harmonicGains, crossoverFreq, mix)
+    }
+
+    override fun setSubHarmonicExpander(enable: Boolean, subHarmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean
+    {
+        return JamesDspWrapper.setSubHarmonicExpander(handle, enable, subHarmonicGains, crossoverFreq, mix)
+    }
+
+    override fun setNosR2R(enable: Boolean, targetRate: Double, bitDepth: Int,
+                           resistorTolerance: Double, deviationGrowth: Int,
+                           harmony: Int, serialNumber: Long,
+                           jitterAmount: Double, harmonicsAmount: Double, invertPhase: Boolean): Boolean
+    {
+        return JamesDspWrapper.setNosR2R(handle, enable, targetRate, bitDepth,
+            resistorTolerance, deviationGrowth, harmony, serialNumber,
+            jitterAmount, harmonicsAmount, invertPhase)
+    }
+
     override fun setMultiEqualizerInternal(
         enable: Boolean,
         filterType: Int,

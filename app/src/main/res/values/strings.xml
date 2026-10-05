@@ -276,6 +276,67 @@
 
     <string name="tube_enable">Analog modelling</string>
     <string name="tube_drive">Preamp</string>
+    <!-- Harmonic Expander -->
+    <string name="harmonic_expander_enable">Harmonic Expander</string>
+    <string name="harmonic_expander_enable_summary">Chebyshev waveshaper: generates harmonics 1–10 of the fundamental</string>
+    <string name="harmonic_expander_gain_1">Harmonic 1 gain</string>
+    <string name="harmonic_expander_gain_2">Harmonic 2 gain</string>
+    <string name="harmonic_expander_gain_3">Harmonic 3 gain</string>
+    <string name="harmonic_expander_gain_4">Harmonic 4 gain</string>
+    <string name="harmonic_expander_gain_5">Harmonic 5 gain</string>
+    <string name="harmonic_expander_gain_6">Harmonic 6 gain</string>
+    <string name="harmonic_expander_gain_7">Harmonic 7 gain</string>
+    <string name="harmonic_expander_gain_8">Harmonic 8 gain</string>
+    <string name="harmonic_expander_gain_9">Harmonic 9 gain</string>
+    <string name="harmonic_expander_gain_10">Harmonic 10 gain</string>
+    <string name="harmonic_expander_crossover">Crossover frequency</string>
+    <string name="harmonic_expander_mix">Output level</string>
+    <string name="harmonic_expander_thd">Total harmonic distortion (THD)</string>
+    <!-- Sub-Harmonic Expander -->
+    <string name="subharmonic_expander_enable">Sub-Harmonic Expander</string>
+    <string name="subharmonic_expander_enable_summary">Sub-harmonic synthesiser: generates sub-harmonics f/2–f/10 of the bass fundamental</string>
+    <string name="subharmonic_expander_gain_1">Sub-harmonic 1 (f/2) gain</string>
+    <string name="subharmonic_expander_gain_2">Sub-harmonic 2 (f/3) gain</string>
+    <string name="subharmonic_expander_gain_3">Sub-harmonic 3 (f/4) gain</string>
+    <string name="subharmonic_expander_gain_4">Sub-harmonic 4 (f/5) gain</string>
+    <string name="subharmonic_expander_gain_5">Sub-harmonic 5 (f/6) gain</string>
+    <string name="subharmonic_expander_gain_6">Sub-harmonic 6 (f/7) gain</string>
+    <string name="subharmonic_expander_gain_7">Sub-harmonic 7 (f/8) gain</string>
+    <string name="subharmonic_expander_gain_8">Sub-harmonic 8 (f/9) gain</string>
+    <string name="subharmonic_expander_gain_9">Sub-harmonic 9 (f/10) gain</string>
+    <string name="subharmonic_expander_gain_10">Sub-harmonic 10 (f/11) gain</string>
+    <string name="subharmonic_expander_crossover">Crossover frequency</string>
+    <string name="subharmonic_expander_mix">Output level</string>
+    <string name="subharmonic_expander_thd">Total harmonic distortion (THD)</string>
+    <string name="expander_thd_value">THD: %.2f%% (%.1f dB) — %d active harmonics</string>
+    <string name="expander_thd_no_harmonics">No harmonics active (all gains at minimum)</string>
+    <!-- NOS R2R Simulator -->
+    <string name="nosr2r_enable">NOS R2R Simulator</string>
+    <string name="nosr2r_enable_summary">Simulate non-oversampling R2R DAC</string>
+    <string name="nosr2r_target_rate">Target sample rate</string>
+    <string name="nosr2r_bit_depth">Bit depth</string>
+    <string name="nosr2r_tolerance">Resistor tolerance (%)</string>
+    <string name="nosr2r_deviation_growth">Deviation growth</string>
+    <string name="nosr2r_harmony">Harmony</string>
+    <string name="nosr2r_serial">Serial number</string>
+    <string name="nosr2r_jitter">Deviation jitter amount (%)</string>
+    <string name="nosr2r_add_harmonics">Harmonics amount (%)</string>
+    <string name="nosr2r_invert_phase">Invert distortion phase</string>
+    <string name="nosr2r_tolerance_perfect">Perfect</string>
+    <string name="nosr2r_tolerance_0005">0.005%</string>
+    <string name="nosr2r_tolerance_005">0.05%</string>
+    <string name="nosr2r_tolerance_01">0.1%</string>
+    <string name="nosr2r_tolerance_1">1%</string>
+    <string name="nosr2r_harmony_random">Random</string>
+    <string name="nosr2r_harmony_even">Even</string>
+    <string name="nosr2r_harmony_odd">Odd</string>
+    <string name="nosr2r_rate_44100">44.1 kHz (bypass)</string>
+    <string name="nosr2r_rate_88200">88.2 kHz</string>
+    <string name="nosr2r_rate_176400">176.4 kHz</string>
+    <string name="nosr2r_rate_352800">352.8 kHz</string>
+    <string name="nosr2r_rate_705600">705.6 kHz</string>
+    <string name="nosr2r_rate_384000">384 kHz</string>
+    <string name="nosr2r_rate_768000">768 kHz</string>
 
     <string name="output_control_header">Output control</string>
     <string name="output_limiter_threshold">Limiter threshold</string>

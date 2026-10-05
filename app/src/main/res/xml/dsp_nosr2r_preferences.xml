@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+        android:key="@string/key_nosr2r_enable"
+        android:disableDependentsState="false"
+        android:title="@string/nosr2r_enable"
+        android:summary="@string/nosr2r_enable_summary"
+        android:icon="@drawable/ic_baseline_equalizer_24dp"
+        app:iconSpaceReserved="false">
+        <ListPreference
+            android:key="@string/key_nosr2r_target_rate"
+            android:title="@string/nosr2r_target_rate"
+            android:defaultValue="44100"
+            android:entries="@array/nosr2r_rate_entries"
+            android:entryValues="@array/nosr2r_rate_values"
+            app:allowDividerAbove="false"
+            app:iconSpaceReserved="false" />
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_nosr2r_bit_depth"
+            android:title="@string/nosr2r_bit_depth"
+            android:defaultValue="24"
+            app:minValue="1"
+            app:maxValue="24"
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false" />
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_nosr2r_tolerance"
+            android:title="@string/nosr2r_tolerance"
+            android:defaultValue="0"
+            app:minValue="0"
+            app:maxValue="100"
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false" />
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_nosr2r_deviation_growth"
+            android:title="@string/nosr2r_deviation_growth"
+            android:defaultValue="1"
+            app:minValue="1"
+            app:maxValue="10"
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false" />
+        <ListPreference
+            android:key="@string/key_nosr2r_harmony"
+            android:title="@string/nosr2r_harmony"
+            android:defaultValue="0"
+            android:entries="@array/nosr2r_harmony_entries"
+            android:entryValues="@array/nosr2r_harmony_values"
+            app:allowDividerAbove="false"
+            app:iconSpaceReserved="false" />
+        <EditTextPreference
+            android:key="@string/key_nosr2r_serial"
+            android:title="@string/nosr2r_serial"
+            android:defaultValue="11"
+            app:allowDividerAbove="false"
+            app:iconSpaceReserved="false" />
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_nosr2r_jitter"
+            android:title="@string/nosr2r_jitter"
+            android:defaultValue="0"
+            app:minValue="0"
+            app:maxValue="100"
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false" />
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_nosr2r_add_harmonics"
+            android:title="@string/nosr2r_add_harmonics"
+            android:defaultValue="0"
+            app:minValue="0"
+            app:maxValue="100"
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat
+            android:key="@string/key_nosr2r_invert_phase"
+            android:title="@string/nosr2r_invert_phase"
+            android:defaultValue="false"
+            app:allowDividerAbove="false"
+            app:iconSpaceReserved="false" />
+    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
+</PreferenceScreen>

@@ -661,6 +661,75 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setVacuumTube(J
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setHarmonicExpander(JNIEnv *env, jobject obj, jlong self,
+    jboolean enable, jfloatArray harmonicGains, jfloat crossoverFreq, jfloat mix)
+{
+    DECLARE_DSP_B
+    jfloat gains[9] = {0};
+    if (harmonicGains != nullptr)
+    {
+        jsize len = env->GetArrayLength(harmonicGains);
+        if (len > 9) len = 9;
+        env->GetFloatArrayRegion(harmonicGains, 0, len, gains);
+    }
+    if (enable)
+    {
+        HarmonicExpanderSetParam(dsp, gains, crossoverFreq, mix / 100.0f);
+        HarmonicExpanderEnable(dsp);
+    }
+    else
+    {
+        HarmonicExpanderDisable(dsp);
+    }
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setSubHarmonicExpander(JNIEnv *env, jobject obj, jlong self,
+    jboolean enable, jfloatArray subHarmonicGains, jfloat crossoverFreq, jfloat mix)
+{
+    DECLARE_DSP_B
+    jfloat gains[9] = {0};
+    if (subHarmonicGains != nullptr)
+    {
+        jsize len = env->GetArrayLength(subHarmonicGains);
+        if (len > 9) len = 9;
+        env->GetFloatArrayRegion(subHarmonicGains, 0, len, gains);
+    }
+    if (enable)
+    {
+        SubHarmonicExpanderSetParam(dsp, gains, crossoverFreq, mix / 100.0f);
+        SubHarmonicExpanderEnable(dsp);
+    }
+    else
+    {
+        SubHarmonicExpanderDisable(dsp);
+    }
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setNosR2R(JNIEnv *env, jobject obj, jlong self,
+                                                                            jboolean enable, jdouble targetRate, jint bitDepth,
+                                                                            jdouble resistorTolerance, jint deviationGrowth,
+                                                                            jint harmony, jlong serialNumber,
+                                                                            jdouble jitterAmount, jdouble harmonicsAmount, jboolean invertPhase)
+{
+    DECLARE_DSP_B
+    if(enable)
+    {
+        NosR2RSetParam(dsp, targetRate, bitDepth, resistorTolerance, deviationGrowth,
+                       harmony, (long)serialNumber, jitterAmount, harmonicsAmount, invertPhase ? 1 : 0);
+        NosR2REnable(dsp);
+    }
+    else
+    {
+        NosR2RDisable(dsp);
+    }
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLiveprog(JNIEnv *env, jobject obj, jlong self,
                                                                             jboolean enable, jstring id, jstring liveprogContent)
 {
