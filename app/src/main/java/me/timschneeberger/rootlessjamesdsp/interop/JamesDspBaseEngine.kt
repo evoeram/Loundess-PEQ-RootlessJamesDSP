@@ -181,6 +181,29 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                     Constants.PREF_TUBE -> setVacuumTube(tubeEnabled, tubeDrive)
                     Constants.PREF_DDC -> setVdc(ddcEnabled, ddcFile)
                     Constants.PREF_LIVEPROG -> setLiveprog(liveProgEnabled, liveprogFile)
+                    Constants.PREF_SQUIG -> {
+                        // Squig Live plugin: when enabled, force PEQ on so the
+                        // bands saved by SquigLive (in PREF_PEQ namespace) are
+                        // applied. When disabled, PEQ follows its own key.
+                        cache.select(Constants.PREF_SQUIG)
+                        val squigEnabled = cache.get(R.string.key_squig_enable, false)
+                        val effectivePeqEnabled = peqEnabled || squigEnabled
+                        if (squigEnabled && !peqEnabled) {
+                            // Persist PEQ enable so downstream caches/fragments stay in sync
+                            PreferenceCache.getPreferences(context, Constants.PREF_PEQ)
+                                .edit()
+                                .putBoolean(context.getString(R.string.key_peq_enable), true)
+                                .apply()
+                        }
+                        if (supportsParametricEqCascade()) {
+                            val peqBands = ParametricEqBandList()
+                            peqBands.deserialize(peqBandsStr)
+                            setParametricEqCascade(effectivePeqEnabled, sampleRate.toDouble(), peqPreamp.toDouble(), peqBands.toList())
+                        } else {
+                            setGraphicEqCombined(geqEnabled, geqBands, effectivePeqEnabled, peqBandsStr, peqPreamp)
+                        }
+                        true
+                    }
                     Constants.PREF_LOUDNESS -> {
                         if (supportsLoudnessCorrection()) {
                             // Apply user-tunable shelf/contour parameters

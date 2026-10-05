@@ -3,6 +3,7 @@ package me.timschneeberger.rootlessjamesdsp.fragment
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -21,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -151,6 +153,15 @@ class SquigLiveFragment : Fragment() {
     /** Конфигурация AutoEQ (настраиваемая пользователем). */
     private var autoEqConfig = SquigAutoEqEngine.Config()
 
+    // ── Persistence + real-time preview state ────────────────────────────
+
+    /** SharedPreferences namespace for Squig Live plugin state. */
+    private val squigPrefs: SharedPreferences?
+        get() = context?.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
+
+    /** True after we've backed up the user's previous PEQ state for restore-on-exit. */
+    private var peqBackupDone = false
+
     // ── Жизненный цикл ────────────────────────────────────────────────────
 
     override fun onCreateView(
@@ -265,6 +276,25 @@ class SquigLiveFragment : Fragment() {
         loadDatabase()
         // Загружаем target сразу — он должен рисоваться всегда
         loadTargetCurveData()
+
+        // Restore persisted user state (instance, target, phone, autoeq config)
+        restorePersistedState()
+
+        // Back up the user's previous PEQ state so we can restore it on exit
+        // (only if a backup isn't already active from a previous session).
+        backupPeqState()
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        // On exit: if the Squig plugin is disabled, restore the previous PEQ
+        // state so the user's manual PEQ settings are not overwritten by the
+        // preview bands. If the plugin is enabled, the preview bands persist.
+        val squigEnabled = squigPrefs
+            ?.getBoolean(getString(R.string.key_squig_enable), false) ?: false
+        if (!squigEnabled) {
+            restorePeqState()
+        }
     }
 
     /**
@@ -349,8 +379,13 @@ class SquigLiveFragment : Fragment() {
                     currentInstance = newInstance
                     currentClient = SquigLinkClient(currentInstance)
                     Timber.i("SquigLive: instance changed → ${currentInstance.name} (baseUrl=${currentInstance.baseUrl}, dataPath=${currentInstance.fullDataPath}, channels=${currentInstance.channels}, normHz=${currentInstance.defaultNormHz})")
+                    // Persist instance selection
+                    saveInstanceState()
                     loadDatabase()
-                    // Перезагружаем список target curves и саму target для нового инстанса
+                    // Перезагружаем список target curves и саму target для нового инстанса.
+                    // loadTargetCurves handles the fallback: if the current target name
+                    // doesn't exist in the new instance's target list, it selects the
+                    // first available target instead of erroring.
                     loadTargetCurves()
                     loadTargetCurveData()
                 }
@@ -380,6 +415,8 @@ class SquigLiveFragment : Fragment() {
                 val newTarget = targetCurves[position]
                 if (newTarget != selectedTargetName) {
                     selectedTargetName = newTarget
+                    // Persist target selection
+                    saveTargetState()
                     Timber.i("SquigLive: target changed → $selectedTargetName")
                     // Всегда перезагружаем target curve
                     reloadTargetCurve()
@@ -460,6 +497,9 @@ class SquigLiveFragment : Fragment() {
         Timber.i("SquigLive: phone selected → ${result.brand} ${result.phone.name} (file='${result.phone.file}', score=${"%.1f".format(result.score)}, channels=${currentInstance.channels})")
         selectedPhoneText.text = getString(R.string.squig_selected_phone, result.brand, result.phone.name)
         selectedPhoneText.isVisible = true
+
+        // Persist phone selection
+        savePhoneState(result.brand, result.phone)
 
         // Сворачиваем список: показываем выбранный замер + "Other"
         resultsAdapter.setSelectedAndCollapse(result)
@@ -755,11 +795,17 @@ class SquigLiveFragment : Fragment() {
                 workingBands.clear()
                 workingBands.addAll(result.bands)
 
+                // Persist AutoEQ config
+                saveAutoEqConfig()
+
                 // Отображение фильтра на графике
                 graphSurface.setBands(workingBands, workingPreamp)
 
                 // Вычисление и отображение corrected FR (включая сдвиг target)
                 updateCorrectedFR()
+
+                // Real-time PEQ preview: apply bands to DSP engine immediately
+                applyRealTimePeqPreview()
 
                 hideLoading()
                 statusText.text = getString(
@@ -839,6 +885,8 @@ class SquigLiveFragment : Fragment() {
         updateActionButtons()
         statusText.text = getString(R.string.squig_reset_done)
         statusText.isVisible = true
+        // Real-time PEQ preview: clear bands in DSP engine
+        applyRealTimePeqPreview()
     }
 
     /**
@@ -883,6 +931,8 @@ class SquigLiveFragment : Fragment() {
                     graphSurface.setBands(workingBands, workingPreamp)
                     updateCorrectedFR()
                     updateActionButtons()
+                    // Real-time PEQ preview: apply bands to DSP engine on LiveEQ commit
+                    applyRealTimePeqPreview()
                 }
             },
             overlayMeasurementFreqs = mFreqs,
@@ -1133,6 +1183,196 @@ class SquigLiveFragment : Fragment() {
             hours < 1 -> "${ageMs / 60_000}m ago"
             hours < 24 -> "${hours}h ago"
             else -> "${hours / 24}d ago"
+        }
+    }
+
+    // ── Persistence + real-time preview helpers ──────────────────────────
+
+    /**
+     * Save the current instance selection to SharedPreferences.
+     */
+    private fun saveInstanceState() {
+        val prefs = squigPrefs ?: return
+        prefs.edit()
+            .putString(getString(R.string.key_squig_instance), currentInstance.name)
+            .apply()
+    }
+
+    /**
+     * Save the current target selection to SharedPreferences.
+     */
+    private fun saveTargetState() {
+        val prefs = squigPrefs ?: return
+        prefs.edit()
+            .putString(getString(R.string.key_squig_target), selectedTargetName)
+            .apply()
+    }
+
+    /**
+     * Save the selected phone (name, brand, file) to SharedPreferences.
+     */
+    private fun savePhoneState(brand: String, phone: me.timschneeberger.rootlessjamesdsp.model.squig.SquigLinkPhone) {
+        val prefs = squigPrefs ?: return
+        prefs.edit()
+            .putString(getString(R.string.key_squig_phone_name), phone.name)
+            .putString(getString(R.string.key_squig_phone_brand), brand)
+            .putString(getString(R.string.key_squig_phone_file), phone.file)
+            .apply()
+    }
+
+    /**
+     * Save the AutoEQ configuration as JSON to SharedPreferences.
+     */
+    private fun saveAutoEqConfig() {
+        val prefs = squigPrefs ?: return
+        try {
+            val json = Gson().toJson(autoEqConfig)
+            prefs.edit()
+                .putString(getString(R.string.key_squig_autoeq_config), json)
+                .apply()
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to save AutoEQ config")
+        }
+    }
+
+    /**
+     * Restore persisted user state (instance, target, phone, autoeq config)
+     * after view recreation. Selects the saved instance/target in the spinners
+     * if they exist in the current lists; otherwise leaves defaults.
+     *
+     * Phone selection is restored as text only — the measurement is not
+     * auto-loaded (that requires a network fetch the user should trigger).
+     */
+    private fun restorePersistedState() {
+        val prefs = squigPrefs ?: return
+
+        // Restore AutoEQ config
+        try {
+            val configJson = prefs.getString(getString(R.string.key_squig_autoeq_config), null)
+            if (!configJson.isNullOrEmpty()) {
+                autoEqConfig = Gson().fromJson(configJson, SquigAutoEqEngine.Config::class.java)
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to restore AutoEQ config")
+        }
+
+        // Restore instance selection (best-effort: spinner may not be populated yet)
+        val savedInstance = prefs.getString(getString(R.string.key_squig_instance), null)
+        if (!savedInstance.isNullOrEmpty()) {
+            val idx = instances.indexOfFirst { it.name == savedInstance }
+            if (idx >= 0) {
+                currentInstance = instances[idx]
+                currentClient = SquigLinkClient(currentInstance)
+                instanceSpinner.setSelection(idx)
+            }
+        }
+
+        // Restore target selection (best-effort: spinner may not be populated yet)
+        val savedTarget = prefs.getString(getString(R.string.key_squig_target), null)
+        if (!savedTarget.isNullOrEmpty()) {
+            selectedTargetName = savedTarget
+            val idx = targetCurves.indexOf(savedTarget)
+            if (idx >= 0) {
+                targetSpinner.setSelection(idx)
+            }
+        }
+
+        // Restore phone selection text (measurement not auto-loaded)
+        val savedPhoneName = prefs.getString(getString(R.string.key_squig_phone_name), null)
+        val savedPhoneBrand = prefs.getString(getString(R.string.key_squig_phone_brand), null)
+        if (!savedPhoneName.isNullOrEmpty() && !savedPhoneBrand.isNullOrEmpty()) {
+            selectedPhoneText.text = getString(R.string.squig_selected_phone, savedPhoneBrand, savedPhoneName)
+            selectedPhoneText.isVisible = true
+        }
+    }
+
+    /**
+     * Back up the user's current PEQ state (bands, preamp, enable) to the
+     * Squig namespace so it can be restored when SquigLive exits without
+     * the plugin enabled. Only backs up once per fragment instance.
+     */
+    @SuppressLint("ApplySharedPref")
+    private fun backupPeqState() {
+        if (peqBackupDone) return
+        val ctx = context ?: return
+        try {
+            val peqPrefs = ctx.getSharedPreferences(Constants.PREF_PEQ, Context.MODE_PRIVATE)
+            val squigPref = squigPrefs ?: return
+            val bands = peqPrefs.getString(getString(R.string.key_peq_bands), Constants.DEFAULT_PEQ) ?: Constants.DEFAULT_PEQ
+            val preamp = peqPrefs.getFloat(getString(R.string.key_peq_preamp), 0f)
+            val enabled = peqPrefs.getBoolean(getString(R.string.key_peq_enable), false)
+            squigPref.edit()
+                .putString(getString(R.string.key_squig_peq_backup_bands), bands)
+                .putFloat(getString(R.string.key_squig_peq_backup_preamp), preamp)
+                .putBoolean(getString(R.string.key_squig_peq_backup_enable), enabled)
+                .putBoolean(getString(R.string.key_squig_peq_backup_active), true)
+                .apply()
+            peqBackupDone = true
+            Timber.i("SquigLive: backed up PEQ state (enable=$enabled, preamp=$preamp)")
+        } catch (e: Exception) {
+            Timber.e(e, "SquigLive: failed to backup PEQ state")
+        }
+    }
+
+    /**
+     * Restore the user's previous PEQ state from the backup and send a
+     * broadcast so the DSP engine re-applies it. Clears the backup flag.
+     */
+    @SuppressLint("ApplySharedPref")
+    private fun restorePeqState() {
+        val ctx = context ?: return
+        try {
+            val squigPref = squigPrefs ?: return
+            val backupActive = squigPref.getBoolean(getString(R.string.key_squig_peq_backup_active), false)
+            if (!backupActive) return
+
+            val bands = squigPref.getString(getString(R.string.key_squig_peq_backup_bands), Constants.DEFAULT_PEQ) ?: Constants.DEFAULT_PEQ
+            val preamp = squigPref.getFloat(getString(R.string.key_squig_peq_backup_preamp), 0f)
+            val enabled = squigPref.getBoolean(getString(R.string.key_squig_peq_backup_enable), false)
+
+            val peqPrefs = ctx.getSharedPreferences(Constants.PREF_PEQ, Context.MODE_PRIVATE)
+            peqPrefs.edit()
+                .putString(getString(R.string.key_peq_bands), bands)
+                .putFloat(getString(R.string.key_peq_preamp), preamp)
+                .putBoolean(getString(R.string.key_peq_enable), enabled)
+                .apply()
+
+            // Clear backup flag
+            squigPref.edit()
+                .putBoolean(getString(R.string.key_squig_peq_backup_active), false)
+                .apply()
+
+            // Notify DSP engine to re-apply PEQ
+            ctx.sendLocalBroadcast(Intent(Constants.ACTION_PARAMETRIC_EQ_CHANGED))
+            Timber.i("SquigLive: restored PEQ state (enable=$enabled, preamp=$preamp)")
+        } catch (e: Exception) {
+            Timber.e(e, "SquigLive: failed to restore PEQ state")
+        }
+    }
+
+    /**
+     * Real-time PEQ preview: write the current working bands + preamp to the
+     * PREF_PEQ namespace, force key_peq_enable=true, and broadcast
+     * ACTION_PARAMETRIC_EQ_CHANGED so the DSP engine applies them immediately.
+     * This lets the user hear changes as they edit, before pressing Apply.
+     */
+    @SuppressLint("ApplySharedPref")
+    private fun applyRealTimePeqPreview() {
+        val ctx = context ?: return
+        try {
+            val bands = if (workingBands.isNotEmpty()) workingBands else ParametricEqBandList()
+            val preamp = workingPreamp
+            val peqPrefs = ctx.getSharedPreferences(Constants.PREF_PEQ, Context.MODE_PRIVATE)
+            peqPrefs.edit()
+                .putString(getString(R.string.key_peq_bands), bands.serialize())
+                .putFloat(getString(R.string.key_peq_preamp), preamp.toFloat())
+                .putBoolean(getString(R.string.key_peq_enable), true)
+                .apply()
+
+            ctx.sendLocalBroadcast(Intent(Constants.ACTION_PARAMETRIC_EQ_CHANGED))
+            Timber.d("SquigLive: real-time PEQ preview applied (${bands.size} bands, preamp=${"%.2f".format(preamp)}dB)")
+        } catch (e: Exception) {
+            Timber.e(e, "SquigLive: failed to apply real-time PEQ preview")
         }
     }
 

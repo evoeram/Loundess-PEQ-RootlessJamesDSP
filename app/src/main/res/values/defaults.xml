@@ -65,4 +65,7 @@
     <!-- Script editor -->
     <integer name="default_editor_font_size" translatable="false" tools:keep="@integer/default_editor_font_size">13</integer>
 
+    <!-- Squig Live plugin -->
+    <bool name="default_squig_enable" translatable="false" tools:keep="@bool/default_squig_enable">false</bool>
+
 </resources>

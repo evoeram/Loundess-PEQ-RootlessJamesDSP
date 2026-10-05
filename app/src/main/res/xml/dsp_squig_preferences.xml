@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Карточка Squig Live на главном экране.
-     Одна кнопка-преференс, открывает SquigActivity.
-     Аналог dsp_measurement_preferences.xml. -->
+     SwitchPreferenceGroup с key_squig_enable, внутри — кнопка открытия SquigActivity.
+     Аналог dsp_liveprog_preferences.xml. -->
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <Preference
-        android:key="@string/key_squig_open"
-        android:title="@string/squig_title"
-        android:summary="@string/squig_summary"
+    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+        android:key="@string/key_squig_enable"
+        android:disableDependentsState="false"
+        android:title="@string/squig_enable"
         android:icon="@drawable/ic_twotone_auto_fix_high_24"
-        app:iconSpaceReserved="false" />
+        app:iconSpaceReserved="false">
+        <Preference
+            android:key="@string/key_squig_open"
+            android:title="@string/squig_title"
+            android:summary="@string/squig_summary"
+            android:icon="@drawable/ic_twotone_auto_fix_high_24"
+            app:iconSpaceReserved="false" />
+    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

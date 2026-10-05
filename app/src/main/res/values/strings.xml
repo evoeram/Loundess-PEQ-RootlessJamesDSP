@@ -847,6 +847,8 @@
     <string name="key_measurement_enable">measurement_enable</string>
     <string name="key_measurement_open">measurement_open</string>
     <string name="key_squig_open">squig_open</string>
+    <string name="squig_enable">Squig Live</string>
+    <string name="squig_enable_summary">Enable Squig Live AutoEQ plugin</string>
     <string name="title_activity_measurement">🐱 MEOW</string>
     <string name="measurement_start">🐱 MEOW!</string>
     <string name="measurement_stop">Stop</string>

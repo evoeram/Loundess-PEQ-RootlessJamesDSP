@@ -228,9 +228,16 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             }
             R.xml.dsp_squig_preferences -> {
                 findPreference<Preference>(getString(R.string.key_squig_open))?.setOnPreferenceClickListener {
-                    val intent = Intent(requireContext(), SquigActivity::class.java)
-                    startActivity(intent)
-                    true
+                    val squigEnabled = preferenceManager.sharedPreferences
+                        ?.getBoolean(getString(R.string.key_squig_enable), false) ?: false
+                    if (!squigEnabled) {
+                        // Switch is off — children are disabled; ignore click.
+                        true
+                    } else {
+                        val intent = Intent(requireContext(), SquigActivity::class.java)
+                        startActivity(intent)
+                        true
+                    }
                 }
             }
         }

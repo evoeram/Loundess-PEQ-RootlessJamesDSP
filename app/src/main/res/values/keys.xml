@@ -177,4 +177,18 @@
     <string name="key_squiglink_default_target" translatable="false">squiglink_default_target</string>
     <string name="key_squiglink_max_bands" translatable="false">squiglink_max_bands</string>
     <string name="key_squiglink_normalize_hz" translatable="false">squiglink_normalize_hz</string>
+
+    <!-- Squig Live plugin (SwitchPreferenceGroup + persisted state) -->
+    <string name="key_squig_enable" translatable="false">squig_enable</string>
+    <string name="key_squig_instance" translatable="false">squig_instance</string>
+    <string name="key_squig_phone_name" translatable="false">squig_phone_name</string>
+    <string name="key_squig_phone_brand" translatable="false">squig_phone_brand</string>
+    <string name="key_squig_phone_file" translatable="false">squig_phone_file</string>
+    <string name="key_squig_target" translatable="false">squig_target</string>
+    <string name="key_squig_autoeq_config" translatable="false">squig_autoeq_config</string>
+    <!-- Backup of previous PEQ state for restore-on-exit -->
+    <string name="key_squig_peq_backup_bands" translatable="false">squig_peq_backup_bands</string>
+    <string name="key_squig_peq_backup_preamp" translatable="false">squig_peq_backup_preamp</string>
+    <string name="key_squig_peq_backup_enable" translatable="false">squig_peq_backup_enable</string>
+    <string name="key_squig_peq_backup_active" translatable="false">squig_peq_backup_active</string>
 </resources>
