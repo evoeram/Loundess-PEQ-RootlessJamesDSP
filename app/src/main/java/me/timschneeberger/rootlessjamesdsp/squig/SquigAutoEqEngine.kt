@@ -91,7 +91,7 @@ class SquigAutoEqEngine(
         target: FrequencyResponse,
         config: Config = Config()
     ): Result {
-        Timber.d("SquigAutoEqEngine: запуск, ${measurement.frequencies.size} точек, maxBands=${config.maxFilters}")
+        Timber.i("SquigAutoEq: START — ${measurement.frequencies.size} meas points, target=${target.frequencies.size} points, config: maxFilters=${config.maxFilters}, flatness=${config.flatnessTarget} dB, matchRange=${config.matchRangeStart}-${config.matchRangeEnd}Hz, maxBoost=${config.individualMaxBoost} dB, nelderMead=${config.useNelderMead}(${config.nelderMeadIterations} iter)")
 
         // Логарифмически распределённые частоты для evaluation
         val evalFreqs = calculator.logSpacedFrequencies()
@@ -151,6 +151,7 @@ class SquigAutoEqEngine(
             }
 
             if (maxIdx < 0 || maxAbsError <= config.flatnessTarget) {
+                Timber.i("SquigAutoEq: STOP — maxError=${"%.2f".format(maxAbsError)}dB <= flatness target ${config.flatnessTarget}dB at iter=$iteration")
                 maxDeviation = maxAbsError
                 break
             }
@@ -180,8 +181,8 @@ class SquigAutoEqEngine(
                     filterType,
                     ParametricEqChannel.LEFT_RIGHT
                 ))
+                Timber.i("SquigAutoEq: iter=$iteration ADD ${filterType.name} f=${"%.1f".format(f0)}Hz gain=${"%.2f".format(gain)}dB Q=${"%.2f".format(q)} (peak error=${"%.2f".format(e0)}dB at ${"%.1f".format(f0)}Hz)")
             } else {
-                // Dip: проверяем, можно ли корректировать
                 val dipDepth = -e0
 
                 // Пропускаем слишком малые ошибки
@@ -221,6 +222,7 @@ class SquigAutoEqEngine(
                     filterType,
                     ParametricEqChannel.LEFT_RIGHT
                 ))
+                Timber.i("SquigAutoEq: iter=$iteration ADD ${filterType.name} f=${"%.1f".format(f0)}Hz gain=${"%.2f".format(gain)}dB Q=${"%.2f".format(q)} (dip depth=${"%.2f".format(dipDepth)}dB, overallBoost=${"%.2f".format(overallBoost)}dB)")
             }
 
             // Nelder-Mead joint optimization после каждого добавленного фильтра
@@ -273,7 +275,8 @@ class SquigAutoEqEngine(
         // Максимальное отклонение
         val finalMaxDeviation = computeMaxDeviation(correctedFR, target)
 
-        Timber.i("SquigAutoEqEngine: готово, ${bands.size} полос, preamp=$preampDb dB, maxDev=$finalMaxDeviation dB")
+        Timber.i("SquigAutoEq: DONE — ${bands.size} bands, preamp=${"%.2f".format(preampDb)}dB, maxDev=${"%.2f".format(finalMaxDeviation)}dB")
+        Timber.i("SquigAutoEq: bands = [${bands.joinToString { "${it.filterType.name[0]} ${"%.0f".format(it.frequency)}Hz ${"%+.1f".format(it.gain)}dB Q${"%.1f".format(it.q)}" }}]")
 
         // Детальное логирование
         val logFreqs = doubleArrayOf(20.0, 100.0, 500.0, 1000.0, 5000.0, 10000.0, 20000.0)

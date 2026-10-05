@@ -73,12 +73,13 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
         // Проверка кэша (24 часа = 86400000 мс)
         val now = System.currentTimeMillis()
         if (databaseCache != null && (now - databaseCacheTimestamp) < CACHE_TTL_MS) {
-            Timber.d("loadDatabase: возврат из кэша (${databaseCache!!.size} брендов)")
+            Timber.i("SquigLink[${instance.name}]: loadDatabase: cache hit (${databaseCache!!.size} brands, age=${(now - databaseCacheTimestamp) / 60000}min)")
             onResult(databaseCache, null)
             return
         }
 
-        Timber.d("loadDatabase: загрузка phone_book.json с ${instance.baseUrl}${instance.fullDataPath}")
+        val url = "${instance.baseUrl}${instance.fullDataPath}phone_book.json"
+        Timber.i("SquigLink[${instance.name}]: loadDatabase: fetching $url")
         val call = service.getPhoneBook(instance.fullDataPath)
         call.enqueue(object : Callback<List<SquigLinkBrand>> {
             override fun onResponse(
@@ -90,7 +91,8 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
                     if (body != null) {
                         databaseCache = body
                         databaseCacheTimestamp = System.currentTimeMillis()
-                        Timber.i("loadDatabase: загружено ${body.size} брендов")
+                        val phoneCount = body.sumOf { it.phones.size }
+                        Timber.i("SquigLink[${instance.name}]: loadDatabase: OK — ${body.size} brands, $phoneCount phones")
                         onResult(body, null)
                     } else {
                         val err = "Пустой ответ сервера"
@@ -133,7 +135,8 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
         // Retrofit @Path сам URL-кодирует пробелы, поэтому передаём как есть
         val fileName = "${phone.file} $channel"
 
-        Timber.d("loadFrequencyResponse: загрузка $fileName с ${instance.baseUrl}${instance.fullDataPath}")
+        val url = "${instance.baseUrl}${instance.fullDataPath}$fileName.txt"
+        Timber.i("SquigLink[${instance.name}]: loadFR: fetching $url (phone='${phone.name}', channel=$channel)")
         val call = service.getFrequencyResponse(instance.fullDataPath, fileName)
         call.enqueue(object : Callback<String> {
             override fun onResponse(call: Call<String>, response: Response<String>) {
@@ -146,7 +149,7 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
                         else
                             FrequencyResponse.Channel.RIGHT
                         val result = FrequencyResponse(fr.frequencies, fr.spl, channelEnum)
-                        Timber.i("loadFrequencyResponse: загружено ${result.frequencies.size} точек для $fileName")
+                        Timber.i("SquigLink[${instance.name}]: loadFR: OK — ${result.frequencies.size} points for '$fileName' (range ${"%.0f".format(result.frequencies.first())}-${"%.0f".format(result.frequencies.last())}Hz)")
                         onResult(result, null)
                     } else {
                         val err = "Пустой или некорректный файл АЧХ"
@@ -180,7 +183,7 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
         targetName: String,
         onResult: (FrequencyResponse?, error: String?) -> Unit
     ) {
-        Timber.d("loadTargetCurve: загрузка $targetName с ${instance.baseUrl}${instance.fullDataPath}")
+        Timber.i("SquigLink[${instance.name}]: loadTarget: fetching '$targetName' from ${instance.baseUrl}${instance.fullDataPath}")
         val call = service.getFrequencyResponse(instance.fullDataPath, targetName)
         call.enqueue(object : Callback<String> {
             override fun onResponse(call: Call<String>, response: Response<String>) {
@@ -188,7 +191,7 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
                     val tsv = response.body()
                     if (tsvValid(tsv)) {
                         val fr = SquigLinkParser.parseFrequencyResponse(tsv!!)
-                        Timber.i("loadTargetCurve: загружено ${fr.frequencies.size} точек для $targetName")
+                        Timber.i("SquigLink[${instance.name}]: loadTarget: OK — ${fr.frequencies.size} points for '$targetName'")
                         onResult(fr, null)
                     } else {
                         val err = "Пустой или некорректный файл целевой кривой"
@@ -247,7 +250,7 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
      * Возвращает список инстансов или бросает Exception.
      */
     suspend fun loadSquigSitesAsync(): List<SquigSite> = suspendCancellableCoroutine { cont ->
-        Timber.d("loadSquigSitesAsync: загрузка squigsites.json")
+        Timber.i("SquigLink: loadSquigSites: fetching https://squig.link/squigsites.json")
         // Используем отдельный Retrofit с baseUrl squig.link
         val sitesRetrofit = Retrofit.Builder()
             .baseUrl("https://squig.link/")
@@ -260,7 +263,7 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
                 if (response.code() == 200) {
                     val body = response.body()
                     if (body != null) {
-                        Timber.i("loadSquigSitesAsync: загружено ${body.size} инстансов")
+                        Timber.i("SquigLink: loadSquigSites: OK — ${body.size} instances: ${body.joinToString(limit=5) { it.name }}")
                         cont.resume(body)
                     } else {
                         cont.resumeWithException(Exception("Пустой ответ сервера"))
@@ -284,7 +287,7 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
      * @return список имён target curves (с суффиксом " Target")
      */
     suspend fun loadTargetCurvesAsync(): List<String> = suspendCancellableCoroutine { cont ->
-        Timber.d("loadTargetCurvesAsync: загрузка config.js с ${instance.baseUrl}")
+        Timber.i("SquigLink[${instance.name}]: loadTargetCurves: fetching config.js from ${instance.baseUrl}")
         val cfgRetrofit = Retrofit.Builder()
             .baseUrl(instance.baseUrl)
             .client(httpClient)
@@ -296,7 +299,7 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
                 if (response.code() == 200) {
                     val js = response.body() ?: ""
                     val targets = parseTargetsFromConfigJs(js)
-                    Timber.i("loadTargetCurvesAsync: найдено ${targets.size} target curves")
+                    Timber.i("SquigLink[${instance.name}]: loadTargetCurves: OK — ${targets.size} curves: ${targets.joinToString(limit=5)}")
                     cont.resume(targets)
                 } else {
                     cont.resumeWithException(Exception("Ошибка сервера: ${response.code()}"))

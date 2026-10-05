@@ -348,7 +348,7 @@ class SquigLiveFragment : Fragment() {
                 if (newInstance != currentInstance) {
                     currentInstance = newInstance
                     currentClient = SquigLinkClient(currentInstance)
-                    Timber.d("Выбран инстанс: ${currentInstance.name}")
+                    Timber.i("SquigLive: instance changed → ${currentInstance.name} (baseUrl=${currentInstance.baseUrl}, dataPath=${currentInstance.fullDataPath}, channels=${currentInstance.channels}, normHz=${currentInstance.defaultNormHz})")
                     loadDatabase()
                     // Перезагружаем список target curves и саму target для нового инстанса
                     loadTargetCurves()
@@ -380,7 +380,7 @@ class SquigLiveFragment : Fragment() {
                 val newTarget = targetCurves[position]
                 if (newTarget != selectedTargetName) {
                     selectedTargetName = newTarget
-                    Timber.d("Выбран target: $selectedTargetName")
+                    Timber.i("SquigLive: target changed → $selectedTargetName")
                     // Всегда перезагружаем target curve
                     reloadTargetCurve()
                 }
@@ -457,6 +457,7 @@ class SquigLiveFragment : Fragment() {
      */
     private fun onSearchResultClicked(result: SquigLinkSearchEngine.SearchResult) {
         selectedPhone = result.phone
+        Timber.i("SquigLive: phone selected → ${result.brand} ${result.phone.name} (file='${result.phone.file}', score=${"%.1f".format(result.score)}, channels=${currentInstance.channels})")
         selectedPhoneText.text = getString(R.string.squig_selected_phone, result.brand, result.phone.name)
         selectedPhoneText.isVisible = true
 
@@ -488,9 +489,11 @@ class SquigLiveFragment : Fragment() {
                 val normHz = currentInstance.defaultNormHz
 
                 // Загрузка первого канала
+                Timber.i("SquigLive: loading FR channel '${channels.first()}' for ${result.phone.name}")
                 val frL = currentClient.loadFrequencyResponseAsync(result.phone, channels.first())
                 val normalizedL = frL.normalize(normHz)
                 measurementFR_L = normalizedL
+                Timber.i("SquigLive: FR L loaded — ${normalizedL.frequencies.size} points, normalized at ${normHz}Hz")
 
                 // Отображение L на графике
                 val (freqsL, splL) = normalizedL.toFloatArrays()
@@ -499,16 +502,19 @@ class SquigLiveFragment : Fragment() {
                 // Если есть второй канал, загружаем (необязательно — R может отсутствовать)
                 if (channels.size > 1) {
                     try {
+                        Timber.i("SquigLive: loading FR channel '${channels[1]}' for ${result.phone.name}")
                         val frR = currentClient.loadFrequencyResponseAsync(result.phone, channels[1])
                         val normalizedR = frR.normalize(normHz)
                         measurementFR_R = normalizedR
+                        Timber.i("SquigLive: FR R loaded — ${normalizedR.frequencies.size} points")
                         val (freqsR, splR) = normalizedR.toFloatArrays()
                         graphSurface.setMeasurementDataR(freqsR, splR)
 
                         // Усреднённая АЧХ для AutoEQ
                         measurementFR = normalizedL.average(normalizedR)
+                        Timber.i("SquigLive: averaged FR (L+R)/2 computed for AutoEQ")
                     } catch (e: Exception) {
-                        Timber.w("R-канал не загружен, используется только L: ${e.message}")
+                        Timber.w("SquigLive: R channel failed, using L only: ${e.message}")
                         measurementFR = normalizedL
                     }
                 } else {
@@ -732,11 +738,14 @@ class SquigLiveFragment : Fragment() {
         showLoading(getString(R.string.squig_loading))
         viewLifecycleOwner.lifecycleScope.launch {
             try {
+                Timber.i("SquigLive: AutoEQ started — measurement=${measurement.frequencies.size}pts, target='$selectedTargetName' (${target.frequencies.size}pts), config: maxFilters=${autoEqConfig.maxFilters}, flatness=${autoEqConfig.flatnessTarget}, matchRange=${autoEqConfig.matchRangeStart}-${autoEqConfig.matchRangeEnd}Hz")
                 val engine = SquigAutoEqEngine()
                 val result = withContext(Dispatchers.Default) {
                     engine.run(measurement, target, autoEqConfig)
                 }
                 if (!isAdded || view == null) return@launch
+
+                Timber.i("SquigLive: AutoEQ result — ${result.bands.size} bands, preamp=${"%.2f".format(result.preampDb)}dB, maxDev=${"%.2f".format(result.maxDeviation)}dB")
 
                 autoEqBands = result.bands
                 autoEqPreamp = result.preampDb
@@ -940,7 +949,7 @@ class SquigLiveFragment : Fragment() {
 
             requireContext().sendLocalBroadcast(Intent(Constants.ACTION_PARAMETRIC_EQ_CHANGED))
             requireContext().toast(getString(R.string.squig_applied_to_peq, bands.size))
-            Timber.i("Применено ${bands.size} полос к PEQ")
+            Timber.i("SquigLive: applied ${bands.size} bands to PEQ (preamp=${"%.2f".format(preamp)}dB), bands=[${bands.joinToString { "${"%.0f".format(it.frequency)}Hz ${"%+.1f".format(it.gain)}dB Q${"%.1f".format(it.q)}" }}]")
         } catch (e: Exception) {
             requireContext().toast(e.message ?: "error")
             Timber.e(e, "applyToPeq failed")

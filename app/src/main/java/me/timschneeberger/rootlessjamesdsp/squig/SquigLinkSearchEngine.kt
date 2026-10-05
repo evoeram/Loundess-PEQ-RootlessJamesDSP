@@ -2,6 +2,7 @@ package me.timschneeberger.rootlessjamesdsp.squig
 
 import me.timschneeberger.rootlessjamesdsp.model.squig.SquigLinkBrand
 import me.timschneeberger.rootlessjamesdsp.model.squig.SquigLinkPhone
+import timber.log.Timber
 
 /**
  * Fuzzy-поиск по phone_book SquigLink.
@@ -26,6 +27,8 @@ class SquigLinkSearchEngine {
      */
     fun search(query: String, database: List<SquigLinkBrand>): List<SearchResult> {
         if (query.isBlank()) return emptyList()
+
+        Timber.i("SquigSearch: query='$query', database=${database.size} brands, ${database.sumOf { it.phones.size }} phones")
 
         val q = query.trim().lowercase()
         val results = mutableListOf<SearchResult>()
@@ -81,6 +84,8 @@ class SquigLinkSearchEngine {
             }
         }
 
-        return results.sortedByDescending { it.score }
+        val sorted = results.sortedByDescending { it.score }
+        Timber.i("SquigSearch: found ${sorted.size} results, top: ${sorted.take(3).joinToString { "${it.brand} ${it.phone.name}(${"%.1f".format(it.score)})" }}")
+        return sorted
     }
 }
