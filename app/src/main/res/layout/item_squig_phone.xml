@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Элемент списка результатов поиска SquigLink с radio-индикатором выбора -->
+<!-- Элемент списка результатов поиска SquigLink с radio-индикатором выбора и статусом загрузки -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -44,4 +44,17 @@
             android:maxLines="1"
             android:ellipsize="end" />
     </LinearLayout>
+
+    <!-- Индикатор статуса загрузки замера -->
+    <!-- ✓ (check) — замер загружен в локальную БД -->
+    <!-- ✗ (close) — замер ещё не загружен -->
+    <ImageView
+        android:id="@+id/downloadStatusIcon"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginStart="8dp"
+        android:contentDescription="@null"
+        android:src="@drawable/squig_download_status_indicator"
+        app:tint="?attr/colorOnSurfaceVariant"
+        xmlns:app="http://schemas.android.com/apk/res-auto" />
 </LinearLayout>

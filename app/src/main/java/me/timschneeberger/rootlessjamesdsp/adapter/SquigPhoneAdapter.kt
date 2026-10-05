@@ -3,6 +3,7 @@ package me.timschneeberger.rootlessjamesdsp.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
@@ -17,6 +18,9 @@ import me.timschneeberger.rootlessjamesdsp.squig.SquigLinkSearchEngine
  *
  * 1. **Expanded** — показываются все результаты поиска.
  *    Выбранный элемент подсвечивается (radio-индикатор).
+ *    Каждый элемент показывает статус загрузки замера:
+ *    ✓ (галочка) — замер загружен в локальную БД,
+ *    ✗ (крестик) — замер ещё не загружен.
  *
  * 2. **Collapsed** — показывается только выбранный замер + пункт "Other (N)".
  *    Тап на "Other" переключает обратно в expanded-режим.
@@ -42,6 +46,12 @@ class SquigPhoneAdapter(
 
     /** Признак свёрнутого режима (показываем только выбранный + "Other"). */
     private var collapsed: Boolean = false
+
+    /**
+     * Множество ключей загруженных замеров.
+     * Key = "${brand}::${phone.name}" — замер загружен в локальную БД.
+     */
+    private var downloadedKeys: Set<String> = emptySet()
 
     // ── View types ───────────────────────────────────────────────────────
 
@@ -96,6 +106,34 @@ class SquigPhoneAdapter(
         selectedResult = null
         collapsed = false
         notifyDataSetChanged()
+    }
+
+    /**
+     * Обновить множество ключей загруженных замеров и обновить индикаторы.
+     * Вызывается после загрузки/удаления замеров из локальной БД.
+     *
+     * @param keys множество ключей вида "${brand}::${phone.name}"
+     */
+    fun updateDownloadedKeys(keys: Set<String>) {
+        downloadedKeys = keys
+        notifyDataSetChanged()
+    }
+
+    /**
+     * Обновить индикатор статуса для одного элемента.
+     * Полезно после загрузки одного замера без полного обновления списка.
+     *
+     * @param key ключ вида "${brand}::${phone.name}"
+     * @param downloaded true если замер загружен
+     */
+    fun updateDownloadStatus(key: String, downloaded: Boolean) {
+        downloadedKeys = if (downloaded) downloadedKeys + key else downloadedKeys - key
+        notifyDataSetChanged()
+    }
+
+    /** Проверить, загружен ли замер для данного результата. */
+    private fun isDownloaded(result: SquigLinkSearchEngine.SearchResult): Boolean {
+        return downloadedKeys.contains("${result.brand}::${result.phone.name}")
     }
 
     // ── itemCount ────────────────────────────────────────────────────────
@@ -172,6 +210,10 @@ class SquigPhoneAdapter(
         holder.radioIndicator?.isActivated = isSelected
         holder.radioIndicator?.visibility = View.VISIBLE
 
+        // Индикатор статуса загрузки замера
+        val isDownloaded = isDownloaded(result)
+        holder.downloadStatusIcon?.isActivated = isDownloaded
+
         holder.container.setOnClickListener {
             val pos = holder.bindingAdapterPosition
             if (pos != RecyclerView.NO_POSITION) {
@@ -206,11 +248,10 @@ class SquigPhoneAdapter(
         var brandName: TextView? = itemView.findViewById(R.id.brandName)
         var phoneName: TextView? = itemView.findViewById(R.id.phoneName)
         var radioIndicator: View? = itemView.findViewById(R.id.radioIndicator)
+        var downloadStatusIcon: ImageView? = itemView.findViewById(R.id.downloadStatusIcon)
     }
 
-    /**
-     * ViewHolder для элемента "Other (N more)".
-     */
+    /** ViewHolder для элемента "Other (N more)". */
     inner class OtherViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         var container: LinearLayout = itemView as LinearLayout
         var otherLabel: TextView? = itemView.findViewById(R.id.otherLabel)

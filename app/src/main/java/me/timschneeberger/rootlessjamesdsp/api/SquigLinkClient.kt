@@ -556,4 +556,38 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
         }
         throw Exception("No network and no cached data for target '$targetName'")
     }
+
+    // ── Measurement store integration ────────────────────────────────────
+
+    /**
+     * Suspend-загрузка АЧХ замера с сохранением в локальную БД [SquigMeasurementStore].
+     *
+     * Сначала проверяет локальный кэш — если замер уже загружен, возвращает его мгновенно.
+     * Иначе загружает с сервера, нормализует и сохраняет в кэш.
+     *
+     * @param phone модель телефона/IEM
+     * @param channel канал ("L" или "R")
+     * @param instance инстанс для ключа кэша
+     * @return нормализованная FrequencyResponse
+     * @throws Exception при ошибке сети и отсутствии кэша
+     */
+    suspend fun loadFrequencyResponseWithStore(
+        phone: SquigLinkPhone,
+        channel: String,
+        instance: SquigLinkInstance
+    ): FrequencyResponse {
+        // Проверяем локальную БД замеров
+        val cached = SquigMeasurementStore.loadMeasurement(instance, phone, channel)
+        if (cached != null) {
+            Timber.d("loadFRWithStore: cache hit for ${phone.file} $channel")
+            return cached
+        }
+
+        // Загружаем с сервера
+        val fr = loadFrequencyResponseAsync(phone, channel)
+        val normalized = fr.normalize(instance.defaultNormHz)
+        // Сохраняем нормализованный замер в локальную БД
+        SquigMeasurementStore.saveMeasurement(instance, phone, channel, normalized)
+        return normalized
+    }
 }

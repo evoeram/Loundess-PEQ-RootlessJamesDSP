@@ -847,6 +847,7 @@
     <string name="key_measurement_enable">measurement_enable</string>
     <string name="key_measurement_open">measurement_open</string>
     <string name="key_squig_open">squig_open</string>
+    <string name="key_squig_target_instance">squig_target_instance</string>
     <string name="squig_enable">Squig Live</string>
     <string name="squig_enable_summary">Enable Squig Live AutoEQ plugin</string>
     <string name="title_activity_measurement">🐱 MEOW</string>
@@ -950,7 +951,7 @@ Please press \'Continue\' below to re-do the setup wizard.</string>
     <string name="squig_network_error">Network error: %1$s</string>
     <string name="squig_catalog_info">Catalog: %1$d brands</string>
     <string name="squig_results_count">Found: %1$d</string>
-    <string name="squig_empty_state">Type to search IEM/headphones…</string>
+    <string name="squig_empty_state">Loading catalog…</string>
     <string name="squig_selected_phone">%1$s %2$s</string>
     <string name="squig_other_count">Other (%1$d)</string>
     <string name="squig_target_loaded">Target: %1$s</string>
@@ -976,4 +977,22 @@ Please press \'Continue\' below to re-do the setup wizard.</string>
     <string name="squig_cache_clear_title">Clear Cache</string>
     <string name="squig_cache_clear_msg">Delete all cached SquigLink data? (%1$s)</string>
     <string name="squig_cache_cleared">Cache cleared</string>
+
+    <!-- Squig Live: measurement store / batch download -->
+    <string name="squig_download_all">Download all measurements</string>
+    <string name="squig_download_instance">Download all measurements (this instance)</string>
+    <string name="squig_download_all_instances">Download all measurements (all instances)</string>
+    <string name="squig_download_progress">%1$s (%2$d/%3$d)</string>
+    <string name="squig_download_done">Download complete: %1$s</string>
+    <string name="squig_download_failed">Download failed: %1$s</string>
+    <string name="squig_download_running">Downloading measurements…</string>
+    <string name="squig_measurement_cached">✓ Cached</string>
+    <string name="squig_measurement_not_cached">Not cached</string>
+    <string name="squig_download_choice_title">Batch download</string>
+    <string name="squig_empty_state_browse">Search IEM/headphones or download all measurements for this instance (↑)</string>
+    <string name="squig_target_instance_label">Target from</string>
+    <string name="squig_import_target">Import custom target (TSV)</string>
+    <string name="squig_import_target_done">Custom target loaded: %1$s</string>
+    <string name="squig_import_target_failed">Failed to import target: %1$s</string>
+    <string name="squig_custom_target">Custom Target</string>
 </resources>

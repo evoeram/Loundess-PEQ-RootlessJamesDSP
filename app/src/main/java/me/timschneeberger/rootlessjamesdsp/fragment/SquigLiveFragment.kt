@@ -33,6 +33,8 @@ import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.adapter.SquigPhoneAdapter
 import me.timschneeberger.rootlessjamesdsp.api.SquigLinkCacheManager
 import me.timschneeberger.rootlessjamesdsp.api.SquigLinkClient
+import me.timschneeberger.rootlessjamesdsp.api.SquigMeasurementStore
+import me.timschneeberger.rootlessjamesdsp.api.SquigBatchDownloader
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
@@ -76,6 +78,7 @@ class SquigLiveFragment : Fragment() {
 
     private lateinit var instanceSpinner: Spinner
     private lateinit var targetSpinner: Spinner
+    private lateinit var targetInstanceSpinner: Spinner
     private lateinit var searchInput: TextInputEditText
     private lateinit var searchLayout: TextInputLayout
     private lateinit var progressBar: ProgressBar
@@ -89,6 +92,7 @@ class SquigLiveFragment : Fragment() {
     private lateinit var liveEqButton: MaterialButton
     private lateinit var applyButton: MaterialButton
     private lateinit var resetButton: MaterialButton
+    private lateinit var importTargetButton: MaterialButton
 
     private lateinit var resultsAdapter: SquigPhoneAdapter
 
@@ -102,6 +106,12 @@ class SquigLiveFragment : Fragment() {
 
     /** Текущий клиент для инстанса. */
     private var currentClient: SquigLinkClient = SquigLinkClient(currentInstance)
+
+    /** Инстанс для загрузки target curves (отдельный от инстанса замеров). */
+    private var targetInstance: SquigLinkInstance = instances.first()
+
+    /** Клиент для инстанса таргета. */
+    private var targetClient: SquigLinkClient = SquigLinkClient(targetInstance)
 
     /** Доступные целевые кривые (загружается из config.js). */
     private var targetCurves: List<String> = listOf(
@@ -147,6 +157,9 @@ class SquigLiveFragment : Fragment() {
     /** Джоб debounce-поиска. */
     private var searchJob: Job? = null
 
+    /** ActivityResult launcher для выбора TSV-файла custom target. */
+    private lateinit var targetFilePicker: androidx.activity.result.ActivityResultLauncher<Array<String>>
+
     /** Флаг: идёт загрузка данных. */
     private var isLoadingData = false
 
@@ -182,10 +195,22 @@ class SquigLiveFragment : Fragment() {
 
         // Initialize offline cache manager
         SquigLinkCacheManager.init(requireContext().applicationContext)
+        // Initialize measurement store (local DB of downloaded АЧХ files)
+        SquigMeasurementStore.init(requireContext().applicationContext)
+
+        // Register file picker for custom target import
+        targetFilePicker = registerForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+        ) { uri ->
+            if (uri != null) {
+                handleImportedTarget(uri)
+            }
+        }
 
         // Привязка UI элементов из XML
         instanceSpinner = view.findViewById(R.id.instanceSpinner)
         targetSpinner = view.findViewById(R.id.targetSpinner)
+        targetInstanceSpinner = view.findViewById(R.id.targetInstanceSpinner)
         searchInput = view.findViewById(R.id.searchInput)
         searchLayout = view.findViewById(R.id.searchLayout)
         progressBar = view.findViewById(R.id.loadingProgress)
@@ -199,10 +224,15 @@ class SquigLiveFragment : Fragment() {
         liveEqButton = view.findViewById(R.id.liveEqButton)
         applyButton = view.findViewById(R.id.applyButton)
         resetButton = view.findViewById(R.id.resetButton)
+        importTargetButton = view.findViewById(R.id.importTargetButton)
 
         // Offline cache button
         view.findViewById<com.google.android.material.button.MaterialButton>(R.id.cacheButton)
             ?.setOnClickListener { showCacheMenu() }
+
+        // Download all measurements button
+        view.findViewById<com.google.android.material.button.MaterialButton>(R.id.downloadAllButton)
+            ?.setOnClickListener { showDownloadAllDialog() }
 
         // Живой поиск: TextWatcher с debounce 350ms
         searchInput.addTextChangedListener(object : TextWatcher {
@@ -212,9 +242,8 @@ class SquigLiveFragment : Fragment() {
                 val query = s?.toString()?.trim() ?: ""
                 if (query.isEmpty()) {
                     searchJob?.cancel()
-                    resultsAdapter.updateResults(emptyList())
-                    resultsAdapter.clearSelection()
-                    showEmptyState(true)
+                    // При пустом запросе показываем полный список замеров инстанса
+                    showAllMeasurements()
                     statusText.isVisible = false
                     return
                 }
@@ -269,22 +298,32 @@ class SquigLiveFragment : Fragment() {
         applyButton.setOnClickListener { applyToPeq() }
         resetButton.setOnClickListener { resetEq() }
 
-        // Начальное состояние
-        showEmptyState(true)
+        // Начальное состояние — показываем все замеры (или empty state если БД пустая)
+        showAllMeasurements()
         updateActionButtons()
 
         setupInstanceSpinner()
+        setupTargetInstanceSpinner()
         setupTargetSpinner()
+
+        // Import custom target button
+        importTargetButton.setOnClickListener { openTargetFilePicker() }
 
         loadSquigSites()
         loadTargetCurves()
         loadDatabase()
-        // Загружаем target сразу — он должен рисоваться всегда
-        loadTargetCurveData()
 
         // Restore persisted user state (autoeq config first; instance/target/phone
         // are restored inside the async load callbacks once spinners are populated).
         restorePersistedState()
+
+        // Load target curve after restorePersistedState so workingPreamp is
+        // already restored — the target display is shifted by preamp when bands exist.
+        loadTargetCurveData()
+
+        // Re-evaluate button states after restoring working bands — restorePersistedState
+        // may have loaded saved Live EQ bands, which should enable Apply/Reset.
+        updateActionButtons()
     }
 
     override fun onDestroyView() {
@@ -317,6 +356,22 @@ class SquigLiveFragment : Fragment() {
                             instanceSpinner.setSelection(idx)
                         }
                     }
+                    // Обновляем target instance spinner тоже
+                    targetInstanceSpinner.adapter = ArrayAdapter(
+                        requireContext(),
+                        android.R.layout.simple_spinner_dropdown_item,
+                        instanceNames
+                    )
+                    // Apply saved target instance selection
+                    val savedTargetInst = squigPrefs?.getString(getString(R.string.key_squig_target_instance), null)
+                    if (!savedTargetInst.isNullOrEmpty()) {
+                        val idx = instances.indexOfFirst { it.name == savedTargetInst }
+                        if (idx >= 0) {
+                            targetInstance = instances[idx]
+                            targetClient = SquigLinkClient(targetInstance)
+                            targetInstanceSpinner.setSelection(idx)
+                        }
+                    }
                     Timber.i("squigsites загружен: ${instances.size} инстансов")
                 }
             } catch (e: Exception) {
@@ -332,7 +387,7 @@ class SquigLiveFragment : Fragment() {
     private fun loadTargetCurves() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val curves = currentClient.loadTargetCurvesWithCache(currentInstance)
+                val curves = targetClient.loadTargetCurvesWithCache(targetInstance)
                 if (curves.isNotEmpty()) {
                     targetCurves = curves
                     val currentSelection = selectedTargetName
@@ -350,10 +405,10 @@ class SquigLiveFragment : Fragment() {
                         targetSpinner.setSelection(0)
                         loadTargetCurveData()
                     }
-                    Timber.i("config.js загружен: ${targetCurves.size} target curves")
+                    Timber.i("config.js загружен: ${targetCurves.size} target curves (from ${targetInstance.name})")
                 }
             } catch (e: Exception) {
-                Timber.w("config.js недоступен (нет сети и кэша), используется fallback targets: ${e.message}")
+                Timber.w("config.js недоступен для ${targetInstance.name} (нет сети и кэша), используется fallback targets: ${e.message}")
             }
         }
     }
@@ -385,10 +440,44 @@ class SquigLiveFragment : Fragment() {
                     // Persist instance selection
                     saveInstanceState()
                     loadDatabase()
-                    // Перезагружаем список target curves и саму target для нового инстанса.
-                    // loadTargetCurves handles the fallback: if the current target name
-                    // doesn't exist in the new instance's target list, it selects the
-                    // first available target instead of erroring.
+                    // Target curves загружаются из отдельного инстанса (targetInstanceSpinner)
+                    // — не перезагружаем их при смене инстанса замеров.
+                    // Обновляем индикаторы загруженных замеров для нового инстанса
+                    refreshDownloadedKeys()
+                }
+            }
+
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+    }
+
+    /**
+     * Настройка spinner для выбора инстанса, из которого грузятся target curves.
+     * Независим от инстанса замеров — можно выбрать любой инстанс для таргетов.
+     * При смене — перезагружает список target curves и саму target.
+     */
+    private fun setupTargetInstanceSpinner() {
+        val instanceNames = instances.map { it.name }
+        targetInstanceSpinner.adapter = ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_spinner_dropdown_item,
+            instanceNames
+        )
+        targetInstanceSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: android.widget.AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                val newTargetInstance = instances[position]
+                if (newTargetInstance != targetInstance) {
+                    targetInstance = newTargetInstance
+                    targetClient = SquigLinkClient(targetInstance)
+                    Timber.i("SquigLive: target instance changed → ${targetInstance.name}")
+                    // Persist target instance selection
+                    saveTargetInstanceState()
+                    // Перезагружаем список target curves и саму target для нового инстанса таргета
                     loadTargetCurves()
                     loadTargetCurveData()
                 }
@@ -396,6 +485,71 @@ class SquigLiveFragment : Fragment() {
 
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
+    }
+
+    /**
+     * Открытие файлового пикера для выбора TSV-файла custom target curve.
+     * Использует ActivityResultContracts.OpenDocument.
+     */
+    private fun openTargetFilePicker() {
+        targetFilePicker.launch(arrayOf("text/*", "application/octet-stream", "*/*"))
+    }
+
+    /**
+     * Обработка выбранного TSV-файла: парсинг, нормализация, отображение на графике.
+     */
+    private fun handleImportedTarget(uri: android.net.Uri) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val tsv = withContext(Dispatchers.IO) {
+                    requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                        ?: throw Exception("Cannot read file")
+                }
+                val fr = me.timschneeberger.rootlessjamesdsp.api.SquigLinkParser.parseFrequencyResponse(tsv)
+                if (fr.frequencies.isEmpty()) {
+                    throw Exception("No valid data in file")
+                }
+                val normHz = targetInstance.defaultNormHz
+                targetFR = fr.normalize(normHz)
+                selectedTargetName = getString(R.string.squig_custom_target)
+
+                // Добавляем "Custom Target" в spinner если его там нет
+                if (!targetCurves.contains(selectedTargetName)) {
+                    targetCurves = listOf(selectedTargetName) + targetCurves
+                    targetSpinner.adapter = ArrayAdapter(
+                        requireContext(),
+                        android.R.layout.simple_spinner_dropdown_item,
+                        targetCurves
+                    )
+                }
+                targetSpinner.setSelection(targetCurves.indexOf(selectedTargetName))
+
+                // Отображаем target на графике
+                val displayTarget = if (workingPreamp != 0.0) targetFR!!.applyPreamp(workingPreamp) else targetFR!!
+                val (freqsT, splT) = displayTarget.toFloatArrays()
+                graphSurface.setTargetCurve(freqsT, splT)
+
+                hideLoading()
+                updateActionButtons()
+                statusText.text = getString(R.string.squig_import_target_done, selectedTargetName)
+                statusText.isVisible = true
+                Timber.i("SquigLive: custom target imported — ${fr.frequencies.size} points, normalized at ${normHz}Hz")
+            } catch (e: Exception) {
+                if (!isAdded || view == null) return@launch
+                showError(getString(R.string.squig_import_target_failed, e.message ?: "unknown"))
+                Timber.e(e, "handleImportedTarget failed")
+            }
+        }
+    }
+
+    /**
+     * Сохранить выбор инстанса таргета в SharedPreferences.
+     */
+    private fun saveTargetInstanceState() {
+        val prefs = squigPrefs ?: return
+        prefs.edit()
+            .putString(getString(R.string.key_squig_target_instance), targetInstance.name)
+            .apply()
     }
 
     /**
@@ -442,9 +596,11 @@ class SquigLiveFragment : Fragment() {
                 database = brands
                 Timber.i("Каталог загружен: ${brands.size} брендов")
                 if (isAdded && view != null) {
-                    catalogInfo.text = getString(R.string.squig_catalog_info, brands.size)
+                    updateCatalogInfo()
+                    refreshDownloadedKeys()
                     hideLoading()
-                    showEmptyState(true)
+                    // Показываем полный список всех замеров инстанса
+                    showAllMeasurements()
                     // Auto-load saved phone measurement if a phone file was restored
                     pendingPhoneFile?.let { file -> autoLoadSavedPhone(file) }
                 }
@@ -454,6 +610,59 @@ class SquigLiveFragment : Fragment() {
                     showError(getString(R.string.squig_load_error, e.message ?: "unknown"))
                 }
                 Timber.e(e, "loadDatabase failed")
+            }
+        }
+    }
+
+    /**
+     * Показать полный список всех замеров инстанса (все бренды → все телефоны).
+     * Вызывается после загрузки каталога и при очистке поля поиска.
+     * Тяжёлые операции (построение списка, DiffUtil, проверка кэша) — в фоне.
+     */
+    private fun showAllMeasurements() {
+        if (database.isEmpty()) {
+            showEmptyState(true)
+            return
+        }
+
+        val db = database
+        val instance = currentInstance
+        viewLifecycleOwner.lifecycleScope.launch {
+            // Фоновое построение списка + проверка кэша
+            val (allResults, keys) = withContext(Dispatchers.Default) {
+                val allResults = db.flatMap { brand ->
+                    brand.phones.map { phone ->
+                        SquigLinkSearchEngine.SearchResult(
+                            brand = brand.name,
+                            phone = phone,
+                            score = 0.0
+                        )
+                    }
+                }
+                // Параллельно строим множество загруженных ключей
+                val channels = instance.channels
+                val keysSet = mutableSetOf<String>()
+                for (brand in db) {
+                    for (phone in brand.phones) {
+                        if (SquigMeasurementStore.isAnyChannelDownloaded(instance, phone, channels)) {
+                            keysSet.add("${brand.name}::${phone.name}")
+                        }
+                    }
+                }
+                allResults to keysSet
+            }
+            if (!isAdded || view == null) return@launch
+
+            resultsAdapter.updateResults(allResults)
+            resultsAdapter.updateDownloadedKeys(keys)
+            updateCatalogInfo()
+
+            if (allResults.isEmpty()) {
+                showEmptyState(true)
+            } else {
+                showEmptyState(false)
+                statusText.text = getString(R.string.squig_results_count, allResults.size)
+                statusText.isVisible = true
             }
         }
     }
@@ -515,16 +724,20 @@ class SquigLiveFragment : Fragment() {
         measurementFR_L = null
         measurementFR_R = null
         measurementFR = null
-        targetFR = null
+        // targetFR не очищаем — target не зависит от выбранного phone
+        // и может быть уже загружен. Будет перезагружен ниже если null.
         autoEqBands = emptyList()
-        workingBands.clear()
-        workingPreamp = 0.0
+        autoEqPreamp = 0.0
+        // Не очищаем workingBands/workingPreamp — Live EQ это независимый PEQ,
+        // который должен сохраняться при смене phone. Пользователь может
+        // сбросить через Reset, если хочет.
         graphSurface.clearMeasurementData()
         graphSurface.clearMeasurementDataR()
-        graphSurface.clearTargetCurve()
         graphSurface.clearCorrectedFR()
-        // Очищаем filter curves тоже
-        graphSurface.setBands(ParametricEqBandList(), 0.0)
+        // Очищаем filter curves только если нет workingBands
+        if (workingBands.isEmpty()) {
+            graphSurface.setBands(ParametricEqBandList(), 0.0)
+        }
 
         val channels = currentInstance.channels
 
@@ -533,53 +746,55 @@ class SquigLiveFragment : Fragment() {
                 isLoadingData = true
                 val normHz = currentInstance.defaultNormHz
 
-                // Загрузка первого канала
+                // Загрузка первого канала (кэш-первичная: сначала локальная БД, потом сеть)
                 val firstChannel = channels.first()
                 Timber.i("SquigLive: loading FR channel '$firstChannel' for ${result.phone.name}")
                 val frL = try {
-                    currentClient.loadFrequencyResponseAsync(result.phone, firstChannel)
+                    currentClient.loadFrequencyResponseWithStore(result.phone, firstChannel, currentInstance)
                 } catch (e: Exception) {
                     // First channel failed (404) — try the other channel
                     val fallbackChannel = if (firstChannel == "R") "L" else "R"
                     Timber.w("SquigLive: channel '$firstChannel' failed (404), trying '$fallbackChannel': ${e.message}")
-                    currentClient.loadFrequencyResponseAsync(result.phone, fallbackChannel)
+                    currentClient.loadFrequencyResponseWithStore(result.phone, fallbackChannel, currentInstance)
                 }
-                val normalizedL = frL.normalize(normHz)
-                measurementFR_L = normalizedL
-                Timber.i("SquigLive: FR L loaded — ${normalizedL.frequencies.size} points, normalized at ${normHz}Hz")
+                // frL уже нормализован в loadFrequencyResponseWithStore
+                measurementFR_L = frL
+                Timber.i("SquigLive: FR L loaded — ${frL.frequencies.size} points, normalized at ${normHz}Hz")
 
                 // Отображение L на графике
-                val (freqsL, splL) = normalizedL.toFloatArrays()
+                val (freqsL, splL) = frL.toFloatArrays()
                 graphSurface.setMeasurementData(freqsL, splL)
+
+                // Обновляем индикатор статуса загрузки для выбранного замера
+                refreshDownloadedKeys()
 
                 // Если есть второй канал, загружаем (необязательно — R может отсутствовать)
                 if (channels.size > 1) {
                     try {
                         Timber.i("SquigLive: loading FR channel '${channels[1]}' for ${result.phone.name}")
-                        val frR = currentClient.loadFrequencyResponseAsync(result.phone, channels[1])
-                        val normalizedR = frR.normalize(normHz)
-                        measurementFR_R = normalizedR
-                        Timber.i("SquigLive: FR R loaded — ${normalizedR.frequencies.size} points")
-                        val (freqsR, splR) = normalizedR.toFloatArrays()
+                        val frR = currentClient.loadFrequencyResponseWithStore(result.phone, channels[1], currentInstance)
+                        measurementFR_R = frR
+                        Timber.i("SquigLive: FR R loaded — ${frR.frequencies.size} points")
+                        val (freqsR, splR) = frR.toFloatArrays()
                         graphSurface.setMeasurementDataR(freqsR, splR)
 
                         // Усреднённая АЧХ для AutoEQ
-                        measurementFR = normalizedL.average(normalizedR)
+                        measurementFR = frL.average(frR)
                         Timber.i("SquigLive: averaged FR (L+R)/2 computed for AutoEQ")
                     } catch (e: Exception) {
                         Timber.w("SquigLive: R channel failed, using L only: ${e.message}")
-                        measurementFR = normalizedL
+                        measurementFR = frL
                     }
                 } else {
                     // Только один канал
-                    measurementFR = normalizedL
+                    measurementFR = frL
                 }
 
                 // Загрузка целевой кривой (если ещё не загружена — загружаем)
                 ensureActive()
                 if (targetFR == null) {
                     try {
-                        val target = currentClient.loadTargetCurveWithCache(selectedTargetName, currentInstance)
+                        val target = targetClient.loadTargetCurveWithCache(selectedTargetName, targetInstance)
                         targetFR = target.normalize(normHz)
                     } catch (e: Exception) {
                         Timber.w("Целевая кривая '$selectedTargetName' не загружена: ${e.message}")
@@ -596,6 +811,14 @@ class SquigLiveFragment : Fragment() {
 
                 hideLoading()
                 isLoadingData = false
+
+                // If Live EQ bands were restored from a previous session, draw
+                // them now (measurement is available) and compute corrected FR.
+                if (workingBands.isNotEmpty()) {
+                    graphSurface.setBands(workingBands, workingPreamp)
+                    updateCorrectedFR()
+                }
+
                 updateActionButtons()
                 statusText.text = getString(R.string.squig_measurement_loaded, result.phone.name)
                 statusText.isVisible = true
@@ -618,7 +841,10 @@ class SquigLiveFragment : Fragment() {
         val hasBands = workingBands.isNotEmpty() || autoEqBands.isNotEmpty()
 
         autoEqButton.isEnabled = hasMeasurement && hasTarget && !isLoadingData
-        liveEqButton.isEnabled = hasMeasurement && !isLoadingData
+        // Live EQ is an independent PEQ plugin — available regardless of
+        // whether a measurement is loaded. The user can add/edit bands and
+        // hear them in real time even without a squig.link measurement.
+        liveEqButton.isEnabled = !isLoadingData
         applyButton.isEnabled = hasBands && !isLoadingData
         resetButton.isEnabled = hasBands && !isLoadingData
     }
@@ -631,12 +857,10 @@ class SquigLiveFragment : Fragment() {
     private fun reloadTargetCurve() {
         showLoading(getString(R.string.squig_loading))
 
-        // Очистка старых AutoEQ-полос и corrected FR
+        // Очистка старых AutoEQ-полос и corrected FR (AutoEQ зависит от target).
+        // workingBands (Live EQ) не очищаем — это независимый PEQ.
         autoEqBands = emptyList()
         autoEqPreamp = 0.0
-        workingBands.clear()
-        workingPreamp = 0.0
-        graphSurface.setBands(ParametricEqBandList(), 0.0)
         graphSurface.clearCorrectedFR()
 
         loadTargetCurveData()
@@ -651,8 +875,8 @@ class SquigLiveFragment : Fragment() {
     private fun loadTargetCurveData() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val normHz = currentInstance.defaultNormHz
-                val target = currentClient.loadTargetCurveWithCache(selectedTargetName, currentInstance)
+                val normHz = targetInstance.defaultNormHz
+                val target = targetClient.loadTargetCurveWithCache(selectedTargetName, targetInstance)
                 targetFR = target.normalize(normHz)
 
                 // Сдвигаем target на preamp если есть активные полосы
@@ -671,8 +895,11 @@ class SquigLiveFragment : Fragment() {
             } catch (e: Exception) {
                 if (!isAdded || view == null) return@launch
                 hideLoading()
-                showError(getString(R.string.squig_load_error, e.message ?: "unknown"))
-                Timber.e(e, "loadTargetCurveData failed")
+                // Target может быть недоступен на данном инстансе (404) или нет сети.
+                // Не показываем ошибку — замер всё равно можно загрузить без target.
+                targetFR = null
+                Timber.w("loadTargetCurveData: target '$selectedTargetName' unavailable: ${e.message}")
+                updateActionButtons()
             }
         }
     }
@@ -898,8 +1125,8 @@ class SquigLiveFragment : Fragment() {
         updateActionButtons()
         statusText.text = getString(R.string.squig_reset_done)
         statusText.isVisible = true
-        // Real-time PEQ preview: clear bands in DSP engine
-        applyRealTimePeqPreview()
+        // Real-time PEQ preview: disable squig PEQ and clear bands in DSP engine
+        applyRealTimePeqPreview(enable = false)
     }
 
     /**
@@ -908,19 +1135,20 @@ class SquigLiveFragment : Fragment() {
      * Колбэк onCorrectedUpdate обновляет corrected FR на главном графике в реальном времени.
      */
     private fun openLiveEq() {
-        if (workingBands.isEmpty() && autoEqBands.isEmpty()) {
-            // Создаём одну полосу по умолчанию
-            workingBands.clear()
-            workingBands.add(ParametricEqBand(
-                frequency = 1000.0,
-                gain = 0.0,
-                q = 1.0,
-                filterType = ParametricEqFilterType.PEAKING,
-                channel = ParametricEqChannel.LEFT_RIGHT
-            ))
-        } else if (workingBands.isEmpty()) {
-            workingBands.clear()
-            workingBands.addAll(autoEqBands)
+        if (workingBands.isEmpty()) {
+            // Создаём одну полосу по умолчанию, если нет ни рабочих, ни AutoEQ полос
+            if (autoEqBands.isNotEmpty()) {
+                workingBands.clear()
+                workingBands.addAll(autoEqBands)
+            } else {
+                workingBands.add(ParametricEqBand(
+                    frequency = 1000.0,
+                    gain = 0.0,
+                    q = 1.0,
+                    filterType = ParametricEqFilterType.PEAKING,
+                    channel = ParametricEqChannel.LEFT_RIGHT
+                ))
+            }
         }
 
         // Подготовка оверлеев для графика Live EQ
@@ -934,10 +1162,17 @@ class SquigLiveFragment : Fragment() {
             onLiveUpdate = { bands ->
                 if (isAdded && view != null) {
                     graphSurface.setBands(bands, workingPreamp)
+                    // Real-time DSP preview on every slider drag — not just on release.
+                    // Pass the live copy directly; do NOT mutate workingBands here
+                    // (it is the same object as BottomSheet.source, and mutating it
+                    // would make commitChanges detect no diff and skip onCommit).
+                    applyRealTimePeqPreview(bands = bands)
                 }
             },
             onPreampUpdate = { newPreamp ->
                 workingPreamp = newPreamp
+                // Real-time DSP preview when preamp slider moves
+                applyRealTimePeqPreview(preamp = newPreamp)
             },
             onCommit = {
                 if (isAdded && view != null) {
@@ -1061,10 +1296,16 @@ class SquigLiveFragment : Fragment() {
      */
     private fun showCacheMenu() {
         val cacheSize = SquigLinkCacheManager.cacheSizeFormatted()
+        val measSize = SquigMeasurementStore.cacheSizeBytes()
+        val measSizeStr = when {
+            measSize < 1024 -> "$measSize B"
+            measSize < 1024 * 1024 -> "${measSize / 1024} KB"
+            else -> String.format("%.1f MB", measSize / (1024.0 * 1024.0))
+        }
         val items = arrayOf(
             getString(R.string.squig_cache_dump),
             getString(R.string.squig_cache_freshness),
-            getString(R.string.squig_cache_clear, cacheSize)
+            getString(R.string.squig_cache_clear, "$cacheSize + $measSizeStr")
         )
         com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.squig_cache_menu)
@@ -1181,9 +1422,12 @@ class SquigLiveFragment : Fragment() {
             .setMessage(getString(R.string.squig_cache_clear_msg, SquigLinkCacheManager.cacheSizeFormatted()))
             .setPositiveButton(R.string.peq_done) { _, _ ->
                 SquigLinkCacheManager.clearAll()
+                SquigMeasurementStore.clearAll()
                 requireContext().toast(getString(R.string.squig_cache_cleared))
                 statusText.text = getString(R.string.squig_cache_cleared)
                 statusText.visibility = View.VISIBLE
+                refreshDownloadedKeys()
+                updateCatalogInfo()
             }
             .setNegativeButton(R.string.peq_cancel, null)
             .show()
@@ -1270,12 +1514,39 @@ class SquigLiveFragment : Fragment() {
             Timber.w(e, "Failed to restore AutoEQ config")
         }
 
+        // Restore working bands + preamp from PREF_SQUIG so the last Live EQ
+        // / AutoEQ session survives fragment recreation and app restart.
+        // This keeps the graph, filters, and DSP state consistent across sessions.
+        try {
+            val savedBandsStr = prefs.getString(getString(R.string.key_squig_peq_bands), null)
+            val savedPreamp = prefs.getFloat(getString(R.string.key_squig_peq_preamp), 0f)
+            val savedEnabled = prefs.getBoolean(getString(R.string.key_squig_peq_enable), false)
+            if (!savedBandsStr.isNullOrEmpty() && savedEnabled) {
+                workingBands.deserialize(savedBandsStr)
+                workingPreamp = savedPreamp.toDouble()
+                Timber.i("SquigLive: restored ${workingBands.size} working bands (preamp=${"%.2f".format(workingPreamp)}dB) from prefs")
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to restore working bands")
+        }
+
         // Stash saved names; applied once async loaders finish populating spinners
         pendingInstanceName = prefs.getString(getString(R.string.key_squig_instance), null)
         pendingTargetName = prefs.getString(getString(R.string.key_squig_target), null)
         pendingPhoneName = prefs.getString(getString(R.string.key_squig_phone_name), null)
         pendingPhoneBrand = prefs.getString(getString(R.string.key_squig_phone_brand), null)
         pendingPhoneFile = prefs.getString(getString(R.string.key_squig_phone_file), null)
+
+        // Restore target instance selection (separate from measurement instance)
+        val savedTargetInstance = prefs.getString(getString(R.string.key_squig_target_instance), null)
+        if (!savedTargetInstance.isNullOrEmpty()) {
+            val idx = instances.indexOfFirst { it.name == savedTargetInstance }
+            if (idx >= 0) {
+                targetInstance = instances[idx]
+                targetClient = SquigLinkClient(targetInstance)
+                targetInstanceSpinner.setSelection(idx)
+            }
+        }
 
         // If target name restored, set selectedTargetName so loadTargetCurves
         // picks it up when it builds the adapter.
@@ -1285,6 +1556,12 @@ class SquigLiveFragment : Fragment() {
         if (!pendingPhoneName.isNullOrEmpty() && !pendingPhoneBrand.isNullOrEmpty()) {
             selectedPhoneText.text = getString(R.string.squig_selected_phone, pendingPhoneBrand, pendingPhoneName)
             selectedPhoneText.isVisible = true
+        }
+
+        // If we restored working bands, draw them on the graph immediately.
+        // The filter curve renders even before measurement/target are loaded.
+        if (workingBands.isNotEmpty()) {
+            graphSurface.setBands(workingBands, workingPreamp)
         }
     }
 
@@ -1323,22 +1600,226 @@ class SquigLiveFragment : Fragment() {
      * namespace at all.
      */
     @SuppressLint("ApplySharedPref")
-    private fun applyRealTimePeqPreview() {
+    private fun applyRealTimePeqPreview(enable: Boolean = true, bands: ParametricEqBandList? = null, preamp: Double? = null) {
         val ctx = context ?: return
         try {
-            val bands = if (workingBands.isNotEmpty()) workingBands else ParametricEqBandList()
-            val preamp = workingPreamp
+            val useBands = bands ?: workingBands
+            val usePreamp = preamp ?: workingPreamp
+            val effectiveBands = if (enable && useBands.isNotEmpty()) useBands else ParametricEqBandList()
+            val effectivePreamp = if (enable) usePreamp else 0.0
             val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
             squigPref.edit()
-                .putString(getString(R.string.key_squig_peq_bands), bands.serialize())
-                .putFloat(getString(R.string.key_squig_peq_preamp), preamp.toFloat())
-                .putBoolean(getString(R.string.key_squig_peq_enable), true)
+                .putString(getString(R.string.key_squig_peq_bands), effectiveBands.serialize())
+                .putFloat(getString(R.string.key_squig_peq_preamp), effectivePreamp.toFloat())
+                .putBoolean(getString(R.string.key_squig_peq_enable), enable && effectiveBands.isNotEmpty())
                 .apply()
 
             ctx.sendLocalBroadcast(Intent(Constants.ACTION_SQUIG_PEQ_CHANGED))
-            Timber.d("SquigLive: real-time Squig PEQ preview applied (${bands.size} bands, preamp=${"%.2f".format(preamp)}dB)")
+            Timber.d("SquigLive: real-time Squig PEQ preview applied (enable=$enable, ${effectiveBands.size} bands, preamp=${"%.2f".format(effectivePreamp)}dB)")
         } catch (e: Exception) {
             Timber.e(e, "SquigLive: failed to apply real-time Squig PEQ preview")
+        }
+    }
+
+    // ── Measurement store / batch download ───────────────────────────────
+
+    /**
+     * Обновить catalogInfo с количеством брендов и загруженных замеров.
+     */
+    private fun updateCatalogInfo() {
+        val brandCount = database.size
+        val downloadedCount = SquigMeasurementStore.countDownloadedForInstance(currentInstance)
+        if (downloadedCount > 0) {
+            catalogInfo.text = getString(R.string.squig_catalog_info, brandCount) +
+                " · $downloadedCount ✓"
+        } else {
+            catalogInfo.text = getString(R.string.squig_catalog_info, brandCount)
+        }
+    }
+
+    /**
+     * Обновить индикаторы загруженных замеров в адаптере.
+     * Строит множество ключей "${brand}::${phone.name}" для всех загруженных
+     * замеров текущего инстанса.
+     */
+    /**
+     * Обновить индикаторы загруженных замеров в адаптере.
+     * Проверка кэша для каждого телефона — в фоновом потоке.
+     */
+    private fun refreshDownloadedKeys() {
+        val db = database
+        val instance = currentInstance
+        viewLifecycleOwner.lifecycleScope.launch {
+            val keys = withContext(Dispatchers.Default) {
+                val channels = instance.channels
+                val keysSet = mutableSetOf<String>()
+                for (brand in db) {
+                    for (phone in brand.phones) {
+                        if (SquigMeasurementStore.isAnyChannelDownloaded(instance, phone, channels)) {
+                            keysSet.add("${brand.name}::${phone.name}")
+                        }
+                    }
+                }
+                keysSet
+            }
+            if (!isAdded || view == null) return@launch
+            resultsAdapter.updateDownloadedKeys(keys)
+            updateCatalogInfo()
+        }
+    }
+
+    /**
+     * Диалог выбора типа пакетной загрузки:
+     * - Download all measurements (this instance)
+     * - Download all measurements (all instances)
+     */
+    private fun showDownloadAllDialog() {
+        val items = arrayOf(
+            getString(R.string.squig_download_instance),
+            getString(R.string.squig_download_all_instances)
+        )
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.squig_download_choice_title)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> performDownloadInstanceMeasurements()
+                    1 -> performDownloadAllInstances()
+                }
+            }
+            .setNegativeButton(R.string.peq_cancel, null)
+            .show()
+    }
+
+    /**
+     * Многопоточная загрузка всех замеров текущего инстанса.
+     * Загружает все АЧХ-файлы (L, R) параллельно с ограничением параллелизма,
+     * а также все target curves. Уже загруженные замеры пропускаются.
+     */
+    private fun performDownloadInstanceMeasurements() {
+        if (database.isEmpty()) {
+            requireContext().toast(getString(R.string.squig_loading))
+            return
+        }
+
+        showLoading(getString(R.string.squig_download_running))
+        val instance = currentInstance
+        val brands = database
+        val targetNames = targetCurves
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    SquigBatchDownloader.downloadInstanceMeasurements(
+                        clientFactory = { inst -> SquigLinkClient(inst) },
+                        instance = instance,
+                        brands = brands,
+                        targetNames = targetNames,
+                        onProgress = { current, total, msg ->
+                            if (isAdded && view != null) {
+                                requireActivity().runOnUiThread {
+                                    if (isAdded && view != null) {
+                                        progressBar.visibility = View.VISIBLE
+                                        statusText.text = getString(
+                                            R.string.squig_download_progress, msg, current, total
+                                        )
+                                        statusText.visibility = View.VISIBLE
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
+                if (!isAdded || view == null) return@launch
+
+                hideLoading()
+                refreshDownloadedKeys()
+                updateCatalogInfo()
+
+                val msg = getString(R.string.squig_download_done, result.summary)
+                statusText.text = msg
+                statusText.visibility = View.VISIBLE
+                Timber.i("DownloadInstance: $msg")
+            } catch (e: Exception) {
+                if (!isAdded || view == null) return@launch
+                hideLoading()
+                showError(getString(R.string.squig_download_failed, e.message ?: "unknown"))
+                Timber.e(e, "DownloadInstance failed")
+            }
+        }
+    }
+
+    /**
+     * Многопоточная загрузка всех замеров всех инстансов.
+     * Для каждого инстанса загружает phone_book (если нужно), все АЧХ-файлы
+     * и все target curves. Долгая операция с прогресс-индикатором.
+     */
+    private fun performDownloadAllInstances() {
+        showLoading(getString(R.string.squig_download_running))
+        val allInstances = instances
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                // Сначала загружаем phone_book для каждого инстанса (если ещё не загружен)
+                val brandsByInstance = mutableMapOf<SquigLinkInstance, List<me.timschneeberger.rootlessjamesdsp.model.squig.SquigLinkBrand>>()
+                for (inst in allInstances) {
+                    try {
+                        val client = SquigLinkClient(inst)
+                        val brands = client.loadDatabaseWithCache(inst)
+                        brandsByInstance[inst] = brands
+                    } catch (e: Exception) {
+                        Timber.w("DownloadAll: failed to load phone_book for ${inst.name}: ${e.message}")
+                    }
+                }
+
+                // Загружаем target names для каждого инстанса
+                val targetsByInstance = mutableMapOf<SquigLinkInstance, List<String>>()
+                for (inst in allInstances) {
+                    try {
+                        val client = SquigLinkClient(inst)
+                        val targets = client.loadTargetCurvesWithCache(inst)
+                        targetsByInstance[inst] = targets
+                    } catch (e: Exception) {
+                        Timber.w("DownloadAll: failed to load targets for ${inst.name}: ${e.message}")
+                    }
+                }
+
+                val result = withContext(Dispatchers.IO) {
+                    SquigBatchDownloader.downloadAllInstances(
+                        clientFactory = { inst -> SquigLinkClient(inst) },
+                        instances = brandsByInstance.keys.toList(),
+                        brandsByInstance = brandsByInstance,
+                        targetsByInstance = targetsByInstance,
+                        onProgress = { current, total, msg ->
+                            if (isAdded && view != null) {
+                                requireActivity().runOnUiThread {
+                                    if (isAdded && view != null) {
+                                        progressBar.visibility = View.VISIBLE
+                                        statusText.text = getString(
+                                            R.string.squig_download_progress, msg, current, total
+                                        )
+                                        statusText.visibility = View.VISIBLE
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
+                if (!isAdded || view == null) return@launch
+
+                hideLoading()
+                refreshDownloadedKeys()
+                updateCatalogInfo()
+
+                val msg = getString(R.string.squig_download_done, result.summary)
+                statusText.text = msg
+                statusText.visibility = View.VISIBLE
+                Timber.i("DownloadAll: $msg")
+            } catch (e: Exception) {
+                if (!isAdded || view == null) return@launch
+                hideLoading()
+                showError(getString(R.string.squig_download_failed, e.message ?: "unknown"))
+                Timber.e(e, "DownloadAll failed")
+            }
         }
     }
 

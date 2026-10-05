@@ -41,7 +41,13 @@ data class SquigLinkInstance(
      *           "/iems/" + "data/" = "/iems/data/"
      */
     val fullDataPath: String
-        get() = "${folder.trimEnd('/')}/$dir"
+        get() {
+            // folder обычно "/" или "/headphones/" → trimEnd('/') даёт "" или "/headphones"
+            // dir обычно "data/" → результат "data/" или "/headphones/data/"
+            // Если folder пустой после trim — не добавляем ведущий слеш
+            val folderTrimmed = folder.trimEnd('/')
+            return if (folderTrimmed.isEmpty()) dir else "$folderTrimmed/$dir"
+        }
 
     companion object {
         private const val serialVersionUID = 1L

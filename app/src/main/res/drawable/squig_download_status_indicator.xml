@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Индикатор статуса загрузки замера.
+     state_activated=true → ✓ (замер загружен в локальную БД, зелёная галочка)
+     normal → ✗ (замер ещё не загружен, серый крестик) -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_activated="true">
+        <layer-list>
+            <!-- Круг-фон -->
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@android:color/transparent" />
+                    <stroke android:width="1.5dp" android:color="?attr/colorPrimary" />
+                    <size android:width="20dp" android:height="20dp" />
+                </shape>
+            </item>
+            <!-- Галочка -->
+            <item
+                android:gravity="center"
+                android:width="14dp"
+                android:height="14dp"
+                android:drawable="@drawable/ic_twotone_check_24dp" />
+        </layer-list>
+    </item>
+    <item>
+        <layer-list>
+            <!-- Круг-фон -->
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@android:color/transparent" />
+                    <stroke android:width="1.5dp" android:color="?attr/colorOnSurfaceVariant" />
+                    <size android:width="20dp" android:height="20dp" />
+                </shape>
+            </item>
+            <!-- Крестик -->
+            <item
+                android:gravity="center"
+                android:width="14dp"
+                android:height="14dp"
+                android:drawable="@drawable/ic_close_24dp" />
+        </layer-list>
+    </item>
+</selector>

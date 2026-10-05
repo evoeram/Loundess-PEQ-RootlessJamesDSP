@@ -92,6 +92,12 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val peqBandsStr = cache.get(R.string.key_peq_bands, Constants.DEFAULT_PEQ)
             val peqPreamp = cache.get(R.string.key_peq_preamp, 0f)
 
+            // Squig Live plugin PEQ (independent namespace; merged with main PEQ)
+            cache.select(Constants.PREF_SQUIG)
+            val squigEnabled = cache.get(R.string.key_squig_peq_enable, false)
+            val squigBandsStr = cache.get(R.string.key_squig_peq_bands, Constants.DEFAULT_PEQ)
+            val squigPreamp = cache.get(R.string.key_squig_peq_preamp, 0f)
+
             cache.select(Constants.PREF_REVERB)
             val reverbEnabled = cache.get(R.string.key_reverb_enable, false)
             val reverbPreset = cache.get(R.string.key_reverb_preset, "0").toInt()
@@ -145,7 +151,13 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val convolverAdvImp = cache.get(R.string.key_convolver_adv_imp, Constants.DEFAULT_CONVOLVER_ADVIMP)
             val convolverMode = cache.get(R.string.key_convolver_mode, "0").toInt()
 
-            val targets = cache.changedNamespaces.toTypedArray() + (forceUpdateNamespaces ?: arrayOf())
+            val targets = (cache.changedNamespaces + (forceUpdateNamespaces ?: arrayOf())).toMutableList()
+            // Deduplicate: a namespace appearing in both changed + forced would
+            // otherwise be applied twice; for PEQ/SQUIG that means the second
+            // pass overwrites the merged cascade from the first pass with
+            // main-PEQ-only bands, silently dropping Squig Live EQ.
+            val seen = HashSet<String>()
+            targets.retainAll { seen.add(it) }
             targets.forEach {
                 Timber.i("Committing new changes in namespace '$it'")
 
@@ -165,14 +177,40 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                         }
                     }
                     Constants.PREF_PEQ -> {
+                        // Main PEQ and Squig Live PEQ are a single biquad cascade:
+                        // changing either namespace must apply both together.
+                        // Without this, a PREF_PEQ commit after a PREF_SQUIG commit
+                        // would overwrite the merged cascade with main-PEQ-only
+                        // bands and silently drop the Squig Live EQ.
                         if (supportsParametricEqCascade()) {
-                            // Time-domain biquad cascade (all 8 filter types, L+R/L/R per band)
-                            val peqBands = ParametricEqBandList()
-                            peqBands.deserialize(peqBandsStr)
-                            setParametricEqCascade(peqEnabled, sampleRate.toDouble(), peqPreamp.toDouble(), peqBands.toList())
+                            val mergedBands = ParametricEqBandList()
+                            if (peqEnabled) {
+                                mergedBands.deserialize(peqBandsStr)
+                            }
+                            if (squigEnabled) {
+                                val squigBandList = ParametricEqBandList()
+                                squigBandList.deserialize(squigBandsStr)
+                                mergedBands.addAll(squigBandList.toList())
+                            }
+                            val mergedPreamp = (if (peqEnabled) peqPreamp else 0f) +
+                                (if (squigEnabled) squigPreamp else 0f)
+                            val anyEnabled = peqEnabled || squigEnabled
+                            setParametricEqCascade(anyEnabled, sampleRate.toDouble(), mergedPreamp.toDouble(), mergedBands.toList())
                         } else {
-                            // Fallback: merge PEQ into GraphicEQ for engines without native PEQ
-                            setGraphicEqCombined(geqEnabled, geqBands, peqEnabled, peqBandsStr, peqPreamp)
+                            // Fallback: merge PEQ into GraphicEQ for engines without native PEQ.
+                            // Squig bands are merged into the PEQ band string so they reach the
+                            // graphic-eq combined path too.
+                            val combinedBandsStr = if (squigEnabled) {
+                                val merged = ParametricEqBandList()
+                                if (peqEnabled) merged.deserialize(peqBandsStr)
+                                val squigBandList = ParametricEqBandList()
+                                squigBandList.deserialize(squigBandsStr)
+                                merged.addAll(squigBandList.toList())
+                                merged.serialize()
+                            } else peqBandsStr
+                            val combinedPreamp = (if (peqEnabled) peqPreamp else 0f) +
+                                (if (squigEnabled) squigPreamp else 0f)
+                            setGraphicEqCombined(geqEnabled, geqBands, peqEnabled || squigEnabled, combinedBandsStr, combinedPreamp)
                         }
                     }
                     Constants.PREF_REVERB -> setReverb(reverbEnabled, reverbPreset)
@@ -183,18 +221,12 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                     Constants.PREF_LIVEPROG -> setLiveprog(liveProgEnabled, liveprogFile)
                     Constants.PREF_SQUIG -> {
                         // Squig Live plugin: independent PEQ stored in the
-                        // PREF_SQUIG namespace (key_squig_peq_*). When both
-                        // main PEQ and Squig PEQ are enabled, merge both band
-                        // lists and apply together via setParametricEqCascade.
-                        // Main PEQ bands are applied first, Squig bands after
-                        // (cascade). Does NOT mutate the PREF_PEQ namespace.
-                        cache.select(Constants.PREF_SQUIG)
-                        val squigEnabled = cache.get(R.string.key_squig_peq_enable, false)
-                        val squigBandsStr = cache.get(R.string.key_squig_peq_bands, Constants.DEFAULT_PEQ)
-                        val squigPreamp = cache.get(R.string.key_squig_peq_preamp, 0f)
-
+                        // PREF_SQUIG namespace (key_squig_peq_*). Both main PEQ
+                        // and Squig PEQ form a single biquad cascade; this
+                        // handler mirrors PREF_PEQ so a Squig-only change still
+                        // applies the merged (main + squig) band list. Does NOT
+                        // mutate the PREF_PEQ namespace.
                         if (supportsParametricEqCascade()) {
-                            // Build merged band list: main PEQ bands + squig bands
                             val mergedBands = ParametricEqBandList()
                             if (peqEnabled) {
                                 mergedBands.deserialize(peqBandsStr)
@@ -204,7 +236,6 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                                 squigBandList.deserialize(squigBandsStr)
                                 mergedBands.addAll(squigBandList.toList())
                             }
-                            // Preamp: sum of both (each is a dB offset)
                             val mergedPreamp = (if (peqEnabled) peqPreamp else 0f) +
                                 (if (squigEnabled) squigPreamp else 0f)
                             val anyEnabled = peqEnabled || squigEnabled
@@ -212,7 +243,17 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                         } else {
                             // Fallback for engines without native PEQ cascade:
                             // merge squig bands into the graphic-eq combined path.
-                            setGraphicEqCombined(geqEnabled, geqBands, peqEnabled || squigEnabled, peqBandsStr, peqPreamp)
+                            val combinedBandsStr = if (squigEnabled) {
+                                val merged = ParametricEqBandList()
+                                if (peqEnabled) merged.deserialize(peqBandsStr)
+                                val squigBandList = ParametricEqBandList()
+                                squigBandList.deserialize(squigBandsStr)
+                                merged.addAll(squigBandList.toList())
+                                merged.serialize()
+                            } else peqBandsStr
+                            val combinedPreamp = (if (peqEnabled) peqPreamp else 0f) +
+                                (if (squigEnabled) squigPreamp else 0f)
+                            setGraphicEqCombined(geqEnabled, geqBands, peqEnabled || squigEnabled, combinedBandsStr, combinedPreamp)
                         }
                         true
                     }
