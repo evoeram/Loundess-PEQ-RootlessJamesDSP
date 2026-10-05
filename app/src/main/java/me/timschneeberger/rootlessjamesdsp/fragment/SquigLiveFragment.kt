@@ -529,8 +529,16 @@ class SquigLiveFragment : Fragment() {
                 val normHz = currentInstance.defaultNormHz
 
                 // Загрузка первого канала
-                Timber.i("SquigLive: loading FR channel '${channels.first()}' for ${result.phone.name}")
-                val frL = currentClient.loadFrequencyResponseAsync(result.phone, channels.first())
+                val firstChannel = channels.first()
+                Timber.i("SquigLive: loading FR channel '$firstChannel' for ${result.phone.name}")
+                val frL = try {
+                    currentClient.loadFrequencyResponseAsync(result.phone, firstChannel)
+                } catch (e: Exception) {
+                    // First channel failed (404) — try the other channel
+                    val fallbackChannel = if (firstChannel == "R") "L" else "R"
+                    Timber.w("SquigLive: channel '$firstChannel' failed (404), trying '$fallbackChannel': ${e.message}")
+                    currentClient.loadFrequencyResponseAsync(result.phone, fallbackChannel)
+                }
                 val normalizedL = frL.normalize(normHz)
                 measurementFR_L = normalizedL
                 Timber.i("SquigLive: FR L loaded — ${normalizedL.frequencies.size} points, normalized at ${normHz}Hz")
