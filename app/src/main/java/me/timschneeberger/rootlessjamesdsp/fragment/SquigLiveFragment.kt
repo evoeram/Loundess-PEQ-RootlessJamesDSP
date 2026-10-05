@@ -998,7 +998,7 @@ class SquigLiveFragment : Fragment() {
                 val v = input.text?.toString()?.toDoubleOrNull() ?: return@setPositiveButton
                 when (index) {
                     0 -> autoEqConfig = autoEqConfig.copy(maxFilters = v.toInt().coerceIn(1, 64))
-                    1 -> autoEqConfig = autoEqConfig.copy(individualMaxBoost = v.coerceIn(0.0, 30.0))
+                    1 -> autoEqConfig = autoEqConfig.copy(individualMaxBoost = v.coerceIn(0.0, 36.0))
                     2 -> autoEqConfig = autoEqConfig.copy(flatnessTarget = v.coerceIn(0.1, 10.0))
                     3 -> autoEqConfig = autoEqConfig.copy(matchRangeStart = v.coerceIn(10.0, 1000.0))
                     4 -> autoEqConfig = autoEqConfig.copy(matchRangeEnd = v.coerceIn(1000.0, 24000.0))
@@ -1125,8 +1125,19 @@ class SquigLiveFragment : Fragment() {
         updateActionButtons()
         statusText.text = getString(R.string.squig_reset_done)
         statusText.isVisible = true
-        // Real-time PEQ preview: disable squig PEQ and clear bands in DSP engine
-        applyRealTimePeqPreview(enable = false)
+        // Real-time PEQ preview: disable squig PEQ and clear bands in DSP engine.
+        // Also sync key_squig_enable so the card switch turns off.
+        val ctx = context ?: return
+        try {
+            val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
+            squigPref.edit()
+                .putBoolean(getString(R.string.key_squig_peq_enable), false)
+                .putBoolean(getString(R.string.key_squig_enable), false)
+                .apply()
+            ctx.sendLocalBroadcast(Intent(Constants.ACTION_SQUIG_PEQ_CHANGED))
+        } catch (e: Exception) {
+            Timber.e(e, "resetEq: failed to sync squig enable state")
+        }
     }
 
     /**
@@ -1244,6 +1255,7 @@ class SquigLiveFragment : Fragment() {
                 .putString(getString(R.string.key_squig_peq_bands), bands.serialize())
                 .putFloat(getString(R.string.key_squig_peq_preamp), preamp.toFloat())
                 .putBoolean(getString(R.string.key_squig_peq_enable), true)
+                .putBoolean(getString(R.string.key_squig_enable), true)
                 .apply()
 
             requireContext().sendLocalBroadcast(Intent(Constants.ACTION_SQUIG_PEQ_CHANGED))
@@ -1608,10 +1620,13 @@ class SquigLiveFragment : Fragment() {
             val effectiveBands = if (enable && useBands.isNotEmpty()) useBands else ParametricEqBandList()
             val effectivePreamp = if (enable) usePreamp else 0.0
             val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
+            // Sync both keys: key_squig_enable (card switch) and key_squig_peq_enable (engine)
+            val effectiveEnable = enable && effectiveBands.isNotEmpty()
             squigPref.edit()
                 .putString(getString(R.string.key_squig_peq_bands), effectiveBands.serialize())
                 .putFloat(getString(R.string.key_squig_peq_preamp), effectivePreamp.toFloat())
-                .putBoolean(getString(R.string.key_squig_peq_enable), enable && effectiveBands.isNotEmpty())
+                .putBoolean(getString(R.string.key_squig_peq_enable), effectiveEnable)
+                .putBoolean(getString(R.string.key_squig_enable), effectiveEnable)
                 .apply()
 
             ctx.sendLocalBroadcast(Intent(Constants.ACTION_SQUIG_PEQ_CHANGED))

@@ -53,9 +53,25 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
     private var convolverStatusUpdater: (() -> Unit)? = null
 
     private val listener =
-        SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             requireContext().sendLocalBroadcast(Intent(Constants.ACTION_PREFERENCES_UPDATED))
             convolverStatusUpdater?.invoke()
+
+            // Squig Live: sync key_squig_enable → key_squig_peq_enable so the
+            // toggle on the main card actually controls the DSP engine.
+            if (key == context?.resources?.getString(R.string.key_squig_enable)) {
+                val enabled = preferenceManager.sharedPreferences
+                    ?.getBoolean(key, false) ?: false
+                val squigPrefs = context?.getSharedPreferences(
+                    Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS
+                )
+                squigPrefs?.edit()
+                    ?.putBoolean(
+                        context!!.resources.getString(R.string.key_squig_peq_enable),
+                        enabled
+                    )?.apply()
+                context?.sendLocalBroadcast(Intent(Constants.ACTION_SQUIG_PEQ_CHANGED))
+            }
         }
 
     private val listenerApp =

@@ -850,6 +850,7 @@
     <string name="key_squig_target_instance">squig_target_instance</string>
     <string name="squig_enable">Squig Live</string>
     <string name="squig_enable_summary">Enable Squig Live AutoEQ plugin</string>
+    <string name="squig_preview_empty">No Squig Live EQ bands configured. Open Squig Live to AutoEQ.</string>
     <string name="title_activity_measurement">🐱 MEOW</string>
     <string name="measurement_start">🐱 MEOW!</string>
     <string name="measurement_stop">Stop</string>
@@ -965,6 +966,8 @@ Please press \'Continue\' below to re-do the setup wizard.</string>
     <string name="squig_autoeq_cfg_range_start">Match range start (Hz)</string>
     <string name="squig_autoeq_cfg_range_end">Match range end (Hz)</string>
     <string name="squig_autoeq_cfg_nelder_mead">Nelder-Mead optimization</string>
+    <string name="squig_live_eq_auto_preamp">Auto Preamp</string>
+    <string name="squig_live_eq_auto_preamp_desc">Auto-set preamp to prevent clipping</string>
     <string name="squig_cache_menu">Offline cache</string>
     <string name="squig_cache_dump">Dump all instances (download for offline)</string>
     <string name="squig_cache_freshness">Check freshness</string>

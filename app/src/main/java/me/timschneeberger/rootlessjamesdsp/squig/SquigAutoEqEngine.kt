@@ -39,11 +39,11 @@ class SquigAutoEqEngine(
      * Конфигурация алгоритма AutoEQ (портирована из MEOW AutoEqEngine.Config).
      */
     data class Config(
-        val matchRangeStart: Double = 20.0,
-        val matchRangeEnd: Double = 20000.0,
+        val matchRangeStart: Double = 30.0,
+        val matchRangeEnd: Double = 6000.0,
         val flatnessTarget: Double = 1.0,
-        val maxFilters: Int = 15,
-        val individualMaxBoost: Double = 6.0,
+        val maxFilters: Int = 36,
+        val individualMaxBoost: Double = 36.0,
         val overallMaxBoost: Double = 15.0,
         val maxQLow: Double = 15.0,
         val maxQHigh: Double = 5.0,
@@ -261,11 +261,15 @@ class SquigAutoEqEngine(
             Timber.d("SquigAutoEqEngine: удалено ${beforeCleanup - bands.size} бесполезных полос (|gain| < $cleanupGainThreshold dB)")
         }
 
-        // Вычисление preamp: -max(positive gain)
-        val preampDb = computePreamp(bands)
-
-        // Вычисление corrected FR
+        // Вычисление суммарной АЧХ фильтров (используется и для preamp, и для corrected FR)
         val filterResponse0 = calculator.compute(bands, 0.0)
+
+        // Вычисление preamp: -max(суммарной АЧХ фильтров), а не -max(gain отдельной полосы).
+        // Каскад фильтров (особенно shelf с большим gain и низкой Q) может давать пик
+        // выше gain любой отдельной полосы; отрицательный shelf может создавать
+        // положительный горб выше частоты среза. Берём реальный пик из computed response.
+        val preampDb = computePreampFromResponse(filterResponse0)
+
         val correctedFR0 = measurement.applyCorrection(
             filterResponse0.leftResponseDb,
             filterResponse0.frequencies
@@ -509,12 +513,25 @@ class SquigAutoEqEngine(
     }
 
     /**
-     * Вычисление preamp: -max(positive gain) для предотвращения клиппинга.
+     * Вычисление preamp из реальной суммарной АЧХ каскада фильтров.
+     *
+     * Берёт максимум по всем точкам частот из max(leftResponse, rightResponse).
+     * Это корректно для пограничных случаев:
+     * - несколько положительных полос складываются в пик выше любой отдельной
+     * - shelf с большим |gain| и низкой Q имеет пик не на f0, а в широкой зоне
+     * - отрицательный shelf (gain < 0) может давать положительный горб выше f0
+     *
+     * Возвращает -maxPeak (отрицательное значение для предотвращения клиппинга),
+     * или 0.0 если пик ≤ 0 dB.
      */
-    private fun computePreamp(bands: List<ParametricEqBand>): Double {
-        if (bands.isEmpty()) return 0.0
-        val maxPositiveGain = bands.maxOf { it.gain }
-        return if (maxPositiveGain > 0) -maxPositiveGain else 0.0
+    private fun computePreampFromResponse(
+        response: ParametricEqResponseCalculator.ResponseData
+    ): Double {
+        val maxPeak = maxOf(
+            response.leftResponseDb.maxOrNull() ?: 0.0,
+            response.rightResponseDb.maxOrNull() ?: 0.0
+        )
+        return if (maxPeak > 0.0) -maxPeak else 0.0
     }
 
     /**

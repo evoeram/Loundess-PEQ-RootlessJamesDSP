@@ -42,10 +42,9 @@ data class SquigLinkInstance(
      */
     val fullDataPath: String
         get() {
-            // folder обычно "/" или "/headphones/" → trimEnd('/') даёт "" или "/headphones"
-            // dir обычно "data/" → результат "data/" или "/headphones/data/"
-            // Если folder пустой после trim — не добавляем ведущий слеш
-            val folderTrimmed = folder.trimEnd('/')
+            // folder обычно "/" или "/headphones/" → trim('/') убирает все слеши
+            // dir обычно "data/" → результат "data/" или "headphones/data/"
+            val folderTrimmed = folder.trim('/')
             return if (folderTrimmed.isEmpty()) dir else "$folderTrimmed/$dir"
         }
 

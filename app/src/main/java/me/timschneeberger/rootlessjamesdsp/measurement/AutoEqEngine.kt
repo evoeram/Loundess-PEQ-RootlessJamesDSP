@@ -35,7 +35,7 @@ class AutoEqEngine(
         val matchRangeEnd: Double = 20000.0,     // Конец диапазона коррекции, Гц
         val flatnessTarget: Double = 1.0,        // Целевой макс. остаточный разброс, дБ
         val maxBands: Int = 15,                  // Максимум полос PEQ
-        val individualMaxBoost: Double = 6.0,    // Макс. усиление одной полосы, дБ
+        val individualMaxBoost: Double = 36.0,    // Макс. усиление одной полосы, дБ
         val overallMaxBoost: Double = 15.0,      // Макс. суммарное усиление, дБ
         val maxQLow: Double = 15.0,              // Макс. Q для НЧ (<200 Гц)
         val maxQHigh: Double = 5.0,              // Макс. Q для ВЧ (>200 Гц)
@@ -208,8 +208,17 @@ class AutoEqEngine(
             iteration++
         }
 
-        // Вычисление preamp: смещение чтобы максимальный gain не превышал 0 dB
-        val preampDb = computePreamp(bands, config)
+        // Вычисление preamp из реальной суммарной АЧХ каскада фильтров,
+        // а не из max(gain отдельной полосы). Каскад shelf/peaking фильтров
+        // может давать пик выше gain любой отдельной полосы (особенно
+        // при большом |gain| и низкой Q), а отрицательный shelf может
+        // создавать положительный горб выше частоты среза.
+        val filterResponse = calculator.compute(bands, 0.0)
+        val maxPeak = maxOf(
+            filterResponse.leftResponseDb.maxOrNull() ?: 0.0,
+            filterResponse.rightResponseDb.maxOrNull() ?: 0.0
+        )
+        val preampDb = if (maxPeak > 0.0) -maxPeak else 0.0
 
         return Result(
             bands = bands,
@@ -471,16 +480,6 @@ class AutoEqEngine(
 
         val bestIdx = (0..n).minByOrNull { fvals[it] } ?: 0
         return simplex[bestIdx]
-    }
-
-    /**
-     * Вычисление preamp: отрицательное смещение чтобы суммарный gain фильтров
-     * не приводил к клиппингу. Preamp = -max(positive filter gain).
-     */
-    private fun computePreamp(bands: List<ParametricEqBand>, config: Config): Double {
-        if (bands.isEmpty()) return 0.0
-        val maxPositiveGain = bands.maxOf { it.gain }
-        return if (maxPositiveGain > 0) -maxPositiveGain else 0.0
     }
 
     /**

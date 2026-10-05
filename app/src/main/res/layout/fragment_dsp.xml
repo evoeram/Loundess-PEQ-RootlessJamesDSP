@@ -129,10 +129,21 @@
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="1dp">
 
-            <androidx.fragment.app.FragmentContainerView
-                android:id="@+id/card_squig"
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <androidx.fragment.app.FragmentContainerView
+                    android:id="@+id/card_squig"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <androidx.fragment.app.FragmentContainerView
+                    android:id="@+id/card_squig_preview"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
         <com.google.android.material.card.MaterialCardView

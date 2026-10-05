@@ -42,6 +42,8 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
     private var preampDb: Double = 0.0
     // Колбэк для обновления preamp в реальном времени
     private var onPreampUpdate: ((Double) -> Unit)? = null
+    // Auto Preamp: автоматически вычислять preamp = -max(positive gain)
+    private var autoPreampEnabled: Boolean = false
 
     // Вызывается при каждом изменении слайдера для мгновенной визуальной обратной связи
     private var onLiveUpdate: ((ParametricEqBandList) -> Unit)? = null
@@ -65,6 +67,8 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
 
     // Защита от циклов обратной связи при программмной установке значений слайдеров
     private var isUpdatingSliders = false
+    // Защита от циклов при программмной установке значений полей ввода
+    private var isUpdatingInputs = false
 
     private val df = DecimalFormat("0.##", DecimalFormatSymbols.getInstance(Locale.ENGLISH))
 
@@ -141,6 +145,10 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
             Timber.d("LiveEQ freqSlider: pos=$value → ${newFreq.roundToInt()} Hz")
             bands[selectedIndex] = ParametricEqBand(newFreq, band.gain, band.q, band.filterType, band.channel, band.uuid)
             refreshChipLabel(selectedIndex)
+            // Синхронизация поля ввода
+            isUpdatingInputs = true
+            binding.freqInput.setText(newFreq.roundToInt().toString())
+            isUpdatingInputs = false
             onLiveUpdate?.invoke(bands)
             onCorrectedUpdate?.invoke(bands, preampDb)
             binding.liveEqSurface.setBands(bands, preampDb)
@@ -151,6 +159,12 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
             val band = bands[selectedIndex]
             Timber.d("LiveEQ gainSlider: ${value} dB")
             bands[selectedIndex] = ParametricEqBand(band.frequency, value.toDouble(), band.q, band.filterType, band.channel, band.uuid)
+            // Синхронизация поля ввода
+            isUpdatingInputs = true
+            binding.gainInput.setText(df.format(value.toDouble()))
+            isUpdatingInputs = false
+            // Auto Preamp: пересчитать preamp при изменении gain
+            if (autoPreampEnabled) applyAutoPreamp()
             onLiveUpdate?.invoke(bands)
             onCorrectedUpdate?.invoke(bands, preampDb)
             binding.liveEqSurface.setBands(bands, preampDb)
@@ -162,6 +176,10 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
             val newQ = sliderToQ(value).coerceAtLeast(0.1)
             Timber.d("LiveEQ qSlider: pos=$value → Q=$newQ")
             bands[selectedIndex] = ParametricEqBand(band.frequency, band.gain, newQ, band.filterType, band.channel, band.uuid)
+            // Синхронизация поля ввода
+            isUpdatingInputs = true
+            binding.qInput.setText(df.format(newQ))
+            isUpdatingInputs = false
             onLiveUpdate?.invoke(bands)
             onCorrectedUpdate?.invoke(bands, preampDb)
             binding.liveEqSurface.setBands(bands, preampDb)
@@ -179,13 +197,112 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
         }
         binding.preampSlider.addOnChangeListener { _, value, fromUser ->
             if (!fromUser || isUpdatingSliders) return@addOnChangeListener
+            // Если AutoPreamp включён — слайдер preamp отключён, игнорируем
+            if (autoPreampEnabled) return@addOnChangeListener
             preampDb = value.toDouble()
             Timber.d("LiveEQ preampSlider: $preampDb dB")
+            // Синхронизация поля ввода
+            isUpdatingInputs = true
+            binding.preampInput.setText(df.format(preampDb))
+            isUpdatingInputs = false
             onPreampUpdate?.invoke(preampDb)
             onLiveUpdate?.invoke(bands)
             onCorrectedUpdate?.invoke(bands, preampDb)
             binding.liveEqSurface.setBands(bands, preampDb)
             applyOverlays()
+        }
+
+        // Auto Preamp switch: при включении — автоматически вычислять preamp = -max(positive gain)
+        binding.autoPreampSwitch.setOnCheckedChangeListener { _, isChecked ->
+            autoPreampEnabled = isChecked
+            Timber.d("LiveEQ autoPreamp: $isChecked")
+            // Отключаем ручной preamp слайдер и поле ввода когда AutoPreamp включён
+            binding.preampSlider.isEnabled = !isChecked
+            binding.preampInput.isEnabled = !isChecked
+            if (isChecked) {
+                applyAutoPreamp()
+            }
+        }
+
+        // ── Поля точного ввода: freq, gain, q, preamp ──
+        // Частота: ввод в Гц, преобразуется в позицию слайдера
+        binding.freqInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                val hz = binding.freqInput.text?.toString()?.toDoubleOrNull()
+                if (hz != null && hz in 20.0..20000.0 && selectedIndex >= 0) {
+                    val band = bands[selectedIndex]
+                    bands[selectedIndex] = ParametricEqBand(hz, band.gain, band.q, band.filterType, band.channel, band.uuid)
+                    isUpdatingSliders = true
+                    binding.freqSlider.value = freqToSlider(hz)
+                    isUpdatingSliders = false
+                    refreshChipLabel(selectedIndex)
+                    onLiveUpdate?.invoke(bands)
+                    onCorrectedUpdate?.invoke(bands, preampDb)
+                    binding.liveEqSurface.setBands(bands, preampDb)
+                    applyOverlays()
+                    commitChanges()
+                }
+                true
+            } else false
+        }
+        // Gain: ввод в dB
+        binding.gainInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                val db = binding.gainInput.text?.toString()?.toDoubleOrNull()
+                if (db != null && db in -30.0..30.0 && selectedIndex >= 0) {
+                    val band = bands[selectedIndex]
+                    bands[selectedIndex] = ParametricEqBand(band.frequency, db, band.q, band.filterType, band.channel, band.uuid)
+                    isUpdatingSliders = true
+                    binding.gainSlider.value = db.toFloat()
+                    isUpdatingSliders = false
+                    if (autoPreampEnabled) applyAutoPreamp()
+                    onLiveUpdate?.invoke(bands)
+                    onCorrectedUpdate?.invoke(bands, preampDb)
+                    binding.liveEqSurface.setBands(bands, preampDb)
+                    applyOverlays()
+                    commitChanges()
+                }
+                true
+            } else false
+        }
+        // Q: ввод точного значения Q
+        binding.qInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                val qVal = binding.qInput.text?.toString()?.toDoubleOrNull()
+                if (qVal != null && qVal in 0.1..30.0 && selectedIndex >= 0) {
+                    val band = bands[selectedIndex]
+                    bands[selectedIndex] = ParametricEqBand(band.frequency, band.gain, qVal, band.filterType, band.channel, band.uuid)
+                    isUpdatingSliders = true
+                    binding.qSlider.value = qToSlider(qVal)
+                    isUpdatingSliders = false
+                    onLiveUpdate?.invoke(bands)
+                    onCorrectedUpdate?.invoke(bands, preampDb)
+                    binding.liveEqSurface.setBands(bands, preampDb)
+                    applyOverlays()
+                    commitChanges()
+                }
+                true
+            } else false
+        }
+        // Preamp: ввод в dB (отключён если AutoPreamp включён)
+        binding.preampInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                if (autoPreampEnabled) return@setOnEditorActionListener true
+                val db = binding.preampInput.text?.toString()?.toDoubleOrNull()
+                if (db != null && db in -30.0..30.0) {
+                    preampDb = db
+                    isUpdatingSliders = true
+                    binding.preampSlider.value = db.toFloat()
+                    isUpdatingSliders = false
+                    onPreampUpdate?.invoke(preampDb)
+                    onLiveUpdate?.invoke(bands)
+                    onCorrectedUpdate?.invoke(bands, preampDb)
+                    binding.liveEqSurface.setBands(bands, preampDb)
+                    applyOverlays()
+                    commitChanges()
+                }
+                true
+            } else false
         }
 
         // Запись обратно в редактор только когда пользователь отпускает палец
@@ -380,6 +497,13 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
         binding.freqSlider.value = freqToSlider(band.frequency)
         binding.gainSlider.value = band.gain.toFloat().coerceIn(-30f, 30f)
         binding.qSlider.value = qToSlider(band.q)
+        // Синхронизация полей точного ввода
+        isUpdatingInputs = true
+        binding.freqInput.setText(band.frequency.roundToInt().toString())
+        binding.gainInput.setText(df.format(band.gain))
+        binding.qInput.setText(df.format(band.q))
+        binding.preampInput.setText(df.format(preampDb))
+        isUpdatingInputs = false
         // Устанавливаем переключатель канала
         when (band.channel) {
             ParametricEqChannel.LEFT -> binding.channelLeft.isChecked = true
@@ -502,12 +626,57 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
      */
     private fun rebuildAfterBandChange() {
         buildBandChips()
+        // Auto Preamp: пересчитать preamp после добавления/удаления полосы
+        if (autoPreampEnabled) applyAutoPreamp()
         binding.liveEqSurface.setBands(bands, preampDb)
         applyOverlays()
         onLiveUpdate?.invoke(bands)
         onCorrectedUpdate?.invoke(bands, preampDb)
         commitChanges()
         updateButtonStates()
+    }
+
+    /**
+     * Auto Preamp: вычисляет preamp из реальной суммарной АЧХ каскада фильтров.
+     *
+     * Берёт -max(leftResponse, rightResponse) по всем точкам частот, а не
+     * -max(gain отдельной полосы). Это корректно для пограничных случаев:
+     * - несколько положительных полос складываются в пик выше любой отдельной
+     * - shelf с большим |gain| и низкой Q имеет пик не на f0, а в широкой зоне
+     * - отрицательный shelf (gain < 0) может давать положительный горб выше f0
+     *
+     * Если пик ≤ 0 dB — preamp = 0.
+     * Обновляет preampDb, слайдер, колбэки и график.
+     */
+    private fun applyAutoPreamp() {
+        val newPreamp = if (bands.isEmpty()) {
+            0.0
+        } else {
+            val calculator = me.timschneeberger.rootlessjamesdsp.utils.ParametricEqResponseCalculator()
+            val filterResponse = calculator.compute(bands.toList(), 0.0)
+            val maxPeak = maxOf(
+                filterResponse.leftResponseDb.maxOrNull() ?: 0.0,
+                filterResponse.rightResponseDb.maxOrNull() ?: 0.0
+            )
+            if (maxPeak > 0.0) -maxPeak else 0.0
+        }
+        if (newPreamp == preampDb) return
+        preampDb = newPreamp
+        Timber.d("LiveEQ autoPreamp computed: $preampDb dB (from real cascaded response peak)")
+        // Обновляем слайдер (без триггера слушателя)
+        isUpdatingSliders = true
+        binding.preampSlider.value = preampDb.toFloat().coerceIn(-30f, 30f)
+        isUpdatingSliders = false
+        // Обновляем поле ввода preamp
+        isUpdatingInputs = true
+        binding.preampInput.setText(df.format(preampDb))
+        isUpdatingInputs = false
+        // Уведомляем колбэки
+        onPreampUpdate?.invoke(preampDb)
+        onLiveUpdate?.invoke(bands)
+        onCorrectedUpdate?.invoke(bands, preampDb)
+        binding.liveEqSurface.setBands(bands, preampDb)
+        applyOverlays()
     }
 
     /** Обновляет enabled-состояние кнопок Add/Delete */

@@ -113,11 +113,31 @@
         android:paddingTop="8dp"
         android:visibility="gone">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- Frequency: label + точный ввод + слайдер -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/peq_frequency"
-            android:textAppearance="?attr/textAppearanceLabelLarge" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="4dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/peq_frequency"
+                android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/freqInput"
+                android:layout_width="88dp"
+                android:layout_height="36dp"
+                android:inputType="numberDecimal"
+                android:imeOptions="actionDone"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:hint="Hz" />
+        </LinearLayout>
 
         <com.google.android.material.slider.Slider
             android:id="@+id/freqSlider"
@@ -128,12 +148,31 @@
             android:stepSize="0"
             app:labelBehavior="floating" />
 
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- Gain: label + точный ввод + слайдер -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/peq_gain"
-            android:textAppearance="?attr/textAppearanceLabelLarge" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/peq_gain"
+                android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/gainInput"
+                android:layout_width="88dp"
+                android:layout_height="36dp"
+                android:inputType="numberDecimal|numberSigned"
+                android:imeOptions="actionDone"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:hint="dB" />
+        </LinearLayout>
 
         <com.google.android.material.slider.Slider
             android:id="@+id/gainSlider"
@@ -144,12 +183,31 @@
             android:stepSize="0"
             app:labelBehavior="floating" />
 
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- Q: label + точный ввод + слайдер -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/peq_q_factor"
-            android:textAppearance="?attr/textAppearanceLabelLarge" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/peq_q_factor"
+                android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/qInput"
+                android:layout_width="88dp"
+                android:layout_height="36dp"
+                android:inputType="numberDecimal"
+                android:imeOptions="actionDone"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:hint="Q" />
+        </LinearLayout>
 
         <com.google.android.material.slider.Slider
             android:id="@+id/qSlider"
@@ -160,13 +218,31 @@
             android:stepSize="0"
             app:labelBehavior="floating" />
 
-        <!-- Preamp слайдер -->
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- Preamp: label + точный ввод + слайдер -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/peq_preamp"
-            android:textAppearance="?attr/textAppearanceLabelLarge" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/peq_preamp"
+                android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/preampInput"
+                android:layout_width="88dp"
+                android:layout_height="36dp"
+                android:inputType="numberDecimal|numberSigned"
+                android:imeOptions="actionDone"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:hint="dB" />
+        </LinearLayout>
 
         <com.google.android.material.slider.Slider
             android:id="@+id/preampSlider"
@@ -176,6 +252,15 @@
             android:valueTo="30"
             android:stepSize="0"
             app:labelBehavior="floating" />
+
+        <!-- Auto Preamp checkbox: auto-set preamp = -max(positive gain) -->
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/autoPreampSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/squig_live_eq_auto_preamp"
+            android:checked="false" />
 
         <!-- Переключатель канала: L / L+R / R -->
         <TextView

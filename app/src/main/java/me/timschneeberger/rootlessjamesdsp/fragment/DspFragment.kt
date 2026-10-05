@@ -102,6 +102,9 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
                     R.xml.dsp_squig_preferences
                 ))
             .replace(
+                R.id.card_squig_preview, SquigPreviewFragment.newInstance()
+            )
+            .replace(
                 R.id.card_geq, PreferenceGroupFragment.newInstance(Constants.PREF_GEQ,
                     R.xml.dsp_graphiceq_preferences
                 ))
@@ -187,6 +190,7 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
         binding.cardOutputControl.isVisible = !movieMode
         // Measurement (MEOW) бесполезен без capture loop
         binding.cardSquig.isVisible = !movieMode
+        binding.cardSquigPreview.isVisible = !movieMode
         binding.cardMeasurement.isVisible = !movieMode
     }
 

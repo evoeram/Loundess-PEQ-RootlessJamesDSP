@@ -1,0 +1,119 @@
+kotlin version: 2.1.0
+error message: org.jetbrains.kotlin.backend.common.BackendException: Backend Internal error: Exception during IR lowering
+File being compiled: C:/dev/Loundess-PEQ-RootlessJamesDSP/app/src/main/java/me/timschneeberger/rootlessjamesdsp/model/preset/Preset.kt
+The root cause java.lang.RuntimeException was thrown at: org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.generate(FunctionCodegen.kt:48)
+	at org.jetbrains.kotlin.backend.common.CodegenUtil.reportBackendException(CodegenUtil.kt:253)
+	at org.jetbrains.kotlin.backend.common.CodegenUtil.reportBackendException$default(CodegenUtil.kt:236)
+	at org.jetbrains.kotlin.backend.common.phaser.PerformByIrFilePhase.invokeSequential(performByIrFile.kt:55)
+	at org.jetbrains.kotlin.backend.common.phaser.PerformByIrFilePhase.invoke(performByIrFile.kt:42)
+	at org.jetbrains.kotlin.backend.common.phaser.PerformByIrFilePhase.invoke(performByIrFile.kt:28)
+	at org.jetbrains.kotlin.backend.common.phaser.NamedCompilerPhase.phaseBody(CompilerPhase.kt:166)
+	at org.jetbrains.kotlin.backend.common.phaser.AbstractNamedCompilerPhase.invoke(CompilerPhase.kt:113)
+	at org.jetbrains.kotlin.backend.common.phaser.CompositePhase.invoke(PhaseBuilders.kt:27)
+	at org.jetbrains.kotlin.backend.common.phaser.CompositePhase.invoke(PhaseBuilders.kt:14)
+	at org.jetbrains.kotlin.backend.common.phaser.NamedCompilerPhase.phaseBody(CompilerPhase.kt:166)
+	at org.jetbrains.kotlin.backend.common.phaser.AbstractNamedCompilerPhase.invoke(CompilerPhase.kt:113)
+	at org.jetbrains.kotlin.backend.common.phaser.CompilerPhaseKt.invokeToplevel(CompilerPhase.kt:62)
+	at org.jetbrains.kotlin.backend.jvm.JvmIrCodegenFactory.invokeCodegen(JvmIrCodegenFactory.kt:371)
+	at org.jetbrains.kotlin.codegen.CodegenFactory.generateModule(CodegenFactory.kt:47)
+	at org.jetbrains.kotlin.backend.jvm.JvmIrCodegenFactory.generateModuleInFrontendIRMode(JvmIrCodegenFactory.kt:433)
+	at org.jetbrains.kotlin.cli.jvm.compiler.pipeline.JvmCompilerPipelineKt.generateCodeFromIr(jvmCompilerPipeline.kt:192)
+	at org.jetbrains.kotlin.cli.jvm.compiler.pipeline.JvmCompilerPipelineKt.runBackend(jvmCompilerPipeline.kt:80)
+	at org.jetbrains.kotlin.cli.jvm.compiler.pipeline.JvmCompilerPipelineLightTreeKt.compileModule(jvmCompilerPipelineLightTree.kt:264)
+	at org.jetbrains.kotlin.cli.jvm.compiler.pipeline.JvmCompilerPipelineLightTreeKt.compileSingleModuleUsingFrontendIrAndLightTree(jvmCompilerPipelineLightTree.kt:231)
+	at org.jetbrains.kotlin.cli.jvm.compiler.pipeline.JvmCompilerPipelineLightTreeKt.compileModulesUsingFrontendIrAndLightTree(jvmCompilerPipelineLightTree.kt:86)
+	at org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.doExecute(K2JVMCompiler.kt:146)
+	at org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.doExecute(K2JVMCompiler.kt:43)
+	at org.jetbrains.kotlin.cli.common.CLICompiler.execImpl(CLICompiler.kt:102)
+	at org.jetbrains.kotlin.cli.common.CLICompiler.exec(CLICompiler.kt:316)
+	at org.jetbrains.kotlin.incremental.IncrementalJvmCompilerRunner.runCompiler(IncrementalJvmCompilerRunner.kt:464)
+	at org.jetbrains.kotlin.incremental.IncrementalJvmCompilerRunner.runCompiler(IncrementalJvmCompilerRunner.kt:73)
+	at org.jetbrains.kotlin.incremental.IncrementalCompilerRunner.doCompile(IncrementalCompilerRunner.kt:506)
+	at org.jetbrains.kotlin.incremental.IncrementalCompilerRunner.compileImpl(IncrementalCompilerRunner.kt:423)
+	at org.jetbrains.kotlin.incremental.IncrementalCompilerRunner.compileNonIncrementally(IncrementalCompilerRunner.kt:301)
+	at org.jetbrains.kotlin.incremental.IncrementalCompilerRunner.compile(IncrementalCompilerRunner.kt:129)
+	at org.jetbrains.kotlin.daemon.CompileServiceImplBase.execIncrementalCompiler(CompileServiceImpl.kt:674)
+	at org.jetbrains.kotlin.daemon.CompileServiceImplBase.access$execIncrementalCompiler(CompileServiceImpl.kt:91)
+	at org.jetbrains.kotlin.daemon.CompileServiceImpl.compile(CompileServiceImpl.kt:1659)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.rmi/sun.rmi.server.UnicastServerRef.dispatch(UnicastServerRef.java:360)
+	at java.rmi/sun.rmi.transport.Transport$1.run(Transport.java:200)
+	at java.rmi/sun.rmi.transport.Transport$1.run(Transport.java:197)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:712)
+	at java.rmi/sun.rmi.transport.Transport.serviceCall(Transport.java:196)
+	at java.rmi/sun.rmi.transport.tcp.TCPTransport.handleMessages(TCPTransport.java:587)
+	at java.rmi/sun.rmi.transport.tcp.TCPTransport$ConnectionHandler.run0(TCPTransport.java:828)
+	at java.rmi/sun.rmi.transport.tcp.TCPTransport$ConnectionHandler.lambda$run$0(TCPTransport.java:705)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:399)
+	at java.rmi/sun.rmi.transport.tcp.TCPTransport$ConnectionHandler.run(TCPTransport.java:704)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.RuntimeException: Exception while generating code for:
+CONSTRUCTOR visibility:public <> (name:kotlin.String, externalPath:java.io.File?) returnType:me.timschneeberger.rootlessjamesdsp.model.preset.Preset [primary]
+  VALUE_PARAMETER name:name index:0 type:kotlin.String
+  VALUE_PARAMETER name:externalPath index:1 type:java.io.File?
+    EXPRESSION_BODY
+      ERROR_EXPR 'Default Stub' type=java.io.File?
+  BLOCK_BODY
+    DELEGATING_CONSTRUCTOR_CALL 'public constructor <init> () [primary] declared in kotlin.Any'
+    BLOCK type=kotlin.Unit origin=null
+      SET_FIELD 'FIELD PROPERTY_BACKING_FIELD name:name type:kotlin.String visibility:private [final]' type=kotlin.Unit origin=INITIALIZE_FIELD
+        receiver: GET_VAR '<this>: me.timschneeberger.rootlessjamesdsp.model.preset.Preset declared in me.timschneeberger.rootlessjamesdsp.model.preset.Preset' type=me.timschneeberger.rootlessjamesdsp.model.preset.Preset origin=null
+        value: GET_VAR 'name: kotlin.String declared in me.timschneeberger.rootlessjamesdsp.model.preset.Preset.<init>' type=kotlin.String origin=INITIALIZE_PROPERTY_FROM_PARAMETER
+      SET_FIELD 'FIELD PROPERTY_DELEGATE name:ctx$delegate type:kotlin.Lazy<android.content.Context> visibility:private [final] declared in me.timschneeberger.rootlessjamesdsp.model.preset.Preset' type=kotlin.Unit origin=INITIALIZE_FIELD
+        receiver: GET_VAR '<this>: me.timschneeberger.rootlessjamesdsp.model.preset.Preset declared in me.timschneeberger.rootlessjamesdsp.model.preset.Preset' type=me.timschneeberger.rootlessjamesdsp.model.preset.Preset origin=null
+        value: TYPE_OP type=kotlin.Lazy<android.content.Context> origin=IMPLICIT_CAST typeOperand=kotlin.Lazy<android.content.Context>
+          CALL 'public final fun inject$default <T> (qualifier: org.koin.core.qualifier.Qualifier?, mode: kotlin.LazyThreadSafetyMode?, parameters: kotlin.Function0<org.koin.core.parameter.ParametersHolder>?, $mask0: kotlin.Int, $handler: kotlin.Any?): kotlin.Lazy<T of org.koin.core.component.KoinComponentKt.inject$default> [inline] declared in org.koin.core.component.KoinComponentKt' type=kotlin.Lazy<T of org.koin.core.component.KoinComponentKt.inject$default> origin=DEFAULT_DISPATCH_CALL
+            <T>: android.content.Context
+            $receiver: GET_VAR '<this>: me.timschneeberger.rootlessjamesdsp.model.preset.Preset declared in me.timschneeberger.rootlessjamesdsp.model.preset.Preset' type=me.timschneeberger.rootlessjamesdsp.model.preset.Preset origin=null
+            qualifier: COMPOSITE type=org.koin.core.qualifier.Qualifier? origin=DEFAULT_VALUE
+              CONST Null type=org.koin.core.qualifier.Qualifier? value=null
+            mode: COMPOSITE type=kotlin.LazyThreadSafetyMode? origin=DEFAULT_VALUE
+              CONST Null type=kotlin.LazyThreadSafetyMode? value=null
+            parameters: COMPOSITE type=kotlin.Function0<org.koin.core.parameter.ParametersHolder>? origin=DEFAULT_VALUE
+              CONST Null type=kotlin.Function0<org.koin.core.parameter.ParametersHolder>? value=null
+            $mask0: CONST Int type=kotlin.Int value=7
+            $handler: CONST Null type=kotlin.Any? value=null
+      SET_FIELD 'FIELD PROPERTY_BACKING_FIELD name:externalPath type:java.io.File visibility:private [final]' type=kotlin.Unit origin=INITIALIZE_FIELD
+        receiver: GET_VAR '<this>: me.timschneeberger.rootlessjamesdsp.model.preset.Preset declared in me.timschneeberger.rootlessjamesdsp.model.preset.Preset' type=me.timschneeberger.rootlessjamesdsp.model.preset.Preset origin=null
+        value: BLOCK type=java.io.File origin=FOLDED_ELVIS
+          WHEN type=java.io.File origin=FOLDED_ELVIS
+            BRANCH
+              if: COMPOSITE type=kotlin.Boolean origin=null
+                CALL 'public final fun not (): kotlin.Boolean [operator] declared in kotlin.Boolean' type=kotlin.Boolean origin=null
+                  $this: CALL 'public final fun EQEQ (arg0: kotlin.Any?, arg1: kotlin.Any?): kotlin.Boolean declared in kotlin.internal.ir' type=kotlin.Boolean origin=null
+                    arg0: GET_VAR 'externalPath: java.io.File? declared in me.timschneeberger.rootlessjamesdsp.model.preset.Preset.<init>' type=java.io.File? origin=null
+                    arg1: CONST Null type=kotlin.Nothing? value=null
+              then: GET_VAR 'externalPath: java.io.File? declared in me.timschneeberger.rootlessjamesdsp.model.preset.Preset.<init>' type=java.io.File? origin=null
+            BRANCH
+              if: CONST Boolean type=kotlin.Boolean value=true
+              then: CONSTRUCTOR_CALL 'public constructor <init> (p0: @[FlexibleNullability] kotlin.String?) declared in java.io.File' type=java.io.File origin=null
+                p0: STRING_CONCATENATION type=kotlin.String
+                  CALL 'public open fun getPath (): @[FlexibleNullability] kotlin.String? declared in java.io.File' type=@[FlexibleNullability] kotlin.String? origin=GET_PROPERTY
+                    $this: CALL 'public final fun CHECK_NOT_NULL <T0> (arg0: T0 of kotlin.internal.ir.CHECK_NOT_NULL?): {T0 of kotlin.internal.ir.CHECK_NOT_NULL & Any} declared in kotlin.internal.ir' type=java.io.File origin=EXCLEXCL
+                      <T0>: @[EnhancedNullability] java.io.File
+                      arg0: CALL 'public abstract fun getExternalFilesDir (p0: @[EnhancedNullability] kotlin.String?): @[EnhancedNullability] java.io.File? declared in android.content.Context' type=@[EnhancedNullability] java.io.File? origin=null
+                        $this: CALL 'private final fun <get-ctx> (): android.content.Context declared in me.timschneeberger.rootlessjamesdsp.model.preset.Preset' type=android.content.Context origin=GET_PROPERTY
+                          $this: GET_VAR '<this>: me.timschneeberger.rootlessjamesdsp.model.preset.Preset declared in me.timschneeberger.rootlessjamesdsp.model.preset.Preset' type=me.timschneeberger.rootlessjamesdsp.model.preset.Preset origin=null
+                        p0: CONST Null type=kotlin.Nothing? value=null
+                  CONST String type=kotlin.String value="/Presets"
+
+	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.generate(FunctionCodegen.kt:48)
+	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.generate$default(FunctionCodegen.kt:41)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ClassCodegen.generateMethodNode(ClassCodegen.kt:407)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ClassCodegen.generateMethod(ClassCodegen.kt:424)
+	at org.jetbrains.kotlin.backend.jvm.codegen.ClassCodegen.generate(ClassCodegen.kt:169)
+	at org.jetbrains.kotlin.backend.jvm.FileCodegen.lower(JvmPhases.kt:39)
+	at org.jetbrains.kotlin.backend.common.phaser.PhaseFactoriesKt.createFilePhase$lambda$4(PhaseFactories.kt:71)
+	at org.jetbrains.kotlin.backend.common.phaser.PhaseBuildersKt$createSimpleNamedCompilerPhase$1.phaseBody(PhaseBuilders.kt:69)
+	at org.jetbrains.kotlin.backend.common.phaser.SimpleNamedCompilerPhase.phaseBody(CompilerPhase.kt:226)
+	at org.jetbrains.kotlin.backend.common.phaser.AbstractNamedCompilerPhase.invoke(CompilerPhase.kt:113)
+	at org.jetbrains.kotlin.backend.common.phaser.PerformByIrFilePhase.invokeSequential(performByIrFile.kt:52)
+	... 47 more
+Caused by: java.lang.OutOfMemoryError: GC overhead limit exceeded
+
+

@@ -42,6 +42,11 @@ class SquigLinkClient(private val instance: SquigLinkInstance) {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .addInterceptor(UserAgentInterceptor("RootlessJamesDSP v${BuildConfig.VERSION_NAME}"))
+        .addInterceptor { chain ->
+            val req = chain.request()
+            Timber.d("OkHttp → ${req.method} ${req.url}")
+            chain.proceed(req)
+        }
         .build()
 
     private val retrofit: Retrofit = Retrofit.Builder()

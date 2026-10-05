@@ -729,7 +729,7 @@ class MeasurementFragment : Fragment() {
                 val v = input.text?.toString()?.toDoubleOrNull() ?: return@setPositiveButton
                 when (index) {
                     0 -> autoEqConfig = autoEqConfig.copy(maxBands = v.toInt().coerceIn(1, 64))
-                    1 -> autoEqConfig = autoEqConfig.copy(individualMaxBoost = v.coerceIn(0.0, 30.0))
+                    1 -> autoEqConfig = autoEqConfig.copy(individualMaxBoost = v.coerceIn(0.0, 36.0))
                     2 -> autoEqConfig = autoEqConfig.copy(overallMaxBoost = v.coerceIn(0.0, 30.0))
                     3 -> autoEqConfig = autoEqConfig.copy(flatnessTarget = v.coerceIn(0.1, 10.0))
                     4 -> autoEqConfig = autoEqConfig.copy(matchRangeStart = v.coerceIn(10.0, 1000.0))

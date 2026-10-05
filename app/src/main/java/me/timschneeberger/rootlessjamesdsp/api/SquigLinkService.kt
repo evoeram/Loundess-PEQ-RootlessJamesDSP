@@ -44,24 +44,24 @@ interface SquigLinkService {
      * @return Call со списком брендов
      */
     @GET("{dir}phone_book.json")
-    fun getPhoneBook(@Path("dir") dir: String): Call<List<SquigLinkBrand>>
+    fun getPhoneBook(@Path(value = "dir", encoded = true) dir: String): Call<List<SquigLinkBrand>>
 
     /**
      * Загрузка файла АЧХ в формате TSV.
-     * @param dir директория данных ("data/")
+     * @param dir директория данных ("data/") — encoded=true чтобы не кодировать слеш
      * @param fileName имя файла без расширения (например "64 Audio Aspire 1 (L)")
      * @return Call с raw TSV текстом
      */
     @GET("{dir}{fileName}.txt")
-    fun getFrequencyResponse(@Path("dir") dir: String, @Path("fileName") fileName: String): Call<String>
+    fun getFrequencyResponse(@Path(value = "dir", encoded = true) dir: String, @Path("fileName") fileName: String): Call<String>
 
     /**
      * Streaming-загрузка для больших файлов (например целевые кривые).
-     * @param dir директория данных ("data/")
+     * @param dir директория данных ("data/") — encoded=true чтобы не кодировать слеш
      * @param fileName имя файла без расширения
      * @return Call с raw текстом
      */
     @Streaming
     @GET("{dir}{fileName}.txt")
-    fun downloadFile(@Path("dir") dir: String, @Path("fileName") fileName: String): Call<String>
+    fun downloadFile(@Path(value = "dir", encoded = true) dir: String, @Path("fileName") fileName: String): Call<String>
 }
