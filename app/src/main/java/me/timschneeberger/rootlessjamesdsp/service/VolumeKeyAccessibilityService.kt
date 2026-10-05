@@ -172,7 +172,16 @@ class VolumeKeyAccessibilityService : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         overlay?.hide()
         overlay = null
+        preferences = null
         Timber.i("VolumeKeyAccessibilityService unbound")
         return false
+    }
+
+    override fun onDestroy() {
+        overlay?.hide()
+        overlay = null
+        preferences = null
+        Timber.i("VolumeKeyAccessibilityService destroyed")
+        super.onDestroy()
     }
 }
