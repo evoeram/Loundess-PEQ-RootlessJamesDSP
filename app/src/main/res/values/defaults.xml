@@ -67,5 +67,8 @@
 
     <!-- Squig Live plugin -->
     <bool name="default_squig_enable" translatable="false" tools:keep="@bool/default_squig_enable">false</bool>
+    <!-- Squig Live PEQ (independent from main PEQ) -->
+    <string name="default_squig_peq_bands" translatable="false" tools:keep="@string/default_squig_peq_bands">PEQ: </string>
+    <bool name="default_squig_peq_enable" translatable="false" tools:keep="@bool/default_squig_peq_enable">false</bool>
 
 </resources>

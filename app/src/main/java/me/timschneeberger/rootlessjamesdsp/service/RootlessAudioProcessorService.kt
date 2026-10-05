@@ -160,6 +160,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         filter.addAction(ACTION_SERVICE_RELOAD_LIVEPROG)
         filter.addAction(ACTION_SERVICE_HARD_REBOOT_CORE)
         filter.addAction(ACTION_SERVICE_SOFT_REBOOT_CORE)
+        filter.addAction(Constants.ACTION_SQUIG_PEQ_CHANGED)
         filter.addAction(me.timschneeberger.rootlessjamesdsp.service.VolumeKeyAccessibilityService.ACTION_VOLUME_CHANGED)
         registerLocalReceiver(broadcastReceiver, filter)
 
@@ -321,6 +322,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             when (intent.action) {
                 ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_LOUDNESS))
                 ACTION_PREFERENCES_UPDATED -> engine.syncWithPreferences()
+                Constants.ACTION_SQUIG_PEQ_CHANGED -> engine.syncWithPreferences(arrayOf(Constants.PREF_SQUIG, Constants.PREF_PEQ))
                 ACTION_SERVICE_RELOAD_LIVEPROG -> engine.syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
                 ACTION_SERVICE_HARD_REBOOT_CORE -> restartRecording()
                 ACTION_SERVICE_SOFT_REBOOT_CORE -> requestAudioRecordRecreation()

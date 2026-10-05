@@ -38,6 +38,7 @@ object Constants {
     const val ACTION_PRESET_LOADED = BuildConfig.APPLICATION_ID + ".action.preset.LOADED"
     const val ACTION_GRAPHIC_EQ_CHANGED = BuildConfig.APPLICATION_ID + ".action.preferences.graphiceq.CHANGED"
     const val ACTION_PARAMETRIC_EQ_CHANGED = BuildConfig.APPLICATION_ID + ".action.preferences.parametriceq.CHANGED"
+    const val ACTION_SQUIG_PEQ_CHANGED = BuildConfig.APPLICATION_ID + ".action.preferences.squigpeq.CHANGED"
     const val ACTION_SESSION_CHANGED = BuildConfig.APPLICATION_ID + ".action.session.CHANGED"
     const val ACTION_SERVICE_STARTED = BuildConfig.APPLICATION_ID + ".action.service.STARTED"
     const val ACTION_SERVICE_STOPPED = BuildConfig.APPLICATION_ID + ".action.service.STOPPED"
