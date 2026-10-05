@@ -129,6 +129,9 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
             pref.setOnPreferenceChangeListener { _, newValue ->
                 val modeInt = (newValue as String).toIntOrNull() ?: 1
                 val mode = me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.fromInt(modeInt)
+                val oldModeInt = preferences.get<String>(R.string.key_processing_mode).toIntOrNull() ?: 1
+                val oldMode = me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.fromInt(oldModeInt)
+                val currentBuffer = preferences.get<Float>(R.string.key_audioformat_buffersize).toInt()
 
                 // Предупреждение при выборе Movie Mode
                 if (mode == me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.MOVIE) {
@@ -136,6 +139,47 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                         R.string.processing_mode_movie,
                         R.string.processing_mode_movie_warning
                     )
+                }
+
+                // Suggest buffer adjustment when switching between Standard and Low-latency
+                val suggestLowLatency = mode == me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.LOW_LATENCY
+                    && oldMode != me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.LOW_LATENCY
+                    && currentBuffer < 2048
+                val suggestStandard = mode == me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.STANDARD
+                    && oldMode == me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.LOW_LATENCY
+                    && currentBuffer > 512
+
+                if (suggestLowLatency || suggestStandard) {
+                    val ctx = context
+                    if (ctx != null) {
+                        val titleId: Int
+                        val messageId: Int
+                        val targetBuffer: Int
+                        if (suggestLowLatency) {
+                            titleId = R.string.buffer_suggest_low_latency_title
+                            messageId = R.string.buffer_suggest_low_latency_message
+                            targetBuffer = 2048
+                        } else {
+                            titleId = R.string.buffer_suggest_standard_title
+                            messageId = R.string.buffer_suggest_standard_message
+                            targetBuffer = 512
+                        }
+
+                        val builder = com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
+                            .setTitle(titleId)
+                            .setMessage(String.format(getString(messageId), currentBuffer))
+                            .setPositiveButton(R.string.buffer_suggest_yes) { dialog, _ ->
+                                preferences.set(R.string.key_audioformat_buffersize, targetBuffer.toFloat())
+                                bufferSize?.setValue(targetBuffer.toFloat())
+                                context?.sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_HARD_REBOOT_CORE))
+                                dialog.dismiss()
+                            }
+                            .setNegativeButton(R.string.buffer_suggest_no) { dialog, _ -> dialog.dismiss() }
+
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            builder.show()
+                        }
+                    }
                 }
 
                 context?.sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_HARD_REBOOT_CORE))
@@ -155,6 +199,48 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
             context?.sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_HARD_REBOOT_CORE))
             true
         }
+
+        // Smooth volume control
+        val smoothVolumeSwitch = findPreference<MaterialSwitchPreference>(getString(R.string.key_smooth_volume_enabled))
+        val smoothVolumeSettings = findPreference<Preference>("smooth_volume_accessibility_settings")
+
+        smoothVolumeSettings?.setOnPreferenceClickListener {
+            val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+            true
+        }
+
+        smoothVolumeSwitch?.setOnPreferenceChangeListener { _, newValue ->
+            if (newValue as Boolean) {
+                // Check if accessibility service is enabled
+                val enabled = isAccessibilityServiceEnabled()
+                if (!enabled) {
+                    context?.let { ctx ->
+                        com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
+                            .setTitle(R.string.smooth_volume_header)
+                            .setMessage(R.string.smooth_volume_accessibility_hint)
+                            .setPositiveButton(R.string.smooth_volume_open_settings) { dialog, _ ->
+                                startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                dialog.dismiss()
+                            }
+                            .setNegativeButton(android.R.string.cancel) { dialog, _ ->
+                                dialog.dismiss()
+                            }
+                            .show()
+                    }
+                }
+            }
+            true
+        }
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val expectedComponent = "${requireContext().packageName}/${me.timschneeberger.rootlessjamesdsp.service.VolumeKeyAccessibilityService::class.java.name}"
+        val enabledServices = android.provider.Settings.Secure.getString(
+            requireContext().contentResolver,
+            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabledServices.contains(expectedComponent)
     }
 
     companion object {

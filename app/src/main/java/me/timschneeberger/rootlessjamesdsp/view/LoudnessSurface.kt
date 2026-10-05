@@ -44,9 +44,9 @@ class LoudnessSurface @JvmOverloads constructor(
     private var mDensity = 1f
     private var mIsDarkMode = false
 
-    private val padLeftProp = 15f / 800f
-    private val padRightProp = 15f / 800f
-    private val padTopProp = 10f / 200f
+    private val padLeftProp = 16f / 800f
+    private val padRightProp = 38f / 800f
+    private val padTopProp = 22f / 200f
     private val padBottomProp = 28f / 200f
 
     private var mPlotLeft = 0f
@@ -99,8 +99,11 @@ class LoudnessSurface @JvmOverloads constructor(
                 }
             }
         }
-        xTicks.add(0, XTick(20.0, 4, "20Hz"))
-        xTicks.add(XTick(20000.0, 4, "20kHz"))
+        // Remove duplicate edge ticks (20 Hz = 2×10¹, 20000 Hz = 2×10⁴)
+        // and replace with clean boundary labels
+        xTicks.removeAll { it.freq == 20.0 || it.freq == 20000.0 }
+        xTicks.add(0, XTick(20.0, 4, "20"))
+        xTicks.add(XTick(20000.0, 4, "20k"))
     }
 
     private fun getTickType(i: Int): Int {
@@ -109,7 +112,10 @@ class LoudnessSurface @JvmOverloads constructor(
     }
 
     private fun formatXLabel(f: Double): String {
-        return if (f >= 1000.0) "${(f / 1000.0).toInt()}k" else "${f.toInt()}"
+        return when {
+            f >= 1000.0 -> "${(f / 1000.0).toInt()} kHz"
+            else -> "${f.toInt()} Hz"
+        }
     }
 
     private fun initPaints() {
@@ -119,9 +125,9 @@ class LoudnessSurface @JvmOverloads constructor(
         mGraphBackground.style = Paint.Style.FILL
         mGraphBackground.isAntiAlias = true
 
-        val gridMinorColor = if (dark) Color.argb(50, 200, 200, 200) else Color.argb(40, 51, 51, 51)
-        val gridMajorColor = if (dark) Color.argb(100, 200, 200, 200) else Color.argb(80, 51, 51, 51)
-        val gridZeroColor = if (dark) Color.argb(160, 220, 220, 220) else Color.argb(160, 85, 85, 85)
+        val gridMinorColor = if (dark) Color.argb(28, 200, 200, 200) else Color.argb(22, 51, 51, 51)
+        val gridMajorColor = if (dark) Color.argb(55, 200, 200, 200) else Color.argb(45, 51, 51, 51)
+        val gridZeroColor = if (dark) Color.argb(100, 220, 220, 220) else Color.argb(100, 85, 85, 85)
 
         mGridLineMinor.color = gridMinorColor
         mGridLineMinor.style = Paint.Style.STROKE
@@ -143,7 +149,7 @@ class LoudnessSurface @JvmOverloads constructor(
         mFreqLabelPaint.color = textColor
         mFreqLabelPaint.isAntiAlias = true
 
-        mDbLabelPaint.textAlign = Paint.Align.LEFT
+        mDbLabelPaint.textAlign = Paint.Align.RIGHT
         mDbLabelPaint.textSize = sp(9f)
         mDbLabelPaint.color = textColor
         mDbLabelPaint.isAntiAlias = true
@@ -256,7 +262,7 @@ class LoudnessSurface @JvmOverloads constructor(
             if (!isZero) {
                 val dbLabel = formatDbLabel(db)
                 val labelY = y - (mDbLabelPaint.descent() + mDbLabelPaint.ascent()) / 2f
-                canvas.drawText(dbLabel, mPlotLeft + mPlotWidth - 4f * mDensity, labelY, mDbLabelPaint)
+                canvas.drawText(dbLabel, mViewWidth - 4f * mDensity, labelY, mDbLabelPaint)
             }
             db += step
         }
@@ -316,7 +322,6 @@ class LoudnessSurface @JvmOverloads constructor(
         }
 
         canvas.restoreToCount(saveCount)
-        drawEdgeFade(canvas)
     }
 
     private fun drawEdgeFade(canvas: Canvas) {

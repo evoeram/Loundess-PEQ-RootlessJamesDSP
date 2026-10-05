@@ -32,7 +32,7 @@
     <bool name="default_autostart_prompt_at_boot" translatable="false">true</bool>
     <bool name="default_powersave_suspend" translatable="false">true</bool>
     <string name="default_audioformat_encoding" translatable="false">1</string>
-    <integer name="default_audioformat_buffersize" translatable="false">128</integer>
+    <integer name="default_audioformat_buffersize" translatable="false">2048</integer>
     <bool name="default_audioformat_processing" translatable="false">true</bool>
     <bool name="default_audioformat_enhanced_processing" translatable="false">false</bool>
     <bool name="default_audioformat_optimization_benchmark" translatable="false">false</bool>
@@ -42,6 +42,10 @@
     <string name="default_android_eq_latency" translatable="false">1024</string>
     <bool name="default_android_eq_limiter" translatable="false">true</bool>
     <bool name="default_audioformat_low_latency" translatable="false">true</bool>
+
+    <!-- Smooth volume control -->
+    <bool name="default_smooth_volume_enabled" translatable="false">false</bool>
+    <integer name="default_smooth_volume_db" translatable="false">0</integer>
 
     <!-- Device profiles -->
     <bool name="default_device_profiles_enable" translatable="false">false</bool>

@@ -77,6 +77,9 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
     private val blockedAppDatabase by lazy { AppBlocklistDatabase.getDatabase(this, applicationScope) }
     val blockedAppRepository by lazy { AppBlocklistRepository(blockedAppDatabase.appBlocklistDao()) }
 
+    /** Reference to Pluto's AppLifecycleListener for leak cleanup. */
+    var plutoLifecycleCallback: android.app.Application.ActivityLifecycleCallbacks? = null
+
     /* Rootless: Media projection auth token */
     var mediaProjectionStartIntent: Intent? = null
 
@@ -290,6 +293,21 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
         }
 
         PlutoRoomsDBWatcher.watch("blocked_apps.db", AppBlocklistDatabase::class.java)
+
+        // Fix Pluto memory leak: Pluto's AppLifecycleListener holds a strong reference
+        // to destroyed activities via FragmentLifecycleListener.activity.
+        // Store reference for cleanup in MainActivity.onDestroy().
+        plutoLifecycleCallback = try {
+            val field = android.app.Application::class.java
+                .getDeclaredField("mActivityLifecycleCallbacks")
+            field.isAccessible = true
+            @Suppress("UNCHECKED_CAST")
+            (field.get(this) as? java.util.ArrayList<android.app.Application.ActivityLifecycleCallbacks>)
+                ?.firstOrNull { it.javaClass.name.contains("AppLifecycleListener") }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to access mActivityLifecycleCallbacks for Pluto leak fix")
+            null
+        }
     }
 
     /** A tree which logs important information for crash reporting.  */

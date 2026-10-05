@@ -447,6 +447,29 @@
     <string name="processing_mode_movie">Movie (EQ only, perfect sync)</string>
     <string name="processing_mode_movie_summary">No capture loop — EQ applied inside each app via system DynamicsProcessing. Perfect A/V sync, but only EQ works (no reverb, bass-boost, etc.).</string>
     <string name="processing_mode_movie_warning">Movie mode applies only the GraphicEQ + Parametric EQ curve inside each app via Android\'s DynamicsProcessing effect. All other JamesDSP effects (reverb, bass boost, stereo enhancement, compressor, etc.) are disabled in this mode. If you need those effects, switch to Standard or Low-latency mode.</string>
+
+    <!-- Buffer size adjustment suggestions when switching processing modes -->
+    <string name="buffer_suggest_low_latency_title">Increase buffer size?</string>
+    <string name="buffer_suggest_low_latency_message">Low-latency mode works best with a larger capture buffer to avoid audio glitches. Your current buffer size is %1$d samples.\n\nRecommended: 2048 samples. A larger buffer adds a few ms of latency but prevents stutter and dropouts that are common in this mode.\n\nDo you want to increase the buffer size to 2048?</string>
+    <string name="buffer_suggest_standard_title">Decrease buffer size?</string>
+    <string name="buffer_suggest_standard_message">Standard mode uses large internal buffers already, so a smaller capture buffer is sufficient and keeps latency lower. Your current buffer size is %1$d samples.\n\nRecommended: 512 samples. Standard mode is stable even with small buffers.\n\nDo you want to decrease the buffer size to 512?</string>
+    <string name="buffer_suggest_yes">Yes, adjust</string>
+    <string name="buffer_suggest_no">Keep current</string>
+
+    <!-- Smooth volume control -->
+    <string name="smooth_volume_service_name">Smooth Volume</string>
+    <string name="smooth_volume_service_description">Intercepts hardware volume buttons to provide fine-grained volume control (0.5 dB steps) through JamesDSP internal gain, instead of the coarse system volume steps. Requires keeping media volume at a fixed level.</string>
+    <string name="smooth_volume_header">Smooth volume control</string>
+    <string name="smooth_volume_enable">Enable smooth volume</string>
+    <string name="smooth_volume_enable_summary">Use hardware volume buttons for fine-grained volume control (0.5 dB steps) via JamesDSP internal gain</string>
+    <string name="smooth_volume_enable_summary_on">Volume buttons adjust JamesDSP gain in 0.5 dB steps. Enable the accessibility service to activate.</string>
+    <string name="smooth_volume_enable_summary_off">Standard system volume steps are used</string>
+    <string name="smooth_volume_accessibility_hint">To use smooth volume, enable the \"Smooth Volume\" accessibility service in system settings</string>
+    <string name="smooth_volume_open_settings">Open accessibility settings</string>
+    <string name="smooth_volume_status">Status: %1$s</string>
+    <string name="smooth_volume_status_active">Active (0.5 dB steps)</string>
+    <string name="smooth_volume_status_inactive">Inactive</string>
+    <string name="smooth_volume_current">Current volume: %.1f dB</string>
     <!-- Android EQ internal settings -->
     <string name="android_eq_latency">Movie mode block size</string>
     <string name="android_eq_latency_512">512 samples (~10 ms, coarse bass)</string>

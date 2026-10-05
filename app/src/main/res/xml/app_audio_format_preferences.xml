@@ -104,4 +104,24 @@
             app:iconSpaceReserved="false"/>
 
     </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="@string/smooth_volume_header"
+        app:iconSpaceReserved="false">
+
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            android:key="@string/key_smooth_volume_enabled"
+            android:defaultValue="@bool/default_smooth_volume_enabled"
+            android:title="@string/smooth_volume_enable"
+            android:summaryOff="@string/smooth_volume_enable_summary_off"
+            android:summaryOn="@string/smooth_volume_enable_summary_on"
+            app:iconSpaceReserved="false" />
+
+        <Preference
+            android:key="smooth_volume_accessibility_settings"
+            android:title="@string/smooth_volume_open_settings"
+            android:summary="@string/smooth_volume_accessibility_hint"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
 </PreferenceScreen>

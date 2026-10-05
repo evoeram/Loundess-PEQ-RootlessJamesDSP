@@ -51,11 +51,11 @@ class GraphicEqualizerSurface(context: Context?, attrs: AttributeSet?) : View(co
 
         mGridLines.color = getColor(android.R.attr.colorControlHighlight)
         mGridLines.style = Paint.Style.STROKE
-        mGridLines.strokeWidth = 4f
+        mGridLines.strokeWidth = 1.5f
 
         mGridThickLines.color = getColor(android.R.attr.colorControlHighlight)
         mGridThickLines.style = Paint.Style.STROKE
-        mGridThickLines.strokeWidth = 8f
+        mGridThickLines.strokeWidth = 3f
 
         mControlBarText.textAlign = Paint.Align.CENTER
         mControlBarText.textSize = TypedValue.applyDimension(
@@ -71,7 +71,7 @@ class GraphicEqualizerSurface(context: Context?, attrs: AttributeSet?) : View(co
         mFrequencyResponseHighlight.style = Paint.Style.STROKE
         mFrequencyResponseHighlight.color = getColor(android.R.attr.colorAccent)
         mFrequencyResponseHighlight.isAntiAlias = true
-        mFrequencyResponseHighlight.strokeWidth = 8f
+        mFrequencyResponseHighlight.strokeWidth = 4f
     }
 
     private fun getColor(colorAttribute: Int): Int {

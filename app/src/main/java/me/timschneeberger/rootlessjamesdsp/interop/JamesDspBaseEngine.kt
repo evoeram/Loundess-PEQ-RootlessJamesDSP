@@ -516,6 +516,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
     // Effect config
     abstract fun setOutputControl(threshold: Float, release: Float, postGain: Float): Boolean
+    abstract fun setPostGainDb(postGain: Float): Boolean
     abstract fun setReverb(enable: Boolean, preset: Int): Boolean
     abstract fun setCrossfeed(enable: Boolean, mode: Int): Boolean
     abstract fun setCrossfeedCustom(enable: Boolean, fcut: Int, feed: Int): Boolean

@@ -131,6 +131,13 @@ class JamesDspRemoteEngine(
         ) == AudioEffect.SUCCESS
     }
 
+    override fun setPostGainDb(postGain: Float): Boolean {
+        return effect.setParameterFloatArray(
+            1500,
+            floatArrayOf(-0.1f, 60f, postGain)
+        ) == AudioEffect.SUCCESS
+    }
+
     override fun setCompanderInternal(
         enable: Boolean,
         timeConstant: Float,

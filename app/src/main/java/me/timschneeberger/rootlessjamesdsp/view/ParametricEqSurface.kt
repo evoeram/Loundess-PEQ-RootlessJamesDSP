@@ -69,9 +69,9 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
     private var mDensity = 1f
     private var mIsDarkMode = false
 
-    private val padLeftProp = 15f / 800f
-    private val padRightProp = 15f / 800f
-    private val padTopProp = 10f / 346f
+    private val padLeftProp = 16f / 800f
+    private val padRightProp = 38f / 800f
+    private val padTopProp = 26f / 346f
     private val padBottomProp = 36f / 346f
 
     private var mPlotLeft = 0f
@@ -147,8 +147,11 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
                 }
             }
         }
-        xTicks.add(0, XTick(20.0, 4, "20Hz"))
-        xTicks.add(XTick(20000.0, 4, "20kHz"))
+        // Remove duplicate edge ticks (20 Hz = 2×10¹, 20000 Hz = 2×10⁴)
+        // and replace with clean boundary labels
+        xTicks.removeAll { it.freq == 20.0 || it.freq == 20000.0 }
+        xTicks.add(0, XTick(20.0, 4, "20"))
+        xTicks.add(XTick(20000.0, 4, "20k"))
     }
 
     private fun getTickType(i: Int): Int {
@@ -157,7 +160,10 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
     }
 
     private fun formatXLabel(f: Double): String {
-        return if (f >= 1000.0) "${(f / 1000.0).toInt()}k" else "${f.toInt()}"
+        return when {
+            f >= 1000.0 -> "${(f / 1000.0).toInt()} kHz"
+            else -> "${f.toInt()} Hz"
+        }
     }
 
     private fun initPaints() {
@@ -167,9 +173,9 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
         mGraphBackground.style = Paint.Style.FILL
         mGraphBackground.isAntiAlias = true
 
-        val gridMinorColor = if (dark) Color.argb(50, 200, 200, 200) else Color.argb(40, 51, 51, 51)
-        val gridMajorColor = if (dark) Color.argb(100, 200, 200, 200) else Color.argb(80, 51, 51, 51)
-        val gridZeroColor = if (dark) Color.argb(160, 220, 220, 220) else Color.argb(160, 85, 85, 85)
+        val gridMinorColor = if (dark) Color.argb(28, 200, 200, 200) else Color.argb(22, 51, 51, 51)
+        val gridMajorColor = if (dark) Color.argb(55, 200, 200, 200) else Color.argb(45, 51, 51, 51)
+        val gridZeroColor = if (dark) Color.argb(100, 220, 220, 220) else Color.argb(100, 85, 85, 85)
 
         mGridLineMinor.color = gridMinorColor
         mGridLineMinor.style = Paint.Style.STROKE
@@ -191,7 +197,7 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
         mFreqLabelPaint.color = textColor
         mFreqLabelPaint.isAntiAlias = true
 
-        mDbLabelPaint.textAlign = Paint.Align.LEFT
+        mDbLabelPaint.textAlign = Paint.Align.RIGHT
         mDbLabelPaint.textSize = sp(9f)
         mDbLabelPaint.color = textColor
         mDbLabelPaint.isAntiAlias = true
@@ -207,14 +213,14 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
 
         mCurveLPaint.color = mLeftColor
         mCurveLPaint.style = Paint.Style.STROKE
-        mCurveLPaint.strokeWidth = 2.3f * mDensity
+        mCurveLPaint.strokeWidth = 2f * mDensity
         mCurveLPaint.isAntiAlias = true
         mCurveLPaint.strokeCap = Paint.Cap.ROUND
         mCurveLPaint.strokeJoin = Paint.Join.ROUND
 
         mCurveRPaint.color = mRightColor
         mCurveRPaint.style = Paint.Style.STROKE
-        mCurveRPaint.strokeWidth = 2.3f * mDensity
+        mCurveRPaint.strokeWidth = 2f * mDensity
         mCurveRPaint.isAntiAlias = true
         mCurveRPaint.strokeCap = Paint.Cap.ROUND
         mCurveRPaint.strokeJoin = Paint.Join.ROUND
@@ -334,13 +340,13 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
             if (!isZero) {
                 val dbLabel = formatDbLabel(db)
                 val labelY = y - (mDbLabelPaint.descent() + mDbLabelPaint.ascent()) / 2f
-                canvas.drawText(dbLabel, mPlotLeft + mPlotWidth - 4f * mDensity, labelY, mDbLabelPaint)
+                canvas.drawText(dbLabel, mViewWidth - 4f * mDensity, labelY, mDbLabelPaint)
             }
             db += step
         }
 
         canvas.save()
-        val dbAxisX = mPlotLeft + mPlotWidth + 2f * mDensity
+        val dbAxisX = mPlotLeft + mPlotWidth + (mViewWidth - mPlotLeft - mPlotWidth) / 2f
         val dbAxisY = mPlotTop + mPlotHeight / 2f
         canvas.rotate(-90f, dbAxisX, dbAxisY)
         mAxisLabelText.textAlign = Paint.Align.CENTER
@@ -425,7 +431,6 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
 
         canvas.restoreToCount(saveCount)
 
-        drawEdgeFade(canvas)
         drawLegend(canvas)
     }
 
@@ -518,11 +523,11 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
     }
 
     private fun drawLegend(canvas: Canvas) {
-        val dotRadius = 4f
+        val dotRadius = 4.5f * mDensity
         val textH = mLegendTextPaint.textSize
-        val legendY = mPlotTop * 0.5f + textH / 3f
-        val labelGap = 6f
-        val itemGap = 16f
+        val legendY = mPlotTop * 0.45f + textH * 0.6f
+        val labelGap = 8f * mDensity
+        val itemGap = 20f * mDensity
         var x = mPlotLeft
 
         if (mHasBands) {

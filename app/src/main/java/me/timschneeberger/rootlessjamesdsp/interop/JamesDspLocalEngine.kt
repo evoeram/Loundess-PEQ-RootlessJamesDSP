@@ -98,6 +98,10 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         return JamesDspWrapper.setLimiter(handle, threshold, release) and JamesDspWrapper.setPostGain(handle, postGain)
     }
 
+    override fun setPostGainDb(postGain: Float): Boolean {
+        return JamesDspWrapper.setPostGain(handle, postGain)
+    }
+
     override fun setReverb(enable: Boolean, preset: Int): Boolean
     {
         return JamesDspWrapper.setReverb(handle, enable, preset)

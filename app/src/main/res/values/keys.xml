@@ -52,6 +52,10 @@
     <!-- Low-latency mode (внутренние настройки) -->
     <string name="key_audioformat_low_latency" translatable="false">audioformat_low_latency</string>
 
+    <!-- Smooth volume control -->
+    <string name="key_smooth_volume_enabled" translatable="false">smooth_volume_enabled</string>
+    <string name="key_smooth_volume_db" translatable="false">smooth_volume_db</string>
+
     <!-- Device profiles -->
     <string name="key_device_profiles_enable" translatable="false">device_profiles_enable</string>
 

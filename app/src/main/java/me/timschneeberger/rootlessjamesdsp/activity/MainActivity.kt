@@ -456,6 +456,21 @@ class MainActivity : BaseActivity() {
         processorService = null
         processorServiceBound = false
 
+        // Fix Pluto memory leak: Pluto's FragmentLifecycleListener holds a strong
+        // reference to this destroyed activity. Clear it via reflection.
+        (application as? MainApplication)?.plutoLifecycleCallback?.let { callback ->
+            try {
+                val flcField = callback.javaClass.getDeclaredField("fragmentLifecycleCallbacks")
+                flcField.isAccessible = true
+                val flc = flcField.get(callback)
+                val actField = flc?.javaClass?.getDeclaredField("activity")
+                actField?.isAccessible = true
+                actField?.set(flc, null)
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to clear Pluto activity reference")
+            }
+        }
+
         prefsVar.set(R.string.key_is_activity_active, false)
         super.onDestroy()
     }

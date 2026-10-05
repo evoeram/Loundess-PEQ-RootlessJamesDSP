@@ -107,6 +107,12 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     // LatencyTracer для телеметрии (Low-latency mode)
     private var latencyTracer: LatencyTracer? = null
 
+    // Active AudioTrack reference for smooth volume control
+    @Volatile
+    private var activeAudioTrack: AudioTrack? = null
+    private var smoothVolumeEnabled = false
+    private var smoothVolumeDb = 0.0
+
     // Termination flags
     private var isProcessorDisposing = false
     private var isServiceDisposing = false
@@ -154,6 +160,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         filter.addAction(ACTION_SERVICE_RELOAD_LIVEPROG)
         filter.addAction(ACTION_SERVICE_HARD_REBOOT_CORE)
         filter.addAction(ACTION_SERVICE_SOFT_REBOOT_CORE)
+        filter.addAction(me.timschneeberger.rootlessjamesdsp.service.VolumeKeyAccessibilityService.ACTION_VOLUME_CHANGED)
         registerLocalReceiver(broadcastReceiver, filter)
 
         // Setup shared preferences
@@ -317,6 +324,14 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 ACTION_SERVICE_RELOAD_LIVEPROG -> engine.syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
                 ACTION_SERVICE_HARD_REBOOT_CORE -> restartRecording()
                 ACTION_SERVICE_SOFT_REBOOT_CORE -> requestAudioRecordRecreation()
+                me.timschneeberger.rootlessjamesdsp.service.VolumeKeyAccessibilityService.ACTION_VOLUME_CHANGED -> {
+                    smoothVolumeDb = intent.getDoubleExtra(
+                        me.timschneeberger.rootlessjamesdsp.service.VolumeKeyAccessibilityService.EXTRA_VOLUME_DB, 0.0
+                    )
+                    smoothVolumeEnabled = true
+                    applySmoothVolume()
+                    Timber.i("Smooth volume applied: ${smoothVolumeDb}dB")
+                }
             }
         }
     }
@@ -558,6 +573,11 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         try {
             recorder = buildAudioRecord(encodingFormat, sampleRate, bufferSizeBytes)
             track = buildAudioTrack(encodingFormat, sampleRate, bufferSizeBytes, tuning)
+            activeAudioTrack = track
+            // Apply current smooth volume if enabled
+            if (smoothVolumeEnabled) {
+                applySmoothVolume()
+            }
         }
         catch(ex: Exception) {
             Timber.e("Failed to create initial audio record/track")
@@ -705,6 +725,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
                 recorder.release()
                 track.release()
+                activeAudioTrack = null
             }
         }
         recorderThread!!.start()
@@ -735,6 +756,18 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         sessionManager.sessionDatabase.clearSessions()
 
         startRecording()
+    }
+
+    private fun applySmoothVolume() {
+        val track = activeAudioTrack ?: return
+        // Convert dB to linear gain: gain = 10^(dB/20)
+        // 0 dB = 1.0 (full volume), -60 dB ≈ 0.001 (near silence)
+        val linearGain = Math.pow(10.0, smoothVolumeDb / 20.0).toFloat()
+        try {
+            track.setVolume(linearGain)
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to set track volume for smooth volume")
+        }
     }
 
     private fun buildAudioTrack(encoding: Int, sampleRate: Int, bufferSizeBytes: Int,
