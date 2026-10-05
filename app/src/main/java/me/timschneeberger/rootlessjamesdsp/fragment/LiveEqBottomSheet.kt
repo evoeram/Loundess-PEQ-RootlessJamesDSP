@@ -217,6 +217,43 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
             }
         }
 
+        // Переключатель типа фильтра
+        binding.filterTypePeaking.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked && !isUpdatingSliders && selectedIndex >= 0) {
+                updateFilterType(ParametricEqFilterType.PEAKING)
+            }
+        }
+        binding.filterTypeLowShelf.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked && !isUpdatingSliders && selectedIndex >= 0) {
+                updateFilterType(ParametricEqFilterType.LOW_SHELF)
+            }
+        }
+        binding.filterTypeHighShelf.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked && !isUpdatingSliders && selectedIndex >= 0) {
+                updateFilterType(ParametricEqFilterType.HIGH_SHELF)
+            }
+        }
+        binding.filterTypeLowPass.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked && !isUpdatingSliders && selectedIndex >= 0) {
+                updateFilterType(ParametricEqFilterType.LOW_PASS)
+            }
+        }
+        binding.filterTypeHighPass.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked && !isUpdatingSliders && selectedIndex >= 0) {
+                updateFilterType(ParametricEqFilterType.HIGH_PASS)
+            }
+        }
+        binding.filterTypeBandPass.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked && !isUpdatingSliders && selectedIndex >= 0) {
+                updateFilterType(ParametricEqFilterType.BAND_PASS)
+            }
+        }
+        binding.filterTypeNotch.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked && !isUpdatingSliders && selectedIndex >= 0) {
+                updateFilterType(ParametricEqFilterType.NOTCH)
+            }
+        }
+
         // Кнопка Add: добавляет новую полосу (PK, 1000 Hz, 0 dB, Q=1.0)
         binding.addBandButton.setOnClickListener {
             if (bands.size >= MAX_BANDS) return@setOnClickListener
@@ -350,6 +387,17 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
             ParametricEqChannel.LEFT_RIGHT -> binding.channelBoth.isChecked = true
             ParametricEqChannel.RIGHT -> binding.channelRight.isChecked = true
         }
+        // Устанавливаем переключатель типа фильтра
+        when (band.filterType) {
+            ParametricEqFilterType.PEAKING -> binding.filterTypePeaking.isChecked = true
+            ParametricEqFilterType.LOW_SHELF -> binding.filterTypeLowShelf.isChecked = true
+            ParametricEqFilterType.HIGH_SHELF -> binding.filterTypeHighShelf.isChecked = true
+            ParametricEqFilterType.LOW_PASS -> binding.filterTypeLowPass.isChecked = true
+            ParametricEqFilterType.HIGH_PASS -> binding.filterTypeHighPass.isChecked = true
+            ParametricEqFilterType.BAND_PASS -> binding.filterTypeBandPass.isChecked = true
+            ParametricEqFilterType.NOTCH -> binding.filterTypeNotch.isChecked = true
+            ParametricEqFilterType.ALL_PASS, ParametricEqFilterType.PREAMP -> binding.filterTypePeaking.isChecked = true
+        }
         isUpdatingSliders = false
 
         binding.liveEqHint.isVisible = false
@@ -362,6 +410,19 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
         val band = bands[selectedIndex]
         Timber.d("LiveEQ channelChips: ${band.channel} → $channel")
         bands[selectedIndex] = ParametricEqBand(band.frequency, band.gain, band.q, band.filterType, channel, band.uuid)
+        onLiveUpdate?.invoke(bands)
+        onCorrectedUpdate?.invoke(bands, preampDb)
+        binding.liveEqSurface.setBands(bands, preampDb)
+        applyOverlays()
+        commitChanges()
+    }
+
+    /** Обновляет тип фильтра выбранной полосы и применяет изменения в реальном времени */
+    private fun updateFilterType(filterType: ParametricEqFilterType) {
+        val band = bands[selectedIndex]
+        Timber.d("LiveEQ filterType: ${band.filterType} → $filterType")
+        bands[selectedIndex] = ParametricEqBand(band.frequency, band.gain, band.q, filterType, band.channel, band.uuid)
+        refreshChipLabel(selectedIndex)
         onLiveUpdate?.invoke(bands)
         onCorrectedUpdate?.invoke(bands, preampDb)
         binding.liveEqSurface.setBands(bands, preampDb)

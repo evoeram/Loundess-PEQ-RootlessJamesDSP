@@ -213,6 +213,86 @@
 
         </com.google.android.material.chip.ChipGroup>
 
+        <!-- Переключатель типа фильтра -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/peq_filter_type"
+            android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/filterTypeChips"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleSelection="true"
+                app:selectionRequired="true">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filterTypePeaking"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/peq_filter_type_peaking"
+                    android:checkable="true"
+                    style="@style/Widget.Material3.Chip.Filter" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filterTypeLowShelf"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/peq_filter_type_low_shelf"
+                    android:checkable="true"
+                    style="@style/Widget.Material3.Chip.Filter" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filterTypeHighShelf"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/peq_filter_type_high_shelf"
+                    android:checkable="true"
+                    style="@style/Widget.Material3.Chip.Filter" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filterTypeLowPass"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/peq_filter_type_low_pass"
+                    android:checkable="true"
+                    style="@style/Widget.Material3.Chip.Filter" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filterTypeHighPass"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/peq_filter_type_high_pass"
+                    android:checkable="true"
+                    style="@style/Widget.Material3.Chip.Filter" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filterTypeBandPass"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/peq_filter_type_band_pass"
+                    android:checkable="true"
+                    style="@style/Widget.Material3.Chip.Filter" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filterTypeNotch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/peq_filter_type_notch"
+                    android:checkable="true"
+                    style="@style/Widget.Material3.Chip.Filter" />
+
+            </com.google.android.material.chip.ChipGroup>
+
+        </HorizontalScrollView>
+
     </LinearLayout>
 
 </LinearLayout>
