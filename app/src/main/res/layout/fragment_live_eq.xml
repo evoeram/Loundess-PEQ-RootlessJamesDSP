@@ -174,7 +174,7 @@
             android:layout_height="wrap_content"
             android:valueFrom="-30"
             android:valueTo="30"
-            android:stepSize="0.1"
+            android:stepSize="0"
             app:labelBehavior="floating" />
 
         <!-- Переключатель канала: L / L+R / R -->
