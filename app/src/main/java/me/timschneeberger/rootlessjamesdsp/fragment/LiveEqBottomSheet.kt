@@ -378,8 +378,7 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
 
         isUpdatingSliders = true
         binding.freqSlider.value = freqToSlider(band.frequency)
-        // Слайдер отклоняет значения не на шаге 0.1 dB (например импортированные 2.25 dB)
-        binding.gainSlider.value = ((band.gain * 10).roundToInt() / 10f).coerceIn(-30f, 30f)
+        binding.gainSlider.value = band.gain.toFloat().coerceIn(-30f, 30f)
         binding.qSlider.value = qToSlider(band.q)
         // Устанавливаем переключатель канала
         when (band.channel) {
