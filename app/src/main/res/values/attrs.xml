@@ -60,4 +60,8 @@
         <attr name="helperText" format="string" />
         <attr name="helperTextEnabled" format="boolean" />
     </declare-styleable>
+
+    <declare-styleable name="ExpanderGraphPreference">
+        <attr name="isSubHarmonic" format="boolean" />
+    </declare-styleable>
 </resources>

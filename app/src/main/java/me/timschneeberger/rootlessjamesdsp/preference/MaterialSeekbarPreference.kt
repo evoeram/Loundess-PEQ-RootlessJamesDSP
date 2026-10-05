@@ -57,6 +57,11 @@ class MaterialSeekbarPreference : Preference {
     var mLogMinValue: Float = 0.001f
     private val LOG_STEPS = 1000f
 
+    // Guard: when true, setValueInternal skips writing back to the slider.
+    // Prevents feedback loop (slider → syncValue → setValueInternal → slider)
+    // that causes the thumb to "jump" during continuous logarithmic dragging.
+    private var mSuppressSliderUpdate = false
+
     private fun realToSlider(value: Float): Float {
         if (!mIsLogarithmic) return value
         val safeVal = value.coerceAtLeast(mLogMinValue)
@@ -496,8 +501,11 @@ class MaterialSeekbarPreference : Preference {
             mSeekBarValue = seekBarValue
             updateLabelValue(mSeekBarValue)
             persistFloat(seekBarValue)
-            // Update slider position for logarithmic mode
-            if (mIsLogarithmic && ::mSeekBar.isInitialized) {
+            // Update slider position for logarithmic mode, but only when not
+            // triggered from within syncValueInternalLog (which already has
+            // the correct slider position). Writing back during continuous
+            // drag causes the thumb to "jump" to a rounded log position.
+            if (mIsLogarithmic && ::mSeekBar.isInitialized && !mSuppressSliderUpdate) {
                 mSeekBar.value = realToSlider(seekBarValue)
             }
             if (notifyChanged) {
@@ -543,7 +551,12 @@ class MaterialSeekbarPreference : Preference {
     fun syncValueInternalLog(realValue: Float) {
         if (realValue != mSeekBarValue) {
             if (callChangeListener(realValue)) {
-                setValueInternal(realValue, false)
+                mSuppressSliderUpdate = true
+                try {
+                    setValueInternal(realValue, false)
+                } finally {
+                    mSuppressSliderUpdate = false
+                }
             } else {
                 mSeekBar.value = realToSlider(mSeekBarValue)
                 updateLabelValue(mSeekBarValue)

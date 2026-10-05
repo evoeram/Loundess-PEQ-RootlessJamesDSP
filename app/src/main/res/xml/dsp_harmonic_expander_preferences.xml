@@ -9,6 +9,11 @@
         android:icon="@drawable/ic_baseline_equalizer_24dp"
         app:iconSpaceReserved="false">
 
+        <me.timschneeberger.rootlessjamesdsp.preference.ExpanderGraphPreference
+            android:key="harmonic_expander_graph"
+            app:isSubHarmonic="false"
+            app:iconSpaceReserved="false"/>
+
         <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
             android:key="@string/key_harmonic_expander_gain_2"
             android:title="@string/harmonic_expander_gain_2"

@@ -9,6 +9,11 @@
         android:icon="@drawable/ic_twotone_speaker_24dp"
         app:iconSpaceReserved="false">
 
+        <me.timschneeberger.rootlessjamesdsp.preference.ExpanderGraphPreference
+            android:key="subharmonic_expander_graph"
+            app:isSubHarmonic="true"
+            app:iconSpaceReserved="false"/>
+
         <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
             android:key="@string/key_subharmonic_expander_gain_1"
             android:title="@string/subharmonic_expander_gain_1"
@@ -137,6 +142,9 @@
             app:maxValue="100"
             app:precision="3"
             app:unit="%"
+            app:isLogarithmic="true"
+            app:dualScale="true"
+            app:logMinValue="0.001"
             app:allowDividerAbove="false"
             app:updatesContinuously="true"
             app:showSeekBarValue="true"

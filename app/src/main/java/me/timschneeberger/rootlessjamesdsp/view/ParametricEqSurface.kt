@@ -345,14 +345,6 @@ class ParametricEqSurface(context: Context?, attrs: AttributeSet?) : View(contex
             db += step
         }
 
-        canvas.save()
-        val dbAxisX = mPlotLeft + mPlotWidth + (mViewWidth - mPlotLeft - mPlotWidth) / 2f
-        val dbAxisY = mPlotTop + mPlotHeight / 2f
-        canvas.rotate(-90f, dbAxisX, dbAxisY)
-        mAxisLabelText.textAlign = Paint.Align.CENTER
-        canvas.drawText("dB", dbAxisX, dbAxisY, mAxisLabelText)
-        canvas.restore()
-
         for ((index, tick) in xTicks.withIndex()) {
             val x = mPlotLeft + projectX(tick.freq) * mPlotWidth
             val thickness = tickThicknessBase[tick.type] * mDensity
