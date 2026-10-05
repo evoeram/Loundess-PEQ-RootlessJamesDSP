@@ -2,6 +2,7 @@ package me.timschneeberger.rootlessjamesdsp.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
@@ -28,7 +29,7 @@ import java.lang.ref.WeakReference
  *
  * Requires the user to enable this accessibility service in system settings.
  */
-class VolumeKeyAccessibilityService : AccessibilityService() {
+class VolumeKeyAccessibilityService : AccessibilityService(), SharedPreferences.OnSharedPreferenceChangeListener {
 
     companion object {
         /** Volume step in dB per single key press (first press, no hold). */
@@ -72,6 +73,8 @@ class VolumeKeyAccessibilityService : AccessibilityService() {
         }
 
         loadSettings()
+        // Register for preference changes so smooth volume can be toggled without reconnecting
+        preferences?.registerOnSharedPreferenceChangeListener(this)
         // Use WeakReference to self in the callback so the overlay
         // doesn't keep the service alive after onDestroy.
         val weakThis = WeakReference(this)
@@ -85,6 +88,16 @@ class VolumeKeyAccessibilityService : AccessibilityService() {
         isSmoothVolumeEnabled = prefs.get(R.string.key_smooth_volume_enabled)
         currentVolumeDb = prefs.get<Float>(R.string.key_smooth_volume_db).toDouble()
         Timber.i("Smooth volume enabled=$isSmoothVolumeEnabled, currentVolume=${currentVolumeDb}dB")
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+        when (key) {
+            getString(R.string.key_smooth_volume_enabled),
+            getString(R.string.key_smooth_volume_db) -> {
+                loadSettings()
+                Timber.i("Smooth volume settings reloaded: enabled=$isSmoothVolumeEnabled, vol=${currentVolumeDb}dB")
+            }
+        }
     }
 
     private fun configureService() {
@@ -253,6 +266,7 @@ class VolumeKeyAccessibilityService : AccessibilityService() {
         holdDirection = 0
         overlay?.hide()
         overlay = null
+        preferences?.unregisterOnSharedPreferenceChangeListener(this)
         preferences = null
         Timber.i("VolumeKeyAccessibilityService unbound")
         return false
@@ -263,6 +277,7 @@ class VolumeKeyAccessibilityService : AccessibilityService() {
         holdDirection = 0
         overlay?.hide()
         overlay = null
+        preferences?.unregisterOnSharedPreferenceChangeListener(this)
         preferences = null
         Timber.i("VolumeKeyAccessibilityService destroyed")
         super.onDestroy()

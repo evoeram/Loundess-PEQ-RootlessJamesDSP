@@ -1,8 +1,10 @@
 package me.timschneeberger.rootlessjamesdsp.service
 
 import android.app.NotificationManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
@@ -32,6 +34,8 @@ import me.timschneeberger.rootlessjamesdsp.session.root.OnRootSessionChangeListe
 import me.timschneeberger.rootlessjamesdsp.session.root.RootSessionDumpManager
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.unregisterLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.notifications.Notifications
 import me.timschneeberger.rootlessjamesdsp.utils.notifications.ServiceNotificationHelper
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
@@ -57,6 +61,12 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
 
     // Termination flags
     private var isServiceDisposing = false
+
+    // Smooth volume control (root mode: applies post-gain to all sessions)
+    @Volatile
+    private var smoothVolumeEnabled = false
+    @Volatile
+    private var smoothVolumeDb = 0.0
 
     // Enhanced processing
     private var sessionDumpManager: RootSessionDumpManager? = null
@@ -127,6 +137,16 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
         arrayOf(R.string.key_powered_on, R.string.key_audioformat_enhanced_processing).forEach {
             onSharedPreferenceChanged(preferences.preferences, getString(it))
         }
+
+        // Load smooth volume settings from preferences
+        smoothVolumeEnabled = preferences.get(R.string.key_smooth_volume_enabled)
+        smoothVolumeDb = preferences.get<Float>(R.string.key_smooth_volume_db).toDouble()
+        Timber.i("Root smooth volume: enabled=$smoothVolumeEnabled, vol=${smoothVolumeDb}dB")
+
+        // Register broadcast receiver for smooth volume changes
+        val filter = IntentFilter()
+        filter.addAction(VolumeKeyAccessibilityService.ACTION_VOLUME_CHANGED)
+        registerLocalReceiver(volumeBroadcastReceiver, filter)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -194,6 +214,9 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
         // Notify app about service termination and unregister
         sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STOPPED))
 
+        // Unregister smooth volume receiver
+        try { unregisterLocalReceiver(volumeBroadcastReceiver) } catch(_: Exception) {}
+
         app.rootSessionDatabase.clearSessions()
 
         preferences.unregisterOnSharedPreferenceChangeListener(this)
@@ -235,6 +258,10 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
 
     override fun onSessionChanged(sessionList: HashMap<Int, IEffectSession>) {
         updateServiceNotification()
+        // Apply smooth volume to any newly created sessions
+        if (smoothVolumeEnabled) {
+            applySmoothVolume()
+        }
     }
 
     private fun updateServiceNotification() {
@@ -242,6 +269,48 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
             ServiceNotificationHelper.pushServiceNotificationLegacy(this)
         else
             ServiceNotificationHelper.pushServiceNotification(this, app.rootSessionDatabase.sessionList.values.toTypedArray())
+    }
+
+    // Broadcast receiver for smooth volume changes from VolumeKeyAccessibilityService
+    private val volumeBroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == VolumeKeyAccessibilityService.ACTION_VOLUME_CHANGED) {
+                smoothVolumeDb = intent.getDoubleExtra(
+                    VolumeKeyAccessibilityService.EXTRA_VOLUME_DB, 0.0
+                )
+                smoothVolumeEnabled = true
+                applySmoothVolume()
+                Timber.i("Root smooth volume applied: ${smoothVolumeDb}dB")
+            }
+        }
+    }
+
+    /**
+     * Apply smooth volume to all active root DSP sessions.
+     *
+     * In root mode there is no AudioTrack to call setVolume() on (unlike rootless).
+     * Instead, we apply the dB value as post-gain to every active JamesDspRemoteEngine
+     * session via setPostGainDb(). The DSP engine's post-gain stage is the equivalent
+     * of controlling output volume.
+     */
+    private fun applySmoothVolume() {
+        if (!smoothVolumeEnabled) return
+
+        // Convert dB to linear gain: gain = 10^(dB/20)
+        // 0 dB = 1.0 (full), -60 dB ≈ 0.001 (near silence)
+        val postGain = smoothVolumeDb.toFloat()
+
+        var applied = 0
+        app.rootSessionDatabase.sessionList.values.forEach { session ->
+            val engine = (session as? RemoteEffectSession)?.effect ?: return@forEach
+            try {
+                engine.setPostGainDb(postGain)
+                applied++
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to apply smooth volume to session ${session.packageName}")
+            }
+        }
+        Timber.d("applySmoothVolume: postGain=${postGain}dB applied to $applied session(s)")
     }
 
     companion object {

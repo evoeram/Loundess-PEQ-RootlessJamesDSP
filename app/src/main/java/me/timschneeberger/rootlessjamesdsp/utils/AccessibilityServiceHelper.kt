@@ -75,6 +75,11 @@ object AccessibilityServiceHelper {
         // Already enabled?
         if (isServiceEnabled(context)) return Result.SUCCESS
 
+        // Strategy 0: Root shell (root flavor only)
+        if (tryEnableViaRoot(context, component)) {
+            if (isServiceEnabled(context)) return Result.SUCCESS
+        }
+
         // Strategy 1: WRITE_SECURE_SETTINGS (granted via ADB or Shizuku)
         if (hasWriteSecureSettings(context)) {
             return try {
@@ -130,6 +135,48 @@ object AccessibilityServiceHelper {
     }
 
     // --- Internal methods ---
+
+    /**
+     * Try to enable accessibility service using root shell (root flavor only).
+     * Uses `settings put secure` command via su.
+     */
+    private fun tryEnableViaRoot(context: Context, component: String): Boolean {
+        return try {
+            val existing = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+
+            val newServices = if (existing.isNotBlank() && !existing.contains(component)) {
+                "$existing:$component"
+            } else {
+                component
+            }
+
+            // Use reflection to avoid compile-time dependency on RootShellImpl in main source
+            val rootShellClass = try {
+                Class.forName("me.timschneeberger.rootlessjamesdsp.flavor.RootShellImpl")
+            } catch (e: ClassNotFoundException) {
+                return false
+            }
+
+            val cmd1 = rootShellClass.getMethod("cmd", String::class.java)
+            val success1 = cmd1.invoke(
+                rootShellClass.getDeclaredField("INSTANCE").get(null),
+                "settings put secure enabled_accessibility_services \"$newServices\""
+            ) as Boolean
+
+            val success2 = cmd1.invoke(
+                rootShellClass.getDeclaredField("INSTANCE").get(null),
+                "settings put secure accessibility_enabled 1"
+            ) as Boolean
+
+            success1 && success2
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to enable accessibility service via root shell")
+            false
+        }
+    }
 
     private fun hasWriteSecureSettings(context: Context): Boolean {
         return context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
