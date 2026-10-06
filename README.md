@@ -5,7 +5,7 @@
   <br>
 </h1>
 
-<h4 align="center">System-wide JamesDSP with PEQ biquad cascade, loudness correction, and acoustic measurement — for non-rooted and rooted Android</h4>
+<h4 align="center">System-wide JamesDSP with PEQ biquad cascade, loudness correction, acoustic measurement, Squig Live AutoEQ, harmonic expander, NOS R2R simulator, smooth volume, and device presets — for non-rooted and rooted Android</h4>
 
 <p align="center">
   <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases">
@@ -26,6 +26,11 @@
   <a href="#key-features">Features</a> •
   <a href="#processing-modes">Processing Modes</a> •
   <a href="#auto-eq--measurement-wizard-meow">Auto-EQ</a> •
+  <a href="#squig-live--autoeq-from-squiglink-database">Squig Live</a> •
+  <a href="#harmonic--sub-harmonic-expander">Expander</a> •
+  <a href="#nos-r2r-simulator">NOS R2R</a> •
+  <a href="#smooth-volume">Smooth Volume</a> •
+  <a href="#device-presets">Device Presets</a> •
   <a href="#downloads">Downloads</a> •
   <a href="#differences-from-upstream">vs Upstream</a> •
   <a href="#building">Building</a> •
@@ -45,18 +50,27 @@
   <img alt="GraphEQ Import/Export" width="200" src="img/import-export.jpg">
   <img alt="GraphEQ to PEQ Converter" width="200" src="img/GEQ2PEQ.jpg">
   <img alt="Filter Count Selection" width="200" src="img/max num.jpg">
+  <img alt="Squig Live" width="200" src="img/Squig.jpg">
+  <img alt="Harmonic Expander" width="200" src="img/HExpander.jpg">
+  <img alt="Sub-Harmonic Expander" width="200" src="img/SubHExpander.jpg">
+  <img alt="NOS R2R Simulator" width="200" src="img/NOSR2R.jpg">
 </p>
-<p align="center"><sub>Parametric EQ · Loudness Correction · Manual SPL Calibration · MEOW Wizard · Device Preset Selector · Ask on Connection · LiveEQ Channel Switch · GraphEQ Import/Export · GraphEQ→PEQ Converter</sub></p>
+<p align="center"><sub>Parametric EQ · Loudness Correction · Manual SPL Calibration · MEOW Wizard · Device Preset Selector · Ask on Connection · LiveEQ Channel Switch · GraphEQ Import/Export · GraphEQ→PEQ Converter · Squig Live · Harmonic Expander · Sub-Harmonic Expander · NOS R2R Simulator</sub></p>
 
 ---
 
 ## Overview
 
-**Loundess-PEQ-RootlessJamesDSP** is an enhanced fork of [RootlessJamesDSP](https://github.com/timschneeb/RootlessJamesDSP) by Tim Schneeberger. It adds three major subsystems on top of the original system-wide audio processing app:
+**Loundess-PEQ-RootlessJamesDSP** is an enhanced fork of [RootlessJamesDSP](https://github.com/timschneeb/RootlessJamesDSP) by Tim Schneeberger. It adds multiple major subsystems on top of the original system-wide audio processing app:
 
 1. **Time-domain PEQ biquad cascade** — real RBJ biquad filters (ported from EqualizerAPO) replacing the FFT-magnitude approximation, with per-band stereo channel routing and up to 64 bands
 2. **Loudness correction** — Fletcher–Munson compensation (ported from EqualizerAPO) with auto-calibration via microphone SPL measurement
 3. **Acoustic measurement & Auto-EQ wizard (MEOW)** — Farina log-sweep measurement, deconvolution to impulse response, SPL extraction, and greedy iterative PEQ filter fitting against a target curve
+4. **Squig Live** — AutoEQ from the SquigLink headphone measurement database with greedy PEQ fitting + Nelder-Mead optimization
+5. **Harmonic / Sub-Harmonic Expander** — 9-band harmonic/sub-harmonic generation with live THD visualization
+6. **NOS R2R Simulator** — Non-Oversampling R2R DAC simulator with adjustable bit depth, resistor tolerance, and jitter
+7. **Smooth Volume** — ~200-step 0.5 dB volume control via AccessibilityService, replacing Android's ~15 steps
+8. **Device Presets** — automatic preset switching when audio devices connect
 
 The app works on **non-rooted devices** (via MediaProjection audio capture) and **rooted devices** (via Magisk/KernelSU/SukiSU/APatch module with direct AudioFlinger integration).
 
@@ -91,6 +105,12 @@ At low listening volume, the human ear is less sensitive to bass and treble. Thi
 - Lock-free coefficient recomputation on audio thread (`std::atomic<double>`)
 - Volume pushed from Kotlin layer (reads Android media stream volume)
 - Configurable reference level, reference offset, and attenuation strength
+- **Mode 0 (Classic):** two-shelf heuristic Fletcher–Munson algorithm
+- **Mode 1 (ISO 226:2023):** 29-band correction using equal-loudness contours (1/3-octave, 20 Hz – 12.5 kHz)
+- **Auto Volume:** automatic tracking of system volume — coefficients recalculated on the fly without filter reconfiguration
+- **Subsonic filter:** cuts infra-low frequencies below a configurable threshold
+- **User-tunable parameters:** 8 adjustable shelf/contour parameters (frequencies, slopes, ratios) exposed in UI
+- Real-time correction frequency response graph (`LoudnessSurface`, `LoudnessGraphPreference`)
 
 **Auto-calibration** (`LoudnessCalibrationManager`):
 - **Microphone mode** — plays pink noise, records via microphone, computes RMS → dBFS
@@ -117,6 +137,79 @@ A complete acoustic measurement pipeline for speaker/headphone equalization:
 6. **Target curve editor** — custom target curves with visual editing (`TargetCurveEditorFragment`)
 
 Native C implementation for performance-critical DSP: `sweep_generator.c`, `farina_deconv.c`, `spl_response.c`, `ir_windowing.c`, `measurement_jni.c`.
+
+---
+
+## Squig Live — AutoEQ from SquigLink Database
+
+Integration with the [SquigLink](https://squig.link) headphone measurement database:
+
+- **Database search** (`SquigLinkSearchEngine`): fuzzy search by brand/model
+- **Batch download** (`SquigBatchDownloader`): bulk measurement downloads
+- **SquigLink cache** (`SquigLinkCacheManager`): local caching of measurements
+- **Squig AutoEQ** (`SquigAutoEqEngine`): port of the AutoEqEngine for SquigLink `FrequencyResponse` data — greedy PEQ fitting + Nelder-Mead optimization
+- **Independent PEQ namespace:** Squig Live PEQ is separate from the main PEQ and merged on apply
+- Real-time corrected frequency response preview graph
+- Custom target curve import
+
+![Squig Live](img/Squig.jpg)
+
+---
+
+## Harmonic / Sub-Harmonic Expander
+
+Harmonic expansion (adds harmonics 2–10) and sub-harmonic expansion (adds sub-harmonics 1–9):
+
+- 9 harmonic bands / 9 sub-harmonic bands
+- Crossover frequency and Mix control
+- Logarithmic sliders with dual scale (dB + %)
+- Live THD summary
+- Bar-chart visualization (`ExpanderSurface`, `ExpanderGraphPreference`)
+- Remote engine support (root)
+
+![Harmonic Expander](img/HExpander.jpg)
+![Sub-Harmonic Expander](img/SubHExpander.jpg)
+
+---
+
+## NOS R2R Simulator
+
+Non-Oversampling R2R DAC simulator:
+
+- Target sample rate (44100 / 48000 / 88200 / 96000 / 176400 / 192000)
+- Bit depth (1–24)
+- Resistor tolerance, deviation growth, harmony
+- Serial number, jitter, harmonics amount, phase invert
+- Full remote engine integration (root)
+
+![NOS R2R Simulator](img/NOSR2R.jpg)
+
+---
+
+## Smooth Volume
+
+Android's system volume has ~15 steps. Smooth Volume replaces them with ~200 steps of 0.5 dB via JamesDSP's internal gain:
+
+- **AccessibilityService** (`VolumeKeyAccessibilityService`): intercepts hardware volume keys in background, 0.5 dB steps
+- **Volume Overlay HUD** (`VolumeOverlay`): system overlay with progress bar and dB value, swipe to adjust, lock screen display
+- Auto-enable service via ADB/Shizuku (`WRITE_SECURE_SETTINGS`)
+- System volume held at a fixed level
+
+---
+
+## Device Presets
+
+Automatic preset switching when devices connect:
+
+- Each device (by profile id) is linked to a preset from the Presets/ folder
+- Modes: "none" (default), "ask" (prompt on connection), or a preset name
+- **Preset Selection Dialog** (`PresetSelectionActivity`): selection dialog on device connection
+- **Preset Overlay** (`PresetOverlayManager`): overlay notification when a new device connects
+- Device registration in persistent storage (`DevicePresetManager`)
+- Device Cards UI (`DeviceCardsFragment`, `DeviceCardAdapter`) — manage preset bindings
+
+![Device Preset Selector](img/DevicePresetSelector.jpg)
+![Ask on Connection](img/ask-on-connection.jpg)
 
 ---
 
@@ -256,10 +349,19 @@ This fork adds **40+ commits, 130+ files changed, ~18,000 lines** on top of [Roo
 | Per-band channel routing | ❌ | ✅ L+R / L / R |
 | Preamp filter type | ❌ | ✅ |
 | Loudness correction | ❌ | ✅ Fletcher–Munson (EqualizerAPO port) |
+| Loudness modes | ❌ | ✅ Classic (2-shelf) + ISO 226:2023 (29-band) |
 | Loudness auto-calibration | ❌ | ✅ Microphone + Manual SPL |
+| Loudness auto volume tracking | ❌ | ✅ Real-time coefficient recomputation |
+| Loudness subsonic filter | ❌ | ✅ |
 | Acoustic measurement | ❌ | ✅ Farina sweep + deconvolution + SPL |
 | Auto-EQ engine | ❌ | ✅ Greedy iterative PEQ fitting |
 | Target curve editor | ❌ | ✅ |
+| Squig Live (SquigLink AutoEQ) | ❌ | ✅ Search + batch download + cache + Nelder-Mead fitting |
+| Harmonic Expander | ❌ | ✅ 9-band, live THD, bar-chart visualization |
+| Sub-Harmonic Expander | ❌ | ✅ 9-band, live THD, bar-chart visualization |
+| NOS R2R Simulator | ❌ | ✅ Adjustable bit depth, tolerance, jitter |
+| Smooth Volume | ❌ | ✅ ~200 steps × 0.5 dB via AccessibilityService + overlay HUD |
+| Device Presets (auto-switch) | ❌ | ✅ Per-device preset binding, ask/overlay/dialog |
 | Movie Mode (DynamicsProcessing) | ❌ | ✅ 3-stage least-squares fitting |
 | Low-Latency Mode | ❌ | ✅ QueueController + LatencyTuning |
 | Processing mode selection | Single mode | 3 modes (Standard / Low-Latency / Movie) |
@@ -283,6 +385,15 @@ This fork adds **40+ commits, 130+ files changed, ~18,000 lines** on top of [Roo
 
 ---
 
+## Live EQ Improvements
+
+- LiveEQ bottom sheet (`LiveEqBottomSheet`): scrollable, filter-type selection chips
+- Channel switch for LiveEQ
+- Import/export GraphEQ presets
+- Preamp slider: auto-correction to 0 dB, stepSize fix for AutoEQ values
+
+---
+
 ## Building
 
 ### Prerequisites
@@ -300,8 +411,8 @@ This fork adds **40+ commits, 130+ files changed, ~18,000 lines** on top of [Roo
 git clone --recurse-submodules https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP.git
 cd Loundess-PEQ-RootlessJamesDSP
 
-# Build both flavors
-./gradlew assembleRootFullRelease assembleRootlessFullRelease --no-daemon
+# Build both flavors (use java -cp on Windows where ./gradlew fails)
+java -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain assembleRootFullRelease assembleRootlessFullRelease --no-daemon
 ```
 
 Output APKs:
@@ -357,6 +468,30 @@ For other apps: enable "Show universal patches" in ReVanced settings, select you
 
 ---
 
+## C++ Additions
+
+| Path | Purpose |
+|------|---------|
+| `libjamesdsp-wrapper/loudness/` | LoudnessCorrectionProcessor (Fletcher–Munson + ISO 226:2023) |
+| `libjamesdsp-wrapper/biquad/` | BiQuad, BiQuadFilter, ParametricEqProcessor (time-domain cascade) |
+| `measurement/` | sweep_generator, farina_deconv, spl_response, ir_windowing, measurement_jni |
+
+## New Documentation (docs/)
+
+- `PROCESSING_MODES.md` — processing mode architecture and latency optimization
+- `FAQ_FIR_EQ.md` — FIR equalizer (MultiEQ) setup guide
+- `AIDL_SUPPORT.md` — AIDL audio effect HAL support status (Android 14+)
+- `TROUBLESHOOTING_ANDROID16.md` — troubleshooting on Android 16 / new devices
+
+## Tests
+
+- `androideq/` — AndroidEq / AndroidEqFitter tests (Movie Mode)
+- `measurement/` — measurement pipeline tests
+- `model/` — model tests
+- `utils/ParametricEqResponseCalculatorTest.kt` — PEQ frequency response calculator tests
+
+---
+
 ## Translations
 
 Translations are managed via [Crowdin](https://crowdin.com/project/rootlessjamesdsp). To request a new language, please open an issue.
@@ -375,10 +510,11 @@ Translations are managed via [Crowdin](https://crowdin.com/project/rootlessjames
 - **EqualizerAPO** — biquad filter logic, loudness correction filter (© Alexander Walch, GPLv2)
 - **kissfft** — FFT library used in measurement/deconvolution
 - Magisk module based on [ainur jamesdsp](https://github.com/therealahrion/ainur_jamesdsp) by @ahrion
+- AutoEQ measurement pipeline: Farina log-sweep deconvolution method
 
 ### Fork author
 
-- **evoeram** — PEQ cascade, loudness correction, measurement/Auto-EQ, processing modes, low-latency tuning
+- **evoeram** — PEQ cascade, loudness correction, measurement/Auto-EQ, Squig Live, harmonic expander, NOS R2R, smooth volume, device presets, processing modes, low-latency tuning
 
 ### Translators
 
