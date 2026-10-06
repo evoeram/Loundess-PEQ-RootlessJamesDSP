@@ -37,14 +37,14 @@
   <img alt="Loudness" width="200" src="img/loudness.jpg">
   <img alt="Loudness Manual SPL" width="200" src="img/loudness_manual.jpg">
   <img alt="MEOW" width="200" src="img/MEOW.jpg">
-  <img alt="Device Preset Selector" width="200" src="img/Device-Preset-Selector.jpg">
+  <img alt="Device Preset Selector" width="200" src="img/DevicePresetSelector.jpg">
   <img alt="Ask on Connection" width="200" src="img/ask-on-connection.jpg">
 </p>
 <p align="center">
-  <img alt="LiveEQ Channel Switch" width="200" src="screenshots/LiveEQ.jpg">
-  <img alt="GraphEQ Import/Export" width="200" src="screenshots/import-export.jpg">
-  <img alt="GraphEQ to PEQ Converter" width="200" src="screenshots/GEQ2PEQ.jpg">
-  <img alt="Filter Count Selection" width="200" src="screenshots/max num.jpg">
+  <img alt="LiveEQ Channel Switch" width="200" src="img/LiveEQ.jpg">
+  <img alt="GraphEQ Import/Export" width="200" src="img/import-export.jpg">
+  <img alt="GraphEQ to PEQ Converter" width="200" src="img/GEQ2PEQ.jpg">
+  <img alt="Filter Count Selection" width="200" src="img/max num.jpg">
 </p>
 <p align="center"><sub>Parametric EQ · Loudness Correction · Manual SPL Calibration · MEOW Wizard · Device Preset Selector · Ask on Connection · LiveEQ Channel Switch · GraphEQ Import/Export · GraphEQ→PEQ Converter</sub></p>
 
@@ -131,7 +131,7 @@ The Graphic EQ now supports direct file import and export of presets — previou
 
 Both buttons are disabled while the node editor is active. The file format is fully compatible with the text previously pasted via "Edit as string", so existing manually-created files can be imported directly.
 
-![GraphEQ Import/Export](screenshots/import-export.jpg)
+![GraphEQ Import/Export](img/import-export.jpg)
 
 ### 🔄 GraphEQ → PEQ Converter
 
@@ -156,8 +156,8 @@ Converts a Graphic EQ target curve into a minimal cascade of parametric IIR filt
 - **Apply to PEQ** — clears the current Parametric EQ and writes the new bands + preamp directly to SharedPreferences, then broadcasts `ACTION_PARAMETRIC_EQ_CHANGED` for instant DSP application
 - **Copy APO preset** — copies the result to clipboard in Equalizer APO format (`Preamp: X dB` / `Channel: all` / `Filter N: ON PK Fc ... Hz Gain ... dB Q ...`)
 
-![GraphEQ→PEQ Converter](screenshots/GEQ2PEQ.jpg)
-![Filter Count Selection](screenshots/max%20num.jpg)
+![GraphEQ→PEQ Converter](img/GEQ2PEQ.jpg)
+![Filter Count Selection](img/max%20num.jpg)
 
 **Constraints**: Q ∈ [0.2, 10], Gain ∈ [−24, +24] dB, max 20 filters.
 
@@ -173,7 +173,7 @@ The LiveEQ bottom sheet (interactive slider editor for PEQ bands) now includes a
 
 When a band is selected for editing, the chips automatically reflect its current channel. Switching a chip instantly applies the change — updates the frequency response preview, triggers `onLiveUpdate`, and commits the change. Uses the existing `ParametricEqChannel` enum (LEFT, LEFT_RIGHT, RIGHT) — the same values as the band editor.
 
-![LiveEQ Channel Switch](screenshots/LiveEQ.jpg)
+![LiveEQ Channel Switch](img/LiveEQ.jpg)
 
 ---
 

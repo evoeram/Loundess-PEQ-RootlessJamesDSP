@@ -76,8 +76,8 @@ class ExpanderSurface @JvmOverloads constructor(
         mAccentColor = getColor(android.R.attr.colorAccent)
 
         if (isSubHarmonic) {
-            barLabels = arrayOf("f/2", "f/3", "f/4", "f/5", "f/6", "f/7", "f/8", "f/9", "f/10", "THD")
-            barSubLabels = arrayOf("2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "Total")
+            barLabels = arrayOf("B1", "B2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "THD")
+            barSubLabels = arrayOf("25-55", "55-120", "tex", "tex", "tex", "tex", "tex", "tex", "tex", "Total")
         } else {
             barLabels = arrayOf("H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H10", "THD")
             barSubLabels = arrayOf("2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "Total")
