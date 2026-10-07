@@ -4,6 +4,8 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import me.timschneeberger.rootlessjamesdsp.utils.Constants
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import android.content.pm.PackageManager.PERMISSION_GRANTED
 import android.os.Build
 import android.os.Bundle
@@ -24,8 +26,10 @@ import me.timschneeberger.hiddenapi_impl.UserHandle
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.activity.MainActivity
+import me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode
 import me.timschneeberger.rootlessjamesdsp.activity.OnboardingActivity.Companion.EXTRA_ROOTLESS_REDO_ADB_SETUP
 import me.timschneeberger.rootlessjamesdsp.activity.OnboardingActivity.Companion.EXTRA_ROOT_SETUP_DUMP_PERM
+import me.timschneeberger.rootlessjamesdsp.activity.OnboardingActivity.Companion.EXTRA_TARGET_PROCESSING_MODE
 import me.timschneeberger.rootlessjamesdsp.databinding.OnboardingFragmentBinding
 import me.timschneeberger.rootlessjamesdsp.flavor.RootShellImpl
 import me.timschneeberger.rootlessjamesdsp.service.RootAudioProcessorService
@@ -55,6 +59,7 @@ class OnboardingFragment : Fragment() {
     private val pageMap = mutableMapOf(
         PAGE_WELCOME                to R.id.onboarding_page1,
         PAGE_LIMITATIONS            to R.id.onboarding_page2,
+        PAGE_MODE_SELECT            to R.id.onboarding_page7,
         PAGE_METHOD_SELECT          to R.id.onboarding_page3,
         PAGE_ADB_SETUP              to R.id.onboarding_page4,
         PAGE_RUNTIME_PERMISSIONS    to R.id.onboarding_page5,
@@ -78,6 +83,7 @@ class OnboardingFragment : Fragment() {
     private var useRoot: Boolean = false
     private var redoAdbSetup: Boolean = false
     private var shizukuAlive = false
+    private var targetProcessingMode: Int = -1
 
     private val prefsApp: Preferences.App by inject()
     private val prefsVar: Preferences.Var by inject()
@@ -122,6 +128,7 @@ class OnboardingFragment : Fragment() {
     ): View {
         useRoot = requireActivity().intent.getBooleanExtra(EXTRA_ROOT_SETUP_DUMP_PERM, false)
         redoAdbSetup = requireActivity().intent.getBooleanExtra(EXTRA_ROOTLESS_REDO_ADB_SETUP, false)
+        targetProcessingMode = requireActivity().intent.getIntExtra(EXTRA_TARGET_PROCESSING_MODE, -1)
         binding = OnboardingFragmentBinding.inflate(layoutInflater, viewGroup, false)
         return binding.root
     }
@@ -135,9 +142,26 @@ class OnboardingFragment : Fragment() {
         nextButton.setOnClickListener { changePage(true) }
 
         if(useRoot || redoAdbSetup) {
-            pageMap.remove(PAGE_RUNTIME_PERMISSIONS)
-            pageMap.remove(PAGE_READY)
+            pageMap.remove(PAGE_MODE_SELECT)
+            // Если переключаемся из Movie в capture-loop режим, оставляем PAGE_RUNTIME_PERMISSIONS,
+            // чтобы пользователь мог предоставить RECORD_AUDIO и POST_NOTIFICATIONS.
+            // При обычном redoAdbSetup (без targetProcessingMode) — пропускаем runtime permissions.
+            if (targetProcessingMode < 0) {
+                pageMap.remove(PAGE_RUNTIME_PERMISSIONS)
+                pageMap.remove(PAGE_READY)
+            }
             goToPage(PAGE_METHOD_SELECT)
+        }
+
+        // Mode selection page
+        val modePage = binding.modeSelect
+        modePage.modeMovieCard.setOnClickListener {
+            // Movie Mode: no permissions needed, finish setup immediately
+            finishMovieModeSetup()
+        }
+        modePage.modeCaptureCard.setOnClickListener {
+            // Standard / Low-latency: proceed to method selection
+            changePage(true)
         }
 
         // Method selection page
@@ -344,6 +368,14 @@ class OnboardingFragment : Fragment() {
     @SuppressLint("ApplySharedPref")
     private fun finishSetup() {
 
+        // Применяем целевой режим обработки, если он задан (переключение из Movie в Standard/Low-latency)
+        if(targetProcessingMode >= 0) {
+            prefsApp.set(R.string.key_processing_mode, targetProcessingMode.toString(), async = false)
+            Timber.i("Target processing mode applied: $targetProcessingMode")
+            // Уведомляем сервис и UI об изменении режима
+            context?.sendLocalBroadcast(Intent(Constants.ACTION_PREFERENCES_UPDATED))
+        }
+
         if(!redoAdbSetup) {
             val intent = context?.let { Intent(it, MainActivity::class.java) } ?: return
             intent.putExtra(MainActivity.EXTRA_FORCE_SHOW_CAPTURE_PROMPT, true)
@@ -365,10 +397,26 @@ class OnboardingFragment : Fragment() {
         }
     }
 
+    @SuppressLint("ApplySharedPref")
+    private fun finishMovieModeSetup() {
+        // Set processing mode to Movie
+        prefsApp.set(R.string.key_processing_mode, ProcessingMode.MOVIE.value.toString(), async = false)
+        Timber.i("Movie Mode selected during onboarding; skipping permission setup")
+
+        // Mark setup as done
+        prefsVar.set(R.string.key_first_boot, false)
+
+        context?.toast(R.string.onboarding_mode_movie_set)
+
+        val intent = context?.let { Intent(it, MainActivity::class.java) } ?: return
+        startActivity(intent)
+        activity?.finish()
+    }
+
     private fun goToPage(number: Int)
     {
         // Check if we're finished
-        if(number > pageMap.size)
+        if(number > pageMap.keys.max())
         {
             finishSetup()
             return
@@ -393,8 +441,8 @@ class OnboardingFragment : Fragment() {
             }
         }
 
-        // Hide next button because user should continue by choosing a setup method
-        nextButton.isVisible = number != PAGE_METHOD_SELECT
+        // Hide next button because user should continue by choosing a mode or setup method
+        nextButton.isVisible = number != PAGE_MODE_SELECT && number != PAGE_METHOD_SELECT
 
         val prev = pageMap[currentPage]
         val next = pageMap[number]
@@ -436,9 +484,14 @@ class OnboardingFragment : Fragment() {
         }
 
         // Root setup or rootless re-setup; cut-off first two pages
-        if((redoAdbSetup || useRoot) && !forward && (currentPage - 1) <= PAGE_LIMITATIONS) {
-            requireActivity().finish()
-            return
+        // При redoAdbSetup с targetProcessingMode PAGE_MODE_SELECT удалена,
+        // поэтому Back на PAGE_METHOD_SELECT тоже должен завершать активность.
+        if((redoAdbSetup || useRoot) && !forward) {
+            val firstAvailable = pageMap.keys.min()
+            if((currentPage - 1) < firstAvailable || (currentPage - 1) <= PAGE_LIMITATIONS) {
+                requireActivity().finish()
+                return
+            }
         }
 
         goToPage(nextIndex)
@@ -453,6 +506,8 @@ class OnboardingFragment : Fragment() {
     private fun requestNextPage(nextPage: Int, forward: Boolean): Int
     {
         val shouldSkip = when (nextPage) {
+            // Don't skip mode select (new page)
+            PAGE_MODE_SELECT -> false
             // Don't skip ADB setup if redoAdbSetup is set
             PAGE_METHOD_SELECT -> areAdbPermissionsGranted() && !redoAdbSetup
             PAGE_ADB_SETUP -> areAdbPermissionsGranted() && !redoAdbSetup
@@ -662,7 +717,7 @@ class OnboardingFragment : Fragment() {
     private val isFirstPage: Boolean
         get() = currentPage == 1
     private val isLastPage: Boolean
-        get() = currentPage == pageMap.size
+        get() = currentPage == pageMap.keys.max()
 
     companion object
     {
@@ -674,9 +729,10 @@ class OnboardingFragment : Fragment() {
 
         const val PAGE_WELCOME = 1
         const val PAGE_LIMITATIONS = 2
-        const val PAGE_METHOD_SELECT = 3
-        const val PAGE_ADB_SETUP = 4
-        const val PAGE_RUNTIME_PERMISSIONS = 5
-        const val PAGE_READY = 6
+        const val PAGE_MODE_SELECT = 3
+        const val PAGE_METHOD_SELECT = 4
+        const val PAGE_ADB_SETUP = 5
+        const val PAGE_RUNTIME_PERMISSIONS = 6
+        const val PAGE_READY = 7
     }
 }

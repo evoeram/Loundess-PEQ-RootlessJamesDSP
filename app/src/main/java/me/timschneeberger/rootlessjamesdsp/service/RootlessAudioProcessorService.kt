@@ -170,6 +170,11 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         loadFromPreferences(getString(R.string.key_session_exclude_restricted))
         loadFromPreferences(getString(R.string.key_processing_mode))
 
+        // Load smooth volume settings at startup
+        smoothVolumeEnabled = preferences.get(R.string.key_smooth_volume_enabled)
+        smoothVolumeDb = preferences.get<Float>(R.string.key_smooth_volume_db).toDouble()
+        Timber.i("Smooth volume on startup: enabled=$smoothVolumeEnabled, vol=${smoothVolumeDb}dB")
+
         // Setup database observer
         blockedApps.observeForever(blockedAppObserver)
 
@@ -179,10 +184,14 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         recreateRecorderRequested = false
 
         // Launch foreground service
+        val fgsType = if (processingMode == ProcessingMode.MOVIE)
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        else
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
         startForeground(
             Notifications.ID_SERVICE_STATUS,
             ServiceNotificationHelper.createServiceNotification(this, arrayOf()),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            fgsType
         )
     }
 
@@ -213,25 +222,30 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         notificationManager.cancel(Notifications.ID_SERVICE_SESSION_LOSS)
         notificationManager.cancel(Notifications.ID_SERVICE_APPCOMPAT)
 
-        // Setup media projection
-        mediaProjectionStartIntent = intent.extras?.getParcelableAs(EXTRA_MEDIA_PROJECTION_DATA)
+        // Setup media projection (not needed for Movie Mode)
+        val isMovieMode = processingMode == ProcessingMode.MOVIE
+        mediaProjectionStartIntent = if (isMovieMode) null
+            else intent.extras?.getParcelableAs(EXTRA_MEDIA_PROJECTION_DATA)
 
-        mediaProjection = try {
-            mediaProjectionManager.getMediaProjection(
-                Activity.RESULT_OK,
-                mediaProjectionStartIntent!!
-            )
-        }
-        catch (ex: Exception) {
-            Timber.e("Failed to acquire media projection")
-            sendLocalBroadcast(Intent(Constants.ACTION_DISCARD_AUTHORIZATION))
-            Timber.e(ex)
+        mediaProjection = if (isMovieMode) {
             null
+        } else {
+            try {
+                mediaProjectionManager.getMediaProjection(
+                    Activity.RESULT_OK,
+                    mediaProjectionStartIntent!!
+                )
+            } catch (ex: Exception) {
+                Timber.e("Failed to acquire media projection")
+                sendLocalBroadcast(Intent(Constants.ACTION_DISCARD_AUTHORIZATION))
+                Timber.e(ex)
+                null
+            }
         }
 
         mediaProjection?.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
 
-        if (mediaProjection != null) {
+        if (mediaProjection != null || isMovieMode) {
             startRecording()
             sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STARTED))
         } else {
@@ -492,15 +506,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     // Start recording thread
     @SuppressLint("BinaryOperationInTimber")
     private fun startRecording() {
-        // Sanity check
-        if (!hasRecordPermission()) {
-            Timber.e("Record audio permission missing. Can't record")
-            stopSelf()
-            return
-        }
-
         // Movie Mode: capture loop не запускается.
         // AndroidEq создаёт DynamicsProcessing для каждой сессии приложения.
+        // RECORD_AUDIO permission не требуется в Movie Mode.
         if (AndroidEq.isEnabled) {
             Timber.i("Movie Mode: skipping capture loop, using Android EQ only")
             // В Movie Mode capture loop не запускается, но engine.sampleRate
@@ -523,6 +531,13 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 }
             }
             recorderThread!!.start()
+            return
+        }
+
+        // Sanity check (only for capture-loop modes)
+        if (!hasRecordPermission()) {
+            Timber.e("Record audio permission missing. Can't record")
+            stopSelf()
             return
         }
 
@@ -761,6 +776,11 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     }
 
     private fun applySmoothVolume() {
+        // Movie Mode: no AudioTrack, apply via DynamicsProcessing input gain
+        if (processingMode == ProcessingMode.MOVIE) {
+            AndroidEq.setSmoothVolumeDb(smoothVolumeDb)
+            return
+        }
         val track = activeAudioTrack ?: return
         // Convert dB to linear gain: gain = 10^(dB/20)
         // 0 dB = 1.0 (full volume), -60 dB ≈ 0.001 (near silence)

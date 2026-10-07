@@ -279,6 +279,15 @@
     <string name="onboarding_perm_diag_caption">Данное приложение отправляет отчеты о сбоях и другие диагностические данные, в том числе информацию о других активных приложениях, чтобы мне было легче обнаруживать и решать проблемы совместимости и ошибки.</string>
     <string name="onboarding_finish_header">JamesDSP настроен!</string>
     <string name="onboarding_finish_caption">Если у вас возникли какие-либо проблемы, пожалуйста, посетите раздел настроек «Устранение неисправностей».</string>
+
+    <string name="onboarding_mode_select_title">Выбор режима звука</string>
+    <string name="onboarding_mode_select_caption">Выберите способ обработки звука. Это можно изменить позже в настройках.</string>
+    <string name="onboarding_mode_movie_title">Кино (только EQ)</string>
+    <string name="onboarding_mode_movie_body">\u25CF Не требует специальных разрешений — можно начать сразу\n\u25CF Только GraphicEQ + параметрический EQ\n\u25CF Идеальная синхронизация A/V для видео\n\u25CF Без реверберации, бас-буста и других эффектов</string>
+    <string name="onboarding_mode_capture_title">Стандартный / Низкая задержка (все эффекты)</string>
+    <string name="onboarding_mode_capture_body">\u25CF Требуется настройка Shizuku или ADB\n\u25CF Все эффекты JamesDSP (реверберация, бас-буст, конволвер и т.д.)\n\u25CF Захват аудио через MediaProjection</string>
+    <string name="onboarding_mode_movie_set">Режим кино включён. Теперь можно пользоваться приложением.</string>
+
     <string name="limit_session_control_conflict_title">Отключение других приложений для обработки аудиоэффектов</string>
     <string name="limit_session_control_conflict">Приложения для обработки аудиоэффектов, использующие встроенный в Android эффект динамической обработки, нарушают работу данного приложения.</string>
     <string name="limit_unsupported_apps_title">Неподдерживаемые приложения</string>
@@ -679,6 +688,7 @@
     <string name="squig_channel_avg">Ср</string>
     <string name="squig_target_label">Целевая кривая</string>
     <string name="squig_instance_label">Инстанс</string>
+    <string name="squig_no_selection">—</string>
     <string name="squig_measurement_loaded">Измерение загружено: %1$s</string>
     <string name="squig_autoeq_done">AutoEQ готово: %1$d полос, макс. отклонение %2$.1f дБ</string>
     <string name="squig_applied_to_peq">Применено %1$d полос к PEQ</string>

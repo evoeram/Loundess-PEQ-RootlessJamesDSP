@@ -163,6 +163,15 @@ class SquigLiveFragment : Fragment() {
     /** Флаг: идёт загрузка данных. */
     private var isLoadingData = false
 
+    /** Флаг: выбран ли инстанс замеров (false = "—" в spinner). */
+    private var instanceSelected = false
+
+    /** Флаг: выбран ли инстанс таргетов (false = "—" в spinner). */
+    private var targetInstanceSelected = false
+
+    /** Метка пустого выбора в спиннерах. */
+    private val noSelectionLabel = "—"
+
     /** Конфигурация AutoEQ (настраиваемая пользователем). */
     private var autoEqConfig = SquigAutoEqEngine.Config()
 
@@ -243,7 +252,13 @@ class SquigLiveFragment : Fragment() {
                 if (query.isEmpty()) {
                     searchJob?.cancel()
                     // При пустом запросе показываем полный список замеров инстанса
-                    showAllMeasurements()
+                    // (только если инстанс выбран и каталог загружен)
+                    if (instanceSelected && database.isNotEmpty()) {
+                        showAllMeasurements()
+                    } else {
+                        resultsAdapter.updateResults(emptyList())
+                        showEmptyState(true)
+                    }
                     statusText.isVisible = false
                     return
                 }
@@ -298,8 +313,8 @@ class SquigLiveFragment : Fragment() {
         applyButton.setOnClickListener { applyToPeq() }
         resetButton.setOnClickListener { resetEq() }
 
-        // Начальное состояние — показываем все замеры (или empty state если БД пустая)
-        showAllMeasurements()
+        // Начальное состояние — пустой список (инстанс не выбран по умолчанию)
+        showEmptyState(true)
         updateActionButtons()
 
         setupInstanceSpinner()
@@ -310,8 +325,12 @@ class SquigLiveFragment : Fragment() {
         importTargetButton.setOnClickListener { openTargetFilePicker() }
 
         loadSquigSites()
-        loadTargetCurves()
-        loadDatabase()
+
+        // Не загружаем catalog / target curves по умолчанию —
+        // только после выбора инстанса в spinner.
+        // loadDatabase() → вызывается из setupInstanceSpinner() при выборе.
+        // loadTargetCurves() → вызывается из setupTargetInstanceSpinner() при выборе.
+        // loadTargetCurveData() → вызывается из loadTargetCurves() / setupTargetSpinner().
 
         // Restore persisted user state (autoeq config first; instance/target/phone
         // are restored inside the async load callbacks once spinners are populated).
@@ -319,7 +338,9 @@ class SquigLiveFragment : Fragment() {
 
         // Load target curve after restorePersistedState so workingPreamp is
         // already restored — the target display is shifted by preamp when bands exist.
-        loadTargetCurveData()
+        // loadTargetCurveData() — уже вызван выше, повторный вызов не нужен:
+        // restorePersistedState мог восстановить selectedTargetName, но если
+        // target instance не выбран, target всё равно не загрузится.
 
         // Re-evaluate button states after restoring working bands — restorePersistedState
         // may have loaded saved Live EQ bands, which should enable Apply/Reset.
@@ -341,21 +362,27 @@ class SquigLiveFragment : Fragment() {
                 val newInstances = SquigLinkInstance.fromSquigSites(sites)
                 if (newInstances.isNotEmpty()) {
                     instances = newInstances
-                    val instanceNames = instances.map { it.name }
+                    val instanceNames = listOf(noSelectionLabel) + instances.map { it.name }
                     instanceSpinner.adapter = ArrayAdapter(
                         requireContext(),
                         android.R.layout.simple_spinner_dropdown_item,
                         instanceNames
                     )
                     // Apply pending instance selection restored from prefs
+                    var restoredInstanceIdx = 0 // default: "—"
                     pendingInstanceName?.let { name ->
                         val idx = instances.indexOfFirst { it.name == name }
                         if (idx >= 0) {
-                            currentInstance = instances[idx]
-                            currentClient = SquigLinkClient(currentInstance)
-                            instanceSpinner.setSelection(idx)
+                            // Не устанавливаем currentInstance здесь — onItemSelected
+                            // callback в setupInstanceSpinner обработает смену и вызовет loadDatabase()
+                            restoredInstanceIdx = idx + 1 // +1 for "—" at position 0
                         }
                     }
+                    instanceSpinner.setSelection(restoredInstanceIdx)
+                    instanceSelected = restoredInstanceIdx > 0
+                    // Каталог загружается через onItemSelected callback при setSelection
+                    // (если восстановлен — position > 0, если нет — position=0, ничего не грузится)
+
                     // Обновляем target instance spinner тоже
                     targetInstanceSpinner.adapter = ArrayAdapter(
                         requireContext(),
@@ -363,15 +390,20 @@ class SquigLiveFragment : Fragment() {
                         instanceNames
                     )
                     // Apply saved target instance selection
+                    var restoredTargetInstIdx = 0 // default: "—"
                     val savedTargetInst = squigPrefs?.getString(getString(R.string.key_squig_target_instance), null)
                     if (!savedTargetInst.isNullOrEmpty()) {
                         val idx = instances.indexOfFirst { it.name == savedTargetInst }
                         if (idx >= 0) {
-                            targetInstance = instances[idx]
-                            targetClient = SquigLinkClient(targetInstance)
-                            targetInstanceSpinner.setSelection(idx)
+                            // Не устанавливаем targetInstance здесь — onItemSelected
+                            // callback в setupTargetInstanceSpinner обработает смену
+                            restoredTargetInstIdx = idx + 1 // +1 for "—"
                         }
                     }
+                    targetInstanceSpinner.setSelection(restoredTargetInstIdx)
+                    targetInstanceSelected = restoredTargetInstIdx > 0
+                    // Target curves загружаются через onItemSelected callback при setSelection
+                    // (если восстановлен — position > 0, если нет — position=0, ничего не грузится)
                     Timber.i("squigsites загружен: ${instances.size} инстансов")
                 }
             } catch (e: Exception) {
@@ -391,18 +423,20 @@ class SquigLiveFragment : Fragment() {
                 if (curves.isNotEmpty()) {
                     targetCurves = curves
                     val currentSelection = selectedTargetName
+                    // Добавляем "—" первым элементом
+                    val spinnerItems = listOf(noSelectionLabel) + targetCurves
                     targetSpinner.adapter = ArrayAdapter(
                         requireContext(),
                         android.R.layout.simple_spinner_dropdown_item,
-                        targetCurves
+                        spinnerItems
                     )
-                    val idx = targetCurves.indexOf(currentSelection)
-                    if (idx >= 0) {
+                    if (currentSelection != noSelectionLabel && targetCurves.contains(currentSelection)) {
+                        val idx = targetCurves.indexOf(currentSelection) + 1 // +1 for "—"
                         targetSpinner.setSelection(idx)
                         loadTargetCurveData()
                     } else {
                         selectedTargetName = targetCurves.first()
-                        targetSpinner.setSelection(0)
+                        targetSpinner.setSelection(1) // first real target
                         loadTargetCurveData()
                     }
                     Timber.i("config.js загружен: ${targetCurves.size} target curves (from ${targetInstance.name})")
@@ -419,12 +453,15 @@ class SquigLiveFragment : Fragment() {
      * Настройка spinner для выбора инстанса SquigLink.
      */
     private fun setupInstanceSpinner() {
-        val instanceNames = instances.map { it.name }
+        val instanceNames = listOf(noSelectionLabel) + instances.map { it.name }
         instanceSpinner.adapter = ArrayAdapter(
             requireContext(),
             android.R.layout.simple_spinner_dropdown_item,
             instanceNames
         )
+        // По умолчанию — пустой выбор (позиция 0 = "—")
+        instanceSpinner.setSelection(0)
+        instanceSelected = false
         instanceSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(
                 parent: android.widget.AdapterView<*>?,
@@ -432,7 +469,18 @@ class SquigLiveFragment : Fragment() {
                 position: Int,
                 id: Long
             ) {
-                val newInstance = instances[position]
+                if (position == 0) {
+                    // "—" — ничего не выбрано, не загружаем каталог
+                    instanceSelected = false
+                    database = emptyList()
+                    resultsAdapter.updateResults(emptyList())
+                    updateCatalogInfo()
+                    showEmptyState(true)
+                    statusText.isVisible = false
+                    return
+                }
+                val newInstance = instances[position - 1]
+                instanceSelected = true
                 if (newInstance != currentInstance) {
                     currentInstance = newInstance
                     currentClient = SquigLinkClient(currentInstance)
@@ -457,12 +505,15 @@ class SquigLiveFragment : Fragment() {
      * При смене — перезагружает список target curves и саму target.
      */
     private fun setupTargetInstanceSpinner() {
-        val instanceNames = instances.map { it.name }
+        val instanceNames = listOf(noSelectionLabel) + instances.map { it.name }
         targetInstanceSpinner.adapter = ArrayAdapter(
             requireContext(),
             android.R.layout.simple_spinner_dropdown_item,
             instanceNames
         )
+        // По умолчанию — пустой выбор (позиция 0 = "—")
+        targetInstanceSpinner.setSelection(0)
+        targetInstanceSelected = false
         targetInstanceSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(
                 parent: android.widget.AdapterView<*>?,
@@ -470,7 +521,21 @@ class SquigLiveFragment : Fragment() {
                 position: Int,
                 id: Long
             ) {
-                val newTargetInstance = instances[position]
+                if (position == 0) {
+                    // "—" — ничего не выбрано, не загружаем target curves
+                    targetInstanceSelected = false
+                    targetSpinner.adapter = ArrayAdapter(
+                        requireContext(),
+                        android.R.layout.simple_spinner_dropdown_item,
+                        listOf(noSelectionLabel)
+                    )
+                    targetFR = null
+                    graphSurface.clearTargetCurve()
+                    updateActionButtons()
+                    return
+                }
+                val newTargetInstance = instances[position - 1]
+                targetInstanceSelected = true
                 if (newTargetInstance != targetInstance) {
                     targetInstance = newTargetInstance
                     targetClient = SquigLinkClient(targetInstance)
@@ -519,10 +584,10 @@ class SquigLiveFragment : Fragment() {
                     targetSpinner.adapter = ArrayAdapter(
                         requireContext(),
                         android.R.layout.simple_spinner_dropdown_item,
-                        targetCurves
+                        listOf(noSelectionLabel) + targetCurves
                     )
                 }
-                targetSpinner.setSelection(targetCurves.indexOf(selectedTargetName))
+                targetSpinner.setSelection(targetCurves.indexOf(selectedTargetName) + 1) // +1 for "—"
 
                 // Отображаем target на графике
                 val displayTarget = if (workingPreamp != 0.0) targetFR!!.applyPreamp(workingPreamp) else targetFR!!
@@ -557,10 +622,12 @@ class SquigLiveFragment : Fragment() {
      * При смене target — всегда перезагружает target curve (даже без замера).
      */
     private fun setupTargetSpinner() {
+        // По умолчанию — только "—"; список заполняется после выбора target instance
+        val targetNames = listOf(noSelectionLabel)
         targetSpinner.adapter = ArrayAdapter(
             requireContext(),
             android.R.layout.simple_spinner_dropdown_item,
-            targetCurves
+            targetNames
         )
         targetSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(
@@ -569,7 +636,8 @@ class SquigLiveFragment : Fragment() {
                 position: Int,
                 id: Long
             ) {
-                val newTarget = targetCurves[position]
+                if (position == 0) return // "—" — ничего не выбрано
+                val newTarget = targetCurves[position - 1]
                 if (newTarget != selectedTargetName) {
                     selectedTargetName = newTarget
                     // Persist target selection
@@ -1550,15 +1618,10 @@ class SquigLiveFragment : Fragment() {
         pendingPhoneFile = prefs.getString(getString(R.string.key_squig_phone_file), null)
 
         // Restore target instance selection (separate from measurement instance)
-        val savedTargetInstance = prefs.getString(getString(R.string.key_squig_target_instance), null)
-        if (!savedTargetInstance.isNullOrEmpty()) {
-            val idx = instances.indexOfFirst { it.name == savedTargetInstance }
-            if (idx >= 0) {
-                targetInstance = instances[idx]
-                targetClient = SquigLinkClient(targetInstance)
-                targetInstanceSpinner.setSelection(idx)
-            }
-        }
+        // Note: actual spinner selection is applied in loadSquigSites() callback
+        // where the adapter is populated. onItemSelected callback will set
+        // targetInstance/targetClient and trigger loadTargetCurves().
+        // Here we just leave the saved value in prefs for loadSquigSites() to read.
 
         // If target name restored, set selectedTargetName so loadTargetCurves
         // picks it up when it builds the adapter.

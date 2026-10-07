@@ -439,6 +439,14 @@
     <string name="onboarding_finish_header">JamesDSP is set-up!</string>
     <string name="onboarding_finish_caption">If you encounter any issues, please visit the troubleshooting options.</string>
 
+    <string name="onboarding_mode_select_title">Choose audio mode</string>
+    <string name="onboarding_mode_select_caption">Select how you want to process audio. You can change this later in settings.</string>
+    <string name="onboarding_mode_movie_title">Movie Mode (EQ only)</string>
+    <string name="onboarding_mode_movie_body">\u25CF No special permissions required — start immediately\n\u25CF Only GraphicEQ + Parametric EQ\n\u25CF Perfect A/V sync for video\n\u25CF No reverb, bass boost, or other effects</string>
+    <string name="onboarding_mode_capture_title">Standard / Low-latency (Full effects)</string>
+    <string name="onboarding_mode_capture_body">\u25CF Requires Shizuku or ADB setup\n\u25CF All JamesDSP effects (reverb, bass boost, convolver, etc.)\n\u25CF Audio capture loop with MediaProjection</string>
+    <string name="onboarding_mode_movie_set">Movie mode enabled. You can start using the app now.</string>
+
     <string name="limit_session_control_conflict_title">Disable other audio effect apps</string>
     <string name="limit_session_control_conflict">Audio effect apps using Android\'s built-in Dynamic Processing effect interfere with this app.</string>
     <string name="limit_unsupported_apps_title">Unsupported media apps</string>
@@ -1010,6 +1018,7 @@ Please press \'Continue\' below to re-do the setup wizard.</string>
     <string name="squig_channel_avg">Avg</string>
     <string name="squig_target_label">Target</string>
     <string name="squig_instance_label">Instance</string>
+    <string name="squig_no_selection">—</string>
     <string name="squig_measurement_loaded">Measurement loaded: %1$s</string>
     <string name="squig_autoeq_done">AutoEQ computed: %1$d bands, max deviation %2$.1f dB</string>
     <string name="squig_applied_to_peq">Applied %1$d bands to Parametric EQ</string>

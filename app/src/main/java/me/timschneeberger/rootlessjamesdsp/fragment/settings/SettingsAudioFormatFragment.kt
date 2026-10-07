@@ -20,6 +20,8 @@ import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.se
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.showAlert
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.toast
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.PermissionExtensions.hasDumpPermission
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.PermissionExtensions.hasRecordPermission
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.PermissionExtensions.hasNotificationPermission
 import me.timschneeberger.rootlessjamesdsp.utils.isRoot
 import me.timschneeberger.rootlessjamesdsp.utils.isRootless
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
@@ -140,6 +142,23 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                         R.string.processing_mode_movie,
                         R.string.processing_mode_movie_warning
                     )
+                }
+
+                // При переключении из Movie в Standard/Low-latency проверяем разрешения
+                if (oldMode == me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.MOVIE
+                    && mode != me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.MOVIE
+                    && isRootless()) {
+                    val hasPerms = requireContext().hasDumpPermission()
+                        && requireContext().hasRecordPermission()
+                        && requireContext().hasNotificationPermission()
+                    if (!hasPerms) {
+                        Timber.i("Switching from Movie to capture-loop mode; missing permissions, launching onboarding")
+                        startActivity(Intent(requireContext(), OnboardingActivity::class.java).apply {
+                            putExtra(OnboardingActivity.EXTRA_ROOTLESS_REDO_ADB_SETUP, true)
+                            putExtra(OnboardingActivity.EXTRA_TARGET_PROCESSING_MODE, modeInt)
+                        })
+                        return@setOnPreferenceChangeListener false
+                    }
                 }
 
                 // Suggest buffer adjustment when switching between Standard and Low-latency
@@ -321,6 +340,15 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
             android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
         return enabledServices.contains(expectedComponent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Перечитываем значение processing_mode из prefs, т.к. оно могло измениться
+        // через онбординг (переключение из Movie в Standard/Low-latency).
+        // PreferenceFragmentCompat не обновляет ListPreference автоматически при возврате.
+        val currentMode = preferences.get<String>(R.string.key_processing_mode)
+        processingMode?.value = currentMode
     }
 
     companion object {

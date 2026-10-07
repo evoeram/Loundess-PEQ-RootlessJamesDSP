@@ -189,7 +189,10 @@ class MainActivity : BaseActivity() {
             showLibraryLoadError()
 
         // Rootless: Check permissions and launch onboarding if required
-        if(SdkCheck.isQ && isRootless() && (!hasDumpPermission() || !hasRecordPermission())) {
+        // Movie Mode doesn't require DUMP or RECORD_AUDIO permissions
+        val currentMode = prefsApp.get<String>(R.string.key_processing_mode).toIntOrNull()
+        val isMovieMode = currentMode == 2 // ProcessingMode.MOVIE.value
+        if(SdkCheck.isQ && isRootless() && !isMovieMode && (!hasDumpPermission() || !hasRecordPermission())) {
             Timber.i("Launching onboarding (first boot: $firstBoot)")
 
             startActivity(Intent(this, OnboardingActivity::class.java).apply {
@@ -654,6 +657,15 @@ class MainActivity : BaseActivity() {
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun requestCapturePermission() {
+        // Movie Mode: no capture permission needed, start service directly
+        val currentMode = prefsApp.get<String>(R.string.key_processing_mode).toIntOrNull()
+        val isMovieMode = currentMode == 2 // ProcessingMode.MOVIE.value
+        if(isMovieMode) {
+            binding.powerToggle.isToggled = true
+            RootlessAudioProcessorService.start(this, null)
+            return
+        }
+
         if(app.mediaProjectionStartIntent != null && isRootless() && !SdkCheck.isVanillaIceCream) {
             binding.powerToggle.isToggled = true
             RootlessAudioProcessorService.start(this, app.mediaProjectionStartIntent)

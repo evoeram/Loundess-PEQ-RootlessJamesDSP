@@ -49,7 +49,7 @@
             app:unit="@string/audio_format_buffer_size_unit"
             app:labelMinWidth="120dp"
             app:minValue="128"
-            app:maxValue="16384"
+            app:maxValue="32768"
             app:defaultValue="@integer/default_audioformat_buffersize"
             app:allowDividerAbove="false"
             app:updatesContinuously="false"

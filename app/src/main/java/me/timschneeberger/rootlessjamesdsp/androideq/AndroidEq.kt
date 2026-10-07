@@ -60,6 +60,10 @@ object AndroidEq {
     @Volatile
     private var fitted: Fitted? = null
 
+    // Current smooth volume in dB (applied to new effects on creation)
+    @Volatile
+    private var smoothVolumeDb: Double = 0.0
+
     // Band counts are fixed when an effect is created, so stages are only reused for the same layout.
     // stages[0] is the left channel, stages[1] the right one.
     private class Fitted(val blockSize: Int, val sampleRate: Int, val stages: List<AndroidEqFitter.Stages>)
@@ -124,6 +128,14 @@ object AndroidEq {
                     }
                 }
                 effects += this
+                // Apply current smooth volume to this new effect (dB directly)
+                if (smoothVolumeDb != 0.0) {
+                    try {
+                        setInputGainAllChannelsTo(smoothVolumeDb.toFloat())
+                    } catch (ex: Exception) {
+                        Timber.w(ex, "Android EQ: failed to apply smooth volume on create")
+                    }
+                }
                 // A fit may have finished while this effect was being built
                 currentStages(s)?.takeIf { it !== bands }?.let { applyStages(this, it) }
             }
@@ -135,6 +147,24 @@ object AndroidEq {
 
     fun release(effect: DynamicsProcessing) {
         effects -= effect
+    }
+
+    /**
+     * Apply smooth volume (dB) to all active DynamicsProcessing effects.
+     * Used in Movie Mode where there is no AudioTrack to call setVolume() on.
+     * setInputGainAllChannelsTo() takes dB directly (0 dB = no change, -60 dB ≈ silence).
+     */
+    fun setSmoothVolumeDb(volumeDb: Double) {
+        smoothVolumeDb = volumeDb
+        val gainDb = volumeDb.toFloat()
+        effects.forEach { effect ->
+            try {
+                effect.setInputGainAllChannelsTo(gainDb)
+            } catch (ex: Exception) {
+                Timber.w(ex, "Android EQ: failed to set input gain for smooth volume")
+            }
+        }
+        Timber.d("Android EQ: smooth volume set to %.1f dB on ${effects.size} effect(s)", volumeDb)
     }
 
     private fun refit() {

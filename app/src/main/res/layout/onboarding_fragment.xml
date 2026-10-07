@@ -96,7 +96,8 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
-        <include layout="@layout/onboarding_page6" />
+        <include layout="@layout/onboarding_page7"
+            android:id="@+id/mode_select" />
     </FrameLayout>
 
     <FrameLayout
