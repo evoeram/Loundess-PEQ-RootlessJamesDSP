@@ -68,7 +68,7 @@
     <string-array name="processing_modes" translatable="false">
         <item>@string/processing_mode_standard</item>
         <item>@string/processing_mode_low_latency</item>
-        <item>@string/processing_mode_movie</item>
+        <item>@string/processing_mode_direct</item>
     </string-array>
 
     <string-array name="processing_modes_values" translatable="false">
@@ -81,12 +81,18 @@
         <item>@string/android_eq_latency_512</item>
         <item>@string/android_eq_latency_1024</item>
         <item>@string/android_eq_latency_2048</item>
+        <item>@string/android_eq_latency_4096</item>
+        <item>@string/android_eq_latency_8192</item>
+        <item>@string/android_eq_latency_16384</item>
     </string-array>
 
     <string-array name="android_eq_latency_modes_values" translatable="false">
         <item>512</item>
         <item>1024</item>
         <item>2048</item>
+        <item>4096</item>
+        <item>8192</item>
+        <item>16384</item>
     </string-array>
 
     <string-array name="reverb_presets" translatable="false">

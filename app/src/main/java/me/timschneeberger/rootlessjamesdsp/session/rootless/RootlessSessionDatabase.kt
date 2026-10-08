@@ -41,7 +41,7 @@ class RootlessSessionDatabase(context: Context) : BaseSessionDatabase(context) {
 
     override fun createSession(id: Int, uid: Int, packageName: String): MutedEffectSession? {
         if (AndroidEq.isEnabled) {
-            // Movie Mode: DynamicsProcessing встраивается в тракт приложения.
+            // Direct Mode: DynamicsProcessing встраивается в тракт приложения.
             // Capture loop не запускается — эффект живёт в audioMuteEffect.
             val effect = AndroidEq.create(id)
             if (effect == null) {
@@ -64,7 +64,7 @@ class RootlessSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         (item as MutedEffectSession).run {
             val effect = audioMuteEffect
             if (effect is DynamicsProcessing) {
-                // Movie Mode: освобождаем через AndroidEq
+                // Direct Mode: освобождаем через AndroidEq
                 AndroidEq.release(effect)
             }
             try {

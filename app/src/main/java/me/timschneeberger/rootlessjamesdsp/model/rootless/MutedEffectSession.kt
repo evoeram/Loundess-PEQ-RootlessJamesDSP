@@ -4,7 +4,7 @@ import android.media.audiofx.AudioEffect
 import me.timschneeberger.rootlessjamesdsp.model.IEffectSession
 
 /**
- * @param audioMuteEffect mute-эффект или DynamicsProcessing (в Movie Mode)
+ * @param audioMuteEffect mute-эффект или DynamicsProcessing (в Direct Mode)
  */
 data class MutedEffectSession(
     override var uid: Int,

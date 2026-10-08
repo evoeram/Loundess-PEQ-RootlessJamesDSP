@@ -187,7 +187,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     }
 
     override fun setGraphicEqInternal(enable: Boolean, bands: String): Boolean {
-        // Передаём EQ-кривую в AndroidEq (Movie Mode) — поддерживает per-channel стерео
+        // Передаём EQ-кривую в AndroidEq (Direct Mode) — поддерживает per-channel стерео
         // AndroidEq.setCurve парсит строку (включая STEREO_GRAPHIC_EQ_SPLIT) и запускает refit
         if (me.timschneeberger.rootlessjamesdsp.utils.SdkCheck.isPie)
             me.timschneeberger.rootlessjamesdsp.androideq.AndroidEq.setCurve(enable, bands)
@@ -248,7 +248,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     override fun supportsEelVmAccess(): Boolean { return true }
     override fun supportsCustomCrossfeed(): Boolean { return true }
     override fun supportsParametricEqCascade(): Boolean {
-        // В Movie Mode нативный PEQ-каскад недоступен — нет capture loop.
+        // В Direct Mode нативный PEQ-каскад недоступен — нет capture loop.
         // Fallback: PEQ мёрджится в GraphicEQ → AndroidEq (DynamicsProcessing).
         return !me.timschneeberger.rootlessjamesdsp.androideq.AndroidEq.isEnabled
     }

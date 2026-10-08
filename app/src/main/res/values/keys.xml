@@ -43,7 +43,7 @@
     <string name="key_audioformat_enhanced_processing" translatable="false">audioformat_enhanced_processing</string>
     <string name="key_audioformat_optimization_benchmark" translatable="false">audioformat_optimization_benchmark</string>
 
-    <!-- Processing mode (Кино / Стандартный / Низкая задержка) -->
+    <!-- Processing mode (Прямой / Стандартный / Низкая задержка) -->
     <string name="key_processing_mode" translatable="false">processing_mode</string>
     <!-- Android EQ mode (внутренние настройки) -->
     <string name="key_android_eq_enable" translatable="false">android_eq_enable</string>

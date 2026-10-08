@@ -71,14 +71,14 @@ AIDL-proxy нужен:
 `DynamicsProcessing` API работает через Android framework, а не через HAL.
 
 В root-режиме с AIDL-only HAL можно переключиться на rootless-режим:
-- Session 0 `DynamicsProcessing` через `AudioEffect` (как в Movie Mode)
+- Session 0 `DynamicsProcessing` через `AudioEffect` (как в Direct Mode)
 - Или capture loop (Standard/Low-Latency Mode)
 
 ### Оценка: 0 часов (уже реализовано в app)
 
 ## Текущее ограничение
 
-На Android 15+ с AIDL HAL: DynamicsProcessing (Movie Mode) ограничен 32 полосами
+На Android 15+ с AIDL HAL: DynamicsProcessing (Direct Mode) ограничен 32 полосами
 (вместо 128). Код в `AndroidEq.kt` уже детектит это через `SdkCheck.isVanillaIceCream`.
 
 На Android 16: ограничение сохраняется, плюс возможно полное отсутствие legacy C-API.

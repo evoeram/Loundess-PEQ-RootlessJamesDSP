@@ -71,7 +71,7 @@ adb shell ls /vendor/etc/vintf/manifest/ | grep audio
 
 **Если AIDL-only:**
 - Legacy C-API эффекты могут не загрузиться
-- Movie Mode (DynamicsProcessing) ограничен 32 полосами
+- Direct Mode (DynamicsProcessing) ограничен 32 полосами
 - **Решение:** используйте rootless-режим (capture loop) — он не зависит от HAL
 
 ### Шаг 5: Rootless fallback

@@ -79,7 +79,7 @@ The app works on **non-rooted devices** (via MediaProjection audio capture) and 
 | | Minimum | Recommended |
 |---|---|---|
 | Android version | 10 (API 29) | 12+ |
-| For Movie Mode | 9 (API 28, DynamicsProcessing) | 12+ |
+| For Direct Mode | 9 (API 28, DynamicsProcessing) | 12+ |
 | For root mode | Magisk / KernelSU / SukiSU / APatch | — |
 
 ---
@@ -276,11 +276,11 @@ The app supports three processing modes to balance DSP capability, latency, and 
 
 | Mode | Technology | Latency | Active DSP | Use Case |
 |---|---|---|---|---|
-| **Movie Mode** | `DynamicsProcessing` API (no capture loop) | ~10–40 ms | GraphicEQ + PEQ only | YouTube, Netflix, TikTok (A/V sync critical) |
+| **Direct Mode** | `DynamicsProcessing` API (no capture loop) | ~10–170 ms | GraphicEQ + PEQ only | YouTube, Netflix, TikTok (A/V sync critical) |
 | **Standard Mode** | Legacy MediaProjection capture loop | ~150–170 ms | Full JamesDSP engine | Music, podcasts, low-spec devices |
 | **Low-Latency Mode** | Optimized capture loop (small blocks, low-latency path) | ~20–80 ms | Full JamesDSP engine | Gaming, live streaming |
 
-### Movie Mode (Android EQ)
+### Direct Mode (Android EQ)
 
 Bypasses the capture pipeline entirely. Attaches a `DynamicsProcessing` effect (API 28+) directly to each app's audio session. The EQ curve is fitted across three stages (preEq + mbc + postEq) via least-squares regression with curvature penalty.
 
@@ -362,9 +362,9 @@ This fork adds **40+ commits, 130+ files changed, ~18,000 lines** on top of [Roo
 | NOS R2R Simulator | ❌ | ✅ Adjustable bit depth, tolerance, jitter |
 | Smooth Volume | ❌ | ✅ ~200 steps × 0.5 dB via AccessibilityService + overlay HUD |
 | Device Presets (auto-switch) | ❌ | ✅ Per-device preset binding, ask/overlay/dialog |
-| Movie Mode (DynamicsProcessing) | ❌ | ✅ 3-stage least-squares fitting |
+| Direct Mode (DynamicsProcessing) | ❌ | ✅ 3-stage least-squares fitting |
 | Low-Latency Mode | ❌ | ✅ QueueController + LatencyTuning |
-| Processing mode selection | Single mode | 3 modes (Standard / Low-Latency / Movie) |
+| Processing mode selection | Single mode | 3 modes (Standard / Low-Latency / Direct) |
 | GraphEQ import/export | ❌ | ✅ File-based preset management |
 | GraphEQ → PEQ converter | ❌ | ✅ Greedy biquad fitting (Nelder-Mead, RBJ Cookbook) |
 | LiveEQ channel switch | ❌ | ✅ L / L+R / R per-band in interactive editor |
@@ -428,7 +428,7 @@ Rootless mode inherits the same fundamental constraints as upstream:
 - Apps blocking internal audio capture remain unprocessed (e.g., Spotify, Google Chrome — [patch required](#spotify-support-patch))
 - Cannot coexist with some other audio effect apps using `DynamicsProcessing` API
 - Standard and Low-Latency modes add audio latency (capture loop)
-- Movie Mode bypasses these limitations but supports only EQ (no reverb/convolver/bass boost)
+- Direct Mode bypasses these limitations but supports only EQ (no reverb/convolver/bass boost)
 
 **Root mode has none of these limitations** — audio is processed directly in AudioFlinger.
 
@@ -485,7 +485,7 @@ For other apps: enable "Show universal patches" in ReVanced settings, select you
 
 ## Tests
 
-- `androideq/` — AndroidEq / AndroidEqFitter tests (Movie Mode)
+- `androideq/` — AndroidEq / AndroidEqFitter tests (Direct Mode)
 - `measurement/` — measurement pipeline tests
 - `model/` — model tests
 - `utils/ParametricEqResponseCalculatorTest.kt` — PEQ frequency response calculator tests

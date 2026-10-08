@@ -23,7 +23,7 @@ import kotlin.math.sqrt
  * response, with a curvature penalty that keeps block artifacts at the level of plain band averages.
  *
  * @param sampleRate частота дискретизации (обычно 48000)
- * @param blockSize размер FFT-блока DynamicsProcessing (512, 1024 или 2048)
+ * @param blockSize размер FFT-блока DynamicsProcessing (512–8192; MAX_BLOCKSIZE AOSP = 16384)
  * @param stageBands максимальное число полос на каждую стадию (128 по умолчанию, 32 на Android 15)
  */
 class AndroidEqFitter(val sampleRate: Int, val blockSize: Int, val stageBands: Int = STAGE_BANDS) {

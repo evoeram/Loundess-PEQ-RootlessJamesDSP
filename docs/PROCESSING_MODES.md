@@ -10,23 +10,23 @@ RootlessJamesDSP operates in three distinct processing modes to balance DSP capa
 
 | Mode | Technology Stack | Latency | Active DSP Capabilities | Primary Use Case |
 | :--- | :--- | :--- | :--- | :--- |
-| **Movie Mode** (*«Кино: Только EQ, идеальная синхронизация»*) | Direct `DynamicsProcessing` (Session 0 / App Session ID) without `capture loop` | ~10–40 ms (Block delay only) | GraphicEQ / PEQ (`preEq`, `mbc`, `postEq`) | YouTube, Netflix, TikTok (A/V sync critical) |
+| **Direct Mode** (*«Прямой: Только EQ, идеальная синхронизация»*) | Direct `DynamicsProcessing` (Session 0 / App Session ID) without `capture loop` | ~10–170 ms (Block delay only) | GraphicEQ / PEQ (`preEq`, `mbc`, `postEq`) | YouTube, Netflix, TikTok (A/V sync critical) |
 | **Standard Mode** (*«Стандартный»*) | Legacy `MediaProjection` Capture Loop (`AudioRecord` → C++ JamesDSP → `AudioTrack`) | ~150–170 ms | Full JamesDSP Engine (Reverb, Bass Boost, Convolver, Limiter) | Background music, podcasts, low-spec devices |
 | **Low-Latency Mode** (*«Игры и Стриминг»*) | Optimized Capture Loop (`readFrames`=960, `PERFORMANCE_MODE_LOW_LATENCY`, `QueueController`) | ~20–80 ms | Full JamesDSP Engine (Reverb, Bass Boost, Convolver, Limiter) | Mobile Gaming (PUBG, CoD), live streaming, video on flagship devices |
 
 ---
 
-## 🎬 1. Movie Mode (Android EQ Mode)
+## 🎬 1. Direct Mode (Android EQ Mode)
 
 ### Technical Implementation
-* **Bypassing the Capture Pipeline:** When Movie Mode is enabled, `startRecording()` completely halts the rootless capture loop (`AudioRecord` / `AudioTrack`). Instead, audio session IDs are polled via `sessionManager.pollOnce()`.
+* **Bypassing the Capture Pipeline:** When Direct Mode is enabled, `startRecording()` completely halts the rootless capture loop (`AudioRecord` / `AudioTrack`). Instead, audio session IDs are polled via `sessionManager.pollOnce()`.
 * **System Effect Hook:** The application attaches an AOSP `DynamicsProcessing` (API 28+) instance directly to each media playback session.
 * **Stage Distribution (`AndroidEq.kt` & `AndroidEqFitter.kt`):**
   * `preEq`: Up to 128 bands for initial frequency shaping.
   * `mbc` (Multiband Compressor): Configured as a static gain stage (`ratio=1`, `attack=3ms`, `release=80ms`).
   * `postEq`: Secondary gain stage for fine curve tuning.
   * `limiter`: Optional brickwall limiter to prevent clipping from EQ boosts.
-* **Frame Alignment:** `preferredFrameDuration` is specified as `(blockSize - 0.5) * 1000 / sampleRate` to force the system HAL to align frames strictly to the requested block size (default 1024 samples).
+* **Frame Alignment:** `preferredFrameDuration` is specified as `(blockSize - 0.5) * 1000 / sampleRate` to force the system HAL to align frames strictly to the requested block size (default 1024 samples; user-configurable 512–8192, AOSP `MAX_BLOCKSIZE` = 16384; non-power-of-2 sizes are rounded up by the effect).
 
 ### System Limitations & Edge Cases
 * **DSP Scope:** Reverb, convolution, spatial width, and dynamic bass boost are **inactive** because audio does not pass through the C++ JamesDSP engine.
@@ -60,7 +60,7 @@ RootlessJamesDSP operates in three distinct processing modes to balance DSP capa
 
 ```mermaid
 graph TD
-    subgraph "Movie Mode (Android EQ)"
+    subgraph "Direct Mode (Android EQ)"
         App1[Media App / YouTube] -->|AudioTrack Session ID| DP[Android DynamicsProcessing API 28+]
         DP -->|Direct Audio HAL Output| HAL[Audio HAL / Mixer]
         AEQ[AndroidEq.kt / AndroidEqFitter.kt] -->|Refit Gains / Bands| DP

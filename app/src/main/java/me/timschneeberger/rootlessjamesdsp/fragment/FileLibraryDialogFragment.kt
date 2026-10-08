@@ -38,6 +38,8 @@ import me.timschneeberger.rootlessjamesdsp.interop.JdspImpResToolbox
 import me.timschneeberger.rootlessjamesdsp.liveprog.EelParser
 import me.timschneeberger.rootlessjamesdsp.model.preset.Preset
 import me.timschneeberger.rootlessjamesdsp.preference.FileLibraryPreference
+import me.timschneeberger.rootlessjamesdsp.utils.DevicePresetManager
+import org.koin.android.ext.android.inject
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.showAlert
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.showInputAlert
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.toast
@@ -53,6 +55,8 @@ class FileLibraryDialogFragment : ListPreferenceDialogFragmentCompat(), TargetFr
     private val fileLibPreference by lazy {
         preference as FileLibraryPreference
     }
+
+    private val devicePresetManager: DevicePresetManager by inject()
 
     private var clickedEntryValue: CharSequence? = null
     private lateinit var dialog: AlertDialog
@@ -187,7 +191,12 @@ class FileLibraryDialogFragment : ListPreferenceDialogFragmentCompat(), TargetFr
                             autofill = true,
                             allowOverwrite = false
                         ) {
-                            selectedFile.renameTo(it)
+                            val renamed = selectedFile.renameTo(it)
+                            if (renamed && fileLibPreference.isPreset()) {
+                                // Назначения пресетов на устройства хранят имя файла —
+                                // обновляем их, иначе устройство будет искать старый файл
+                                devicePresetManager.renamePreset(selectedFile.name, it.name)
+                            }
                             requireContext().toast(getString(R.string.filelibrary_renamed, it.nameWithoutExtension))
                             refresh()
                         }

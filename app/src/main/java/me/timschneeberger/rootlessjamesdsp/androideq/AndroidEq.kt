@@ -16,7 +16,7 @@ import java.util.concurrent.CopyOnWriteArraySet
 import kotlin.math.ln
 
 /**
- * "Android EQ" mode (Movie Mode): instead of capturing audio, the EQ curve runs inside each app
+ * "Android EQ" mode (Direct Mode): instead of capturing audio, the EQ curve runs inside each app
  * through a DynamicsProcessing effect on its audio session. The effect sits in the app's own output
  * path, so the player's A/V clock stays correct; only the effect's block latency is added.
  *
@@ -151,7 +151,7 @@ object AndroidEq {
 
     /**
      * Apply smooth volume (dB) to all active DynamicsProcessing effects.
-     * Used in Movie Mode where there is no AudioTrack to call setVolume() on.
+     * Used in Direct Mode where there is no AudioTrack to call setVolume() on.
      * setInputGainAllChannelsTo() takes dB directly (0 dB = no change, -60 dB ≈ silence).
      */
     fun setSmoothVolumeDb(volumeDb: Double) {

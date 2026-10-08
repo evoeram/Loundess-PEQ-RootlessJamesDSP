@@ -38,10 +38,10 @@ AutoEQ использует базу данных измерений тысяч 
 |-------|-------------|-----------|--------------|------|
 | **Standard** | ✅ Полный нативный FIR | ✅ | ✅ | Capture loop → C++ JamesDSP |
 | **Low-Latency** | ✅ Полный нативный FIR | ✅ | ✅ | Оптимизированный capture loop |
-| **Movie Mode** | ⚠️ Конвертация в IIR biquad | ✅ | ✅ (через merge в GEQ) | DynamicsProcessing, нет capture loop |
+| **Direct Mode** | ⚠️ Конвертация в IIR biquad | ✅ | ✅ (через merge в GEQ) | DynamicsProcessing, нет capture loop |
 
-В Movie Mode MultiEQ (FIR) конвертируется в GraphicEQ-узлы и обрабатывается через
+В Direct Mode MultiEQ (FIR) конвертируется в GraphicEQ-узлы и обрабатывается через
 `DynamicsProcessing` (IIR biquad). FIR-характеристики (ripple, крутизна фильтров
 Butterworth/Chebyshev) не воспроизводятся точно — сохраняется только общая форма АЧХ.
 
-Ограничение Android 15+: в Movie Mode максимум 32 полосы (баг AIDL HAL).
+Ограничение Android 15+: в Direct Mode максимум 32 полосы (баг AIDL HAL).

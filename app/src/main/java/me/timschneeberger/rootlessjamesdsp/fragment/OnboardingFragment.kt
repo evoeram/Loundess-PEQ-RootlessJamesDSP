@@ -143,7 +143,7 @@ class OnboardingFragment : Fragment() {
 
         if(useRoot || redoAdbSetup) {
             pageMap.remove(PAGE_MODE_SELECT)
-            // Если переключаемся из Movie в capture-loop режим, оставляем PAGE_RUNTIME_PERMISSIONS,
+            // Если переключаемся из Direct в capture-loop режим, оставляем PAGE_RUNTIME_PERMISSIONS,
             // чтобы пользователь мог предоставить RECORD_AUDIO и POST_NOTIFICATIONS.
             // При обычном redoAdbSetup (без targetProcessingMode) — пропускаем runtime permissions.
             if (targetProcessingMode < 0) {
@@ -155,9 +155,9 @@ class OnboardingFragment : Fragment() {
 
         // Mode selection page
         val modePage = binding.modeSelect
-        modePage.modeMovieCard.setOnClickListener {
-            // Movie Mode: no permissions needed, finish setup immediately
-            finishMovieModeSetup()
+        modePage.modeDirectCard.setOnClickListener {
+            // Direct Mode: no permissions needed, finish setup immediately
+            finishDirectModeSetup()
         }
         modePage.modeCaptureCard.setOnClickListener {
             // Standard / Low-latency: proceed to method selection
@@ -368,7 +368,7 @@ class OnboardingFragment : Fragment() {
     @SuppressLint("ApplySharedPref")
     private fun finishSetup() {
 
-        // Применяем целевой режим обработки, если он задан (переключение из Movie в Standard/Low-latency)
+        // Применяем целевой режим обработки, если он задан (переключение из Direct в Standard/Low-latency)
         if(targetProcessingMode >= 0) {
             prefsApp.set(R.string.key_processing_mode, targetProcessingMode.toString(), async = false)
             Timber.i("Target processing mode applied: $targetProcessingMode")
@@ -398,15 +398,15 @@ class OnboardingFragment : Fragment() {
     }
 
     @SuppressLint("ApplySharedPref")
-    private fun finishMovieModeSetup() {
-        // Set processing mode to Movie
-        prefsApp.set(R.string.key_processing_mode, ProcessingMode.MOVIE.value.toString(), async = false)
-        Timber.i("Movie Mode selected during onboarding; skipping permission setup")
+    private fun finishDirectModeSetup() {
+        // Set processing mode to Direct
+        prefsApp.set(R.string.key_processing_mode, ProcessingMode.DIRECT.value.toString(), async = false)
+        Timber.i("Direct Mode selected during onboarding; skipping permission setup")
 
         // Mark setup as done
         prefsVar.set(R.string.key_first_boot, false)
 
-        context?.toast(R.string.onboarding_mode_movie_set)
+        context?.toast(R.string.onboarding_mode_direct_set)
 
         val intent = context?.let { Intent(it, MainActivity::class.java) } ?: return
         startActivity(intent)

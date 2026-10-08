@@ -136,23 +136,23 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                 val oldMode = me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.fromInt(oldModeInt)
                 val currentBuffer = preferences.get<Float>(R.string.key_audioformat_buffersize).toInt()
 
-                // Предупреждение при выборе Movie Mode
-                if (mode == me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.MOVIE) {
+                // Предупреждение при выборе Direct Mode
+                if (mode == me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.DIRECT) {
                     context?.showAlert(
-                        R.string.processing_mode_movie,
-                        R.string.processing_mode_movie_warning
+                        R.string.processing_mode_direct,
+                        R.string.processing_mode_direct_warning
                     )
                 }
 
-                // При переключении из Movie в Standard/Low-latency проверяем разрешения
-                if (oldMode == me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.MOVIE
-                    && mode != me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.MOVIE
+                // При переключении из Direct в Standard/Low-latency проверяем разрешения
+                if (oldMode == me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.DIRECT
+                    && mode != me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode.DIRECT
                     && isRootless()) {
                     val hasPerms = requireContext().hasDumpPermission()
                         && requireContext().hasRecordPermission()
                         && requireContext().hasNotificationPermission()
                     if (!hasPerms) {
-                        Timber.i("Switching from Movie to capture-loop mode; missing permissions, launching onboarding")
+                        Timber.i("Switching from Direct to capture-loop mode; missing permissions, launching onboarding")
                         startActivity(Intent(requireContext(), OnboardingActivity::class.java).apply {
                             putExtra(OnboardingActivity.EXTRA_ROOTLESS_REDO_ADB_SETUP, true)
                             putExtra(OnboardingActivity.EXTRA_TARGET_PROCESSING_MODE, modeInt)
@@ -345,7 +345,7 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     override fun onResume() {
         super.onResume()
         // Перечитываем значение processing_mode из prefs, т.к. оно могло измениться
-        // через онбординг (переключение из Movie в Standard/Low-latency).
+        // через онбординг (переключение из Direct в Standard/Low-latency).
         // PreferenceFragmentCompat не обновляет ListPreference автоматически при возврате.
         val currentMode = preferences.get<String>(R.string.key_processing_mode)
         processingMode?.value = currentMode

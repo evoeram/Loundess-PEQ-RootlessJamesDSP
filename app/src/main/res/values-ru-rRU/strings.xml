@@ -282,11 +282,11 @@
 
     <string name="onboarding_mode_select_title">Выбор режима звука</string>
     <string name="onboarding_mode_select_caption">Выберите способ обработки звука. Это можно изменить позже в настройках.</string>
-    <string name="onboarding_mode_movie_title">Кино (только EQ)</string>
-    <string name="onboarding_mode_movie_body">\u25CF Не требует специальных разрешений — можно начать сразу\n\u25CF Только GraphicEQ + параметрический EQ\n\u25CF Идеальная синхронизация A/V для видео\n\u25CF Без реверберации, бас-буста и других эффектов</string>
+    <string name="onboarding_mode_direct_title">Прямой (только EQ)</string>
+    <string name="onboarding_mode_direct_body">\u25CF Не требует специальных разрешений — можно начать сразу\n\u25CF Только GraphicEQ + параметрический EQ\n\u25CF Идеальная синхронизация A/V для видео\n\u25CF Без реверберации, бас-буста и других эффектов</string>
     <string name="onboarding_mode_capture_title">Стандартный / Низкая задержка (все эффекты)</string>
     <string name="onboarding_mode_capture_body">\u25CF Требуется настройка Shizuku или ADB\n\u25CF Все эффекты JamesDSP (реверберация, бас-буст, конволвер и т.д.)\n\u25CF Захват аудио через MediaProjection</string>
-    <string name="onboarding_mode_movie_set">Режим кино включён. Теперь можно пользоваться приложением.</string>
+    <string name="onboarding_mode_direct_set">Режим «Прямой» включён. Теперь можно пользоваться приложением.</string>
 
     <string name="limit_session_control_conflict_title">Отключение других приложений для обработки аудиоэффектов</string>
     <string name="limit_session_control_conflict">Приложения для обработки аудиоэффектов, использующие встроенный в Android эффект динамической обработки, нарушают работу данного приложения.</string>

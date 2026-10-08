@@ -441,11 +441,11 @@
 
     <string name="onboarding_mode_select_title">Choose audio mode</string>
     <string name="onboarding_mode_select_caption">Select how you want to process audio. You can change this later in settings.</string>
-    <string name="onboarding_mode_movie_title">Movie Mode (EQ only)</string>
-    <string name="onboarding_mode_movie_body">\u25CF No special permissions required — start immediately\n\u25CF Only GraphicEQ + Parametric EQ\n\u25CF Perfect A/V sync for video\n\u25CF No reverb, bass boost, or other effects</string>
+    <string name="onboarding_mode_direct_title">Direct Mode (EQ only)</string>
+    <string name="onboarding_mode_direct_body">\u25CF No special permissions required — start immediately\n\u25CF Only GraphicEQ + Parametric EQ\n\u25CF Perfect A/V sync for video\n\u25CF No reverb, bass boost, or other effects</string>
     <string name="onboarding_mode_capture_title">Standard / Low-latency (Full effects)</string>
     <string name="onboarding_mode_capture_body">\u25CF Requires Shizuku or ADB setup\n\u25CF All JamesDSP effects (reverb, bass boost, convolver, etc.)\n\u25CF Audio capture loop with MediaProjection</string>
-    <string name="onboarding_mode_movie_set">Movie mode enabled. You can start using the app now.</string>
+    <string name="onboarding_mode_direct_set">Direct mode enabled. You can start using the app now.</string>
 
     <string name="limit_session_control_conflict_title">Disable other audio effect apps</string>
     <string name="limit_session_control_conflict">Audio effect apps using Android\'s built-in Dynamic Processing effect interfere with this app.</string>
@@ -513,9 +513,9 @@
     <string name="processing_mode_standard_summary">Large buffers, all effects, maximum stability. Higher latency (~150–170 ms). Video may desync.</string>
     <string name="processing_mode_low_latency">Low-latency (Games)</string>
     <string name="processing_mode_low_latency_summary">Small blocks on the fast output path; all effects, reduced latency (~20–80 ms). Keeps video in sync.</string>
-    <string name="processing_mode_movie">Movie (EQ only, perfect sync)</string>
-    <string name="processing_mode_movie_summary">No capture loop — EQ applied inside each app via system DynamicsProcessing. Perfect A/V sync, but only EQ works (no reverb, bass-boost, etc.).</string>
-    <string name="processing_mode_movie_warning">Movie mode applies only the GraphicEQ + Parametric EQ curve inside each app via Android\'s DynamicsProcessing effect. All other JamesDSP effects (reverb, bass boost, stereo enhancement, compressor, etc.) are disabled in this mode. If you need those effects, switch to Standard or Low-latency mode.</string>
+    <string name="processing_mode_direct">Direct (EQ only, perfect sync)</string>
+    <string name="processing_mode_direct_summary">No capture loop — EQ applied inside each app via system DynamicsProcessing. Perfect A/V sync, but only EQ works (no reverb, bass-boost, etc.).</string>
+    <string name="processing_mode_direct_warning">Direct mode applies only the GraphicEQ + Parametric EQ curve inside each app via Android\'s DynamicsProcessing effect. All other JamesDSP effects (reverb, bass boost, stereo enhancement, compressor, etc.) are disabled in this mode. If you need those effects, switch to Standard or Low-latency mode.</string>
 
     <!-- Buffer size adjustment suggestions when switching processing modes -->
     <string name="buffer_suggest_low_latency_title">Increase buffer size?</string>
@@ -543,11 +543,14 @@
     <string name="smooth_volume_status_inactive">Inactive</string>
     <string name="smooth_volume_current">Current volume: %.1f dB</string>
     <!-- Android EQ internal settings -->
-    <string name="android_eq_latency">Movie mode block size</string>
+    <string name="android_eq_latency">Direct mode block size</string>
     <string name="android_eq_latency_512">512 samples (~10 ms, coarse bass)</string>
     <string name="android_eq_latency_1024">1024 samples (~20 ms, balanced)</string>
     <string name="android_eq_latency_2048">2048 samples (~40 ms, precise bass)</string>
-    <string name="android_eq_limiter">Movie mode limiter</string>
+    <string name="android_eq_latency_4096">4096 samples (~85 ms, extra-precise bass)</string>
+    <string name="android_eq_latency_8192">8192 samples (~170 ms, maximum precision)</string>
+    <string name="android_eq_latency_16384">16384 samples (~340 ms, finest detail, high memory use)</string>
+    <string name="android_eq_limiter">Direct mode limiter</string>
     <string name="android_eq_limiter_summary">Prevents clipping from EQ boosts</string>
     <!-- Low-latency internal settings -->
     <string name="audioformat_low_latency">Low-latency capture loop</string>

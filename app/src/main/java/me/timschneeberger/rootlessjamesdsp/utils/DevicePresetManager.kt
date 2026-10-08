@@ -148,6 +148,29 @@ class DevicePresetManager : KoinComponent {
     }
 
     /**
+     * Обновить назначения пресетов при переименовании пресета.
+     * Заменяет имя файла пресета в обоих хранилищах (перманентном и сессионном),
+     * иначе устройство будет пытаться загрузить уже несуществующий файл.
+     */
+    fun renamePreset(oldFileName: String, newFileName: String) {
+        if (oldFileName == newFileName) return
+        var updated = 0
+        for (store in listOf(storage, tempStorage)) {
+            val editor = store.edit()
+            store.all.forEach { (deviceId, value) ->
+                if (value == oldFileName) {
+                    editor.putString(deviceId, newFileName)
+                    updated++
+                }
+            }
+            editor.apply()
+        }
+        if (updated > 0) {
+            Timber.d("DevicePresetManager: renamePreset('$oldFileName' -> '$newFileName') updated $updated device assignment(s)")
+        }
+    }
+
+    /**
      * Проверяет, нужно ли спросить пользователя при подключении устройства.
      */
     fun shouldAskForPreset(profileId: String): Boolean {

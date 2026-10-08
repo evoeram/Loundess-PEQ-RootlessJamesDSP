@@ -101,7 +101,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     // Exclude restricted apps flag
     private var excludeRestrictedSessions = false
 
-    // Processing mode (Standard / Low-latency / Movie)
+    // Processing mode (Standard / Low-latency / Direct)
     private var processingMode: ProcessingMode = ProcessingMode.LOW_LATENCY
 
     // LatencyTracer для телеметрии (Low-latency mode)
@@ -184,7 +184,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         recreateRecorderRequested = false
 
         // Launch foreground service
-        val fgsType = if (processingMode == ProcessingMode.MOVIE)
+        val fgsType = if (processingMode == ProcessingMode.DIRECT)
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
         else
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
@@ -222,12 +222,12 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         notificationManager.cancel(Notifications.ID_SERVICE_SESSION_LOSS)
         notificationManager.cancel(Notifications.ID_SERVICE_APPCOMPAT)
 
-        // Setup media projection (not needed for Movie Mode)
-        val isMovieMode = processingMode == ProcessingMode.MOVIE
-        mediaProjectionStartIntent = if (isMovieMode) null
+        // Setup media projection (not needed for Direct Mode)
+        val isDirectMode = processingMode == ProcessingMode.DIRECT
+        mediaProjectionStartIntent = if (isDirectMode) null
             else intent.extras?.getParcelableAs(EXTRA_MEDIA_PROJECTION_DATA)
 
-        mediaProjection = if (isMovieMode) {
+        mediaProjection = if (isDirectMode) {
             null
         } else {
             try {
@@ -245,7 +245,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         mediaProjection?.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
 
-        if (mediaProjection != null || isMovieMode) {
+        if (mediaProjection != null || isDirectMode) {
             startRecording()
             sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STARTED))
         } else {
@@ -463,7 +463,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                         Timber.i("Processing mode set to $newMode")
                         processingMode = newMode
                         // Всегда перенастраиваем AndroidEq и перезапускаем capture loop.
-                        // При смене режима меняется supportsParametricEqCascade() (Movie→false, остальные→true),
+                        // При смене режима меняется supportsParametricEqCascade() (Direct→false, остальные→true),
                         // поэтому engine.syncWithPreferences() обязателен для перенастройки PEQ/GEQ.
                         AndroidEq.configure(androidEqSettings(newMode))
                         if (isRunning) {
@@ -487,7 +487,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
     /** Создаёт настройки AndroidEq из текущих preferences для заданного режима. */
     private fun androidEqSettings(mode: ProcessingMode = processingMode) = AndroidEq.Settings(
-        enabled = mode == ProcessingMode.MOVIE,
+        enabled = mode == ProcessingMode.DIRECT,
         blockSize = preferences.get<String>(R.string.key_android_eq_latency).toIntOrNull() ?: AndroidEq.DEFAULT_BLOCK_SIZE,
         limiter = preferences.get<Boolean>(R.string.key_android_eq_limiter),
         sampleRate = clamp(determineSamplingRate(), 44100, 48000),
@@ -506,17 +506,17 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     // Start recording thread
     @SuppressLint("BinaryOperationInTimber")
     private fun startRecording() {
-        // Movie Mode: capture loop не запускается.
+        // Direct Mode: capture loop не запускается.
         // AndroidEq создаёт DynamicsProcessing для каждой сессии приложения.
-        // RECORD_AUDIO permission не требуется в Movie Mode.
+        // RECORD_AUDIO permission не требуется в Direct Mode.
         if (AndroidEq.isEnabled) {
-            Timber.i("Movie Mode: skipping capture loop, using Android EQ only")
-            // В Movie Mode capture loop не запускается, но engine.sampleRate
+            Timber.i("Direct Mode: skipping capture loop, using Android EQ only")
+            // В Direct Mode capture loop не запускается, но engine.sampleRate
             // нужен для корректного расчёта biquad-коэффициентов PEQ (fallback-merge).
-            val movieSampleRate = clamp(determineSamplingRate(), 44100, 48000)
-            if(engine.sampleRate.toInt() != movieSampleRate) {
-                Timber.d("Movie Mode: sample rate set to ${movieSampleRate}Hz")
-                engine.sampleRate = movieSampleRate.toFloat()
+            val directSampleRate = clamp(determineSamplingRate(), 44100, 48000)
+            if(engine.sampleRate.toInt() != directSampleRate) {
+                Timber.d("Direct Mode: sample rate set to ${directSampleRate}Hz")
+                engine.sampleRate = directSampleRate.toFloat()
             }
             // Синхронизируем настройки: supportsParametricEqCascade() теперь false → PEQ через fallback
             engine.syncWithPreferences()
@@ -776,8 +776,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     }
 
     private fun applySmoothVolume() {
-        // Movie Mode: no AudioTrack, apply via DynamicsProcessing input gain
-        if (processingMode == ProcessingMode.MOVIE) {
+        // Direct Mode: no AudioTrack, apply via DynamicsProcessing input gain
+        if (processingMode == ProcessingMode.DIRECT) {
             AndroidEq.setSmoothVolumeDb(smoothVolumeDb)
             return
         }

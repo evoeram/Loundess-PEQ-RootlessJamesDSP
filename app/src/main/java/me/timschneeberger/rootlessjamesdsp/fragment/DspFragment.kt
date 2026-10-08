@@ -175,38 +175,38 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
     }
 
     /**
-     * В Movie Mode (Android EQ) capture loop не запускается, поэтому плагины
+     * В Direct Mode (Android EQ) capture loop не запускается, поэтому плагины
      * JamesDSP (компрессор, бас, реверберация и т.д.) не работают.
      * Скрываем их карточки, оставляя только EQ (GraphicEQ + PEQ).
      */
     private fun updateCardVisibility() {
         val modeInt = prefsApp.get<String>(R.string.key_processing_mode).toIntOrNull() ?: 1
         val mode = ProcessingMode.fromInt(modeInt)
-        val movieMode = mode == ProcessingMode.MOVIE
+        val directMode = mode == ProcessingMode.DIRECT
 
-        // В Movie Mode доступны только EQ-карточки (GEQ + PEQ через AndroidEq/DynamicsProcessing);
+        // В Direct Mode доступны только EQ-карточки (GEQ + PEQ через AndroidEq/DynamicsProcessing);
         // Multi EQ — нативный плагин JamesDSP, требует capture loop — скрываем
-        binding.cardEq.isVisible = !movieMode
+        binding.cardEq.isVisible = !directMode
         // Остальные плагины тоже требуют capture loop — скрываем
-        binding.cardCompressor.isVisible = !movieMode
-        binding.cardBass.isVisible = !movieMode
-        binding.cardDdc.isVisible = !movieMode
-        binding.cardConvolver.isVisible = !movieMode
-        binding.cardLiveprog.isVisible = !movieMode
-        binding.cardTube.isVisible = !movieMode
-        binding.cardHarmonicExpander.isVisible = !movieMode
-        binding.cardSubharmonicExpander.isVisible = !movieMode
-        binding.cardNosr2r.isVisible = !movieMode
-        binding.cardStereowide.isVisible = !movieMode
-        binding.cardCrossfeed.isVisible = !movieMode
-        binding.cardReverb.isVisible = !movieMode
-        binding.cardLoudness.isVisible = !movieMode
+        binding.cardCompressor.isVisible = !directMode
+        binding.cardBass.isVisible = !directMode
+        binding.cardDdc.isVisible = !directMode
+        binding.cardConvolver.isVisible = !directMode
+        binding.cardLiveprog.isVisible = !directMode
+        binding.cardTube.isVisible = !directMode
+        binding.cardHarmonicExpander.isVisible = !directMode
+        binding.cardSubharmonicExpander.isVisible = !directMode
+        binding.cardNosr2r.isVisible = !directMode
+        binding.cardStereowide.isVisible = !directMode
+        binding.cardCrossfeed.isVisible = !directMode
+        binding.cardReverb.isVisible = !directMode
+        binding.cardLoudness.isVisible = !directMode
         // Output control (limiter) тоже не работает без capture loop
-        binding.cardOutputControl.isVisible = !movieMode
+        binding.cardOutputControl.isVisible = !directMode
         // Measurement (MEOW) бесполезен без capture loop
-        binding.cardSquig.isVisible = !movieMode
-        binding.cardSquigPreview.isVisible = !movieMode
-        binding.cardMeasurement.isVisible = !movieMode
+        binding.cardSquig.isVisible = !directMode
+        binding.cardSquigPreview.isVisible = !directMode
+        binding.cardMeasurement.isVisible = !directMode
     }
 
     private fun hideTranslationNotice() {

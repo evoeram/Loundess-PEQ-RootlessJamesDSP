@@ -48,7 +48,7 @@
 
             <com.google.android.material.card.MaterialCardView
                 style="?attr/materialCardViewStyle"
-                android:id="@+id/mode_movie_card"
+                android:id="@+id/mode_direct_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_margin="8dp"
@@ -60,17 +60,17 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
                     <TextView
-                        android:id="@+id/mode_movie_title"
+                        android:id="@+id/mode_direct_title"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginBottom="8dp"
-                        android:text="@string/onboarding_mode_movie_title"
+                        android:text="@string/onboarding_mode_direct_title"
                         android:textAppearance="?attr/textAppearanceTitleLarge" />
                     <TextView
-                        android:id="@+id/mode_movie_body"
+                        android:id="@+id/mode_direct_body"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/onboarding_mode_movie_body"
+                        android:text="@string/onboarding_mode_direct_body"
                         android:textAppearance="?attr/textAppearanceBody1" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
