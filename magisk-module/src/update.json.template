@@ -1,0 +1,6 @@
+{
+  "version": "{{MODULE_VERSION}}",
+  "versionCode": {{MODULE_VERSION_CODE}},
+  "zipUrl": "https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases/download/{{TAG}}/ainur_jamesdsp-peq-loudness-{{MODULE_VERSION}}.zip",
+  "changelog": "https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases/tag/{{TAG}}"
+}

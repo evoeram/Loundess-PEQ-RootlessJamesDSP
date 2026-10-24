@@ -27,3 +27,6 @@ PLAN.md
 RECON_REPORT.md
 /build-jamesdsp-effect-*/
 build_debug.log
+
+# Magisk module build staging
+/magisk-module/build/

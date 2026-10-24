@@ -1,0 +1,8 @@
+id=ainur_jamesdsp
+name=JamesDSP Manager (PEQ+Loudness Enhanced)
+version={{MODULE_VERSION}} ({{BUILD_DATE}})
+versionCode={{MODULE_VERSION_CODE}}
+author=james34602, zackptg5, ahrion, evoeram
+description={{MODULE_DESCRIPTION}}
+support=https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP
+updateJson={{UPDATE_JSON_URL}}
