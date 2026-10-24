@@ -1,22 +1,15 @@
 #!/system/bin/sh
+# Uninstall script: remove our patched config overlays.
+# The real device configs are untouched (we only ever wrote to $MODPATH),
+# so removing the module restores the originals automatically via Magisk.
+# This just cleans up any stray state files.
+
 MODDIR=${0%/*}
-INFO=/modules/.ainur_jamesdsp-files
-MODID=ainur_jamesdsp
-LIBDIR=/system/vendor
-MODPATH=$MODDIR
-if [ -f $INFO ]; then
-  while read LINE; do
-    if [ "$(echo -n $LINE | tail -c 1)" == "~" ]; then
-      continue
-    elif [ -f "$LINE~" ]; then
-      mv -f $LINE~ $LINE
-    else
-      rm -f $LINE
-      while true; do
-        LINE=$(dirname $LINE)
-        [ "$(ls -A $LINE 2>/dev/null)" ] && break 1 || rm -rf $LINE
-      done
-    fi
-  done < $INFO
-  rm -f $INFO
-fi
+
+# Remove boot watchdog state
+rm -f "$MODDIR/.boot_incomplete" "$MODDIR/.boot_strikes" "$MODDIR/.source_config" "$MODDIR/boot.log"
+
+# Remove AML fragment if we wrote one
+rm -f "$MODDIR/aml.sh"
+
+echo "- JamesDSP module removed; original audio config restored"

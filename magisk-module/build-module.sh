@@ -5,51 +5,75 @@
 # Packages the module zip from:
 #   - libjamesdsp_effect.so built by the app's Gradle/CMake pipeline
 #     (target "jamesdsp_effect" in app/src/main/cpp/CMakeLists.txt; renamed to
-#     libjamesdsp.so inside the module, same as manual releases up to v6.3.6)
-#   - static templates in magisk-module/src/ (scripts + audio_effects configs)
+#     libjamesdsp.so and staged per-ABI into libs/<abi>/, same as release
+#     v6.3.10; the installer copies them to the device's soundfx paths)
+#   - static templates in magisk-module/src/ (scripts only; the installer
+#     patches the device's live audio_effects configs at install time)
 #
 # Usage:
-#   ./build-module.sh -v v6.3.7-peq-loudness -c 111 [-d "release notes"]
-#                     [-a /path/to/root-universal-release.apk] [--no-updatejson]
+#   ./build-module.sh
+#     -> builds the released configuration: v6.3.10-peq-loudness, code 114
 #
-#   -v  module version string, e.g. v6.3.7-peq-loudness (required)
+#   ./build-module.sh -v v6.3.11-peq-loudness -c 115 [-d "release notes"]
+#                     [-a /path/to/root-universal-release.apk]
+#                     [-D YYYY-MM-DD] [--updatejson]
+#
+#   -v  module version string (default: v6.3.10-peq-loudness)
 #   -c  module versionCode, integer, must be greater than the previous one
-#   -d  release notes appended to the module description
+#       (default: 114)
+#   -d  release notes appended after the base description line. When omitted
+#       for the default version, the v6.3.8 HAL-fix notes of the released
+#       v6.3.10 are used, so a bare run reproduces the release module.prop
 #   -a  path to a prebuilt root *universal* APK; when omitted the script uses
 #       the most recent local build, or runs "./gradlew assembleRootFullRelease"
 #       if none exists
-#   --no-updatejson  leave module.prop updateJson empty (auto-update disabled)
+#   -D  build date stamped into module.prop (default: today; use
+#       -D 2026-10-06 to reproduce the released v6.3.10 verbatim)
+#   --updatejson     fill module.prop updateJson with the auto-update URL
+#   --no-updatejson  (default) leave updateJson empty, like all releases
 #
 # Output: magisk-module/ainur_jamesdsp-peq-loudness-<version>.zip and a
-# rendered update.json in magisk-module/build/ (attach it to the release —
-# module.prop points auto-update checks at releases/latest/download/update.json).
+# rendered update.json in magisk-module/build/ (attach it to the release as
+# an asset; do NOT put it inside the zip — v6.3.10-style modules ship none).
 # ============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+DEFAULT_VERSION="v6.3.10-peq-loudness"
+DEFAULT_VERSION_CODE="114"
+DEFAULT_NOTES="v6.3.8: Fix 32-bit audio HAL support - stage .so to lib AND lib64 soundfx paths (Qualcomm/OPLUS devices run 32-bit audio HAL that loads from /vendor/lib/soundfx). Patch ALL audio_effects configs, not just the first. Restart audio HAL on boot."
+
 VERSION=""
 VERSION_CODE=""
 NOTES=""
 APK=""
-SET_UPDATE_JSON=1
+BUILD_DATE="$(date +%Y-%m-%d)"
+SET_UPDATE_JSON=0
+VERSION_EXPLICIT=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -v) VERSION="$2"; shift 2 ;;
+        -v) VERSION="$2"; VERSION_EXPLICIT=1; shift 2 ;;
         -c) VERSION_CODE="$2"; shift 2 ;;
         -d) NOTES="$2"; shift 2 ;;
         -a) APK="$2"; shift 2 ;;
+        -D) BUILD_DATE="$2"; shift 2 ;;
+        --updatejson) SET_UPDATE_JSON=1; shift ;;
         --no-updatejson) SET_UPDATE_JSON=0; shift ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
-[[ -n "$VERSION" && -n "$VERSION_CODE" ]] || {
-    grep '^# *Usage' -A 12 "$0" | sed 's/^# \{0,2\}//' >&2
-    exit 1
-}
+[[ -z "$VERSION" ]] && VERSION="$DEFAULT_VERSION"
+if [[ -z "$VERSION_CODE" ]]; then
+    if [[ $VERSION_EXPLICIT -eq 1 ]]; then
+        echo "versionCode (-c) is required when -v is given" >&2
+        exit 1
+    fi
+    VERSION_CODE="$DEFAULT_VERSION_CODE"
+fi
 [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || { echo "versionCode must be an integer" >&2; exit 1; }
 
 TAG="$VERSION"   # release tag convention: tag name == module version
@@ -73,46 +97,57 @@ fi
 echo "== Using APK: $APK =="
 
 # ---------------------------------------------------------------------------
-# 2. Extract libjamesdsp_effect.so per ABI and strip it
+# 2. Stage libjamesdsp.so per ABI as libs/<abi>/
 # ---------------------------------------------------------------------------
-STRIP="$(command -v llvm-strip || true)"
-NDK_DIR="${ANDROID_NDK_HOME:-$LOCALAPPDATA/Android/Sdk/ndk/27.2.12479018}"
-[[ -z "$STRIP" && -x "$NDK_DIR/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip.exe" ]] && \
-    STRIP="$NDK_DIR/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip.exe"
-
+# Prefer the unstripped CMake output (RelWithDebInfo obj dir): released
+# modules ship unstripped libs (debug info kept for crash symbolication).
+# The APK copy is AGP-stripped and only used as a CI fallback.
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-mkdir -p "$TMP/arm64" "$TMP/arm32"
-unzip -o -q -j "$APK" "lib/arm64-v8a/libjamesdsp_effect.so"   -d "$TMP/arm64"
-unzip -o -q -j "$APK" "lib/armeabi-v7a/libjamesdsp_effect.so" -d "$TMP/arm32"
-
-install -D "$TMP/arm64/libjamesdsp_effect.so" "$STAGING/system/vendor/lib64/soundfx/libjamesdsp.so"
-install -D "$TMP/arm32/libjamesdsp_effect.so" "$STAGING/system/vendor/lib/soundfx/libjamesdsp.so"
-[[ -n "$STRIP" ]] && "$STRIP" \
-    "$STAGING/system/vendor/lib64/soundfx/libjamesdsp.so" \
-    "$STAGING/system/vendor/lib/soundfx/libjamesdsp.so"
-
-# Sanity check: the AudioEffect entry point symbol name must be present
-grep -qa "AELI" "$STAGING/system/vendor/lib64/soundfx/libjamesdsp.so" || {
-    echo "ERROR: AELI (AUDIO_EFFECT_LIBRARY_INFO_SYM) not found in built lib" >&2; exit 1; }
+for ABI in arm64-v8a armeabi-v7a x86 x86_64; do
+    DEST="$STAGING/libs/$ABI/libjamesdsp.so"
+    mkdir -p "$STAGING/libs/$ABI"
+    SRC="$(ls -t "$REPO_ROOT"/app/build/intermediates/cxx/*/*/obj/"$ABI"/libjamesdsp_effect.so 2>/dev/null | head -1 || true)"
+    if [[ -n "$SRC" ]]; then
+        echo "== $ABI: unstripped CMake output ($(wc -c < "$SRC" | tr -d ' ') bytes)"
+    else
+        unzip -o -q -j "$APK" "lib/$ABI/libjamesdsp_effect.so" -d "$TMP/$ABI" || {
+            echo "ERROR: no CMake obj lib and lib/$ABI/libjamesdsp_effect.so not found in APK" >&2
+            exit 1
+        }
+        SRC="$TMP/$ABI/libjamesdsp_effect.so"
+        echo "== $ABI: APK fallback (stripped by AGP)"
+    fi
+    cp "$SRC" "$DEST"
+    # Sanity check: the AudioEffect entry point symbol name must be present
+    grep -qa "AELI" "$DEST" || {
+        echo "ERROR: AELI (AUDIO_EFFECT_LIBRARY_INFO_SYM) not found in $DEST" >&2
+        exit 1
+    }
+done
 
 # ---------------------------------------------------------------------------
-# 3. Copy static templates
+# 3. Copy static templates (scripts only — no audio_effects configs)
 # ---------------------------------------------------------------------------
-mkdir -p "$STAGING/system"
-cp -r "$SCRIPT_DIR/src/system/." "$STAGING/system/"
-cp "$SCRIPT_DIR/src/customize.sh" "$SCRIPT_DIR/src/service.sh" \
-   "$SCRIPT_DIR/src/uninstall.sh" "$SCRIPT_DIR/src/changelog.md" "$STAGING/"
+cp "$SCRIPT_DIR"/src/customize.sh "$SCRIPT_DIR"/src/service.sh \
+   "$SCRIPT_DIR"/src/uninstall.sh "$SCRIPT_DIR"/src/post-fs-data.sh "$STAGING/"
+mkdir -p "$STAGING/common"
+cp "$SCRIPT_DIR"/src/common/patch_audio_config.sh "$STAGING/common/"
 
 # ---------------------------------------------------------------------------
 # 4. Render module.prop / update.json
 # ---------------------------------------------------------------------------
-DATE="$(date +%Y-%m-%d)"
-DESC="JamesDSP with PEQ biquad cascade and loudness correction (Fletcher-Munson) support via AudioEffect API. Based on RootlessJamesDSP fork Loundess-PEQ."
-[[ -n "$NOTES" ]] && DESC="$DESC $VERSION: $NOTES"
+DESC_BASE="JamesDSP with PEQ biquad cascade and loudness correction (Fletcher-Munson) support via AudioEffect API."
+if [[ -n "$NOTES" ]]; then
+    DESC="$DESC_BASE $NOTES"
+elif [[ "$VERSION" == "$DEFAULT_VERSION" ]]; then
+    DESC="$DESC_BASE $DEFAULT_NOTES"
+else
+    DESC="$DESC_BASE"
+fi
 
 if [[ $SET_UPDATE_JSON -eq 1 ]]; then
     UPD_VALUE="$UPDATE_JSON_URL"
@@ -120,17 +155,19 @@ else
     UPD_VALUE=""
 fi
 
+mkdir -p "$SCRIPT_DIR/build"
 sed -e "s|{{MODULE_VERSION}}|$VERSION|g" \
     -e "s|{{MODULE_VERSION_CODE}}|$VERSION_CODE|g" \
-    -e "s|{{BUILD_DATE}}|$DATE|g" \
+    -e "s|{{BUILD_DATE}}|$BUILD_DATE|g" \
     -e "s|{{MODULE_DESCRIPTION}}|$DESC|g" \
     -e "s|{{UPDATE_JSON_URL}}|$UPD_VALUE|g" \
     "$SCRIPT_DIR/src/module.prop.template" > "$STAGING/module.prop"
 
+# update.json is a release asset only — it must not end up inside the zip
 sed -e "s|{{MODULE_VERSION}}|$VERSION|g" \
     -e "s|{{MODULE_VERSION_CODE}}|$VERSION_CODE|g" \
     -e "s|{{TAG}}|$TAG|g" \
-    "$SCRIPT_DIR/src/update.json.template" > "$STAGING/update.json"
+    "$SCRIPT_DIR/src/update.json.template" > "$SCRIPT_DIR/build/update.json"
 
 # ---------------------------------------------------------------------------
 # 5. Zip
@@ -150,8 +187,6 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
             z.write(p, os.path.relpath(p, src))
 PY
 fi
-
-mv "$STAGING/update.json" "$SCRIPT_DIR/build/update.json"
 
 echo ""
 echo "== Built: $OUT =="
