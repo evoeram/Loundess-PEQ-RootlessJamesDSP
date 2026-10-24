@@ -1,0 +1,4 @@
+# Keep shell scripts and module templates executable-safe (LF only)
+*.sh text eol=lf
+magisk-module/src/** text eol=lf
+magisk-module/src/*.template text eol=lf
