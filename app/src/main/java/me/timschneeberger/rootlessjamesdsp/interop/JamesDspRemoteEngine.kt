@@ -133,12 +133,10 @@ class JamesDspRemoteEngine(
         ) == AudioEffect.SUCCESS
     }
 
-    override fun setPostGainDb(postGain: Float): Boolean {
-        // Legacy 3-float payload: understood by both old and new system-side
-        // effect libraries, and never touches the limiter enable flag.
+    override fun setSmoothVolumeDb(db: Double): Boolean {
         return effect.setParameterFloatArray(
-            1500,
-            floatArrayOf(-0.1f, 60f, postGain)
+            1501,
+            floatArrayOf(db.toFloat())
         ) == AudioEffect.SUCCESS
     }
 

@@ -289,9 +289,9 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
      * Apply smooth volume to all active root DSP sessions.
      *
      * In root mode there is no AudioTrack to call setVolume() on (unlike rootless).
-     * Instead, we apply the dB value as post-gain to every active JamesDspRemoteEngine
-     * session via setPostGainDb(). The DSP engine's post-gain stage is the equivalent
-     * of controlling output volume.
+     * Instead, we apply the dB value to a dedicated smooth-volume gain stage on every
+     * active JamesDspRemoteEngine session via setSmoothVolumeDb(). The stage stays
+     * active even when the user disables the output control card.
      */
     private fun applySmoothVolume() {
         if (!smoothVolumeEnabled) return
@@ -304,7 +304,7 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
         app.rootSessionDatabase.sessionList.values.forEach { session ->
             val engine = (session as? RemoteEffectSession)?.effect ?: return@forEach
             try {
-                engine.setPostGainDb(postGain)
+                engine.setSmoothVolumeDb(postGain.toDouble())
                 applied++
             } catch (e: Exception) {
                 Timber.w(e, "Failed to apply smooth volume to session ${session.packageName}")

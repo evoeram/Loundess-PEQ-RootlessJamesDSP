@@ -98,8 +98,8 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         return JamesDspWrapper.setLimiter(handle, enable, threshold, release) and JamesDspWrapper.setPostGain(handle, postGain)
     }
 
-    override fun setPostGainDb(postGain: Float): Boolean {
-        return JamesDspWrapper.setPostGain(handle, postGain)
+    override fun setSmoothVolumeDb(db: Double): Boolean {
+        return JamesDspWrapper.setSmoothVolumeGain(handle, db)
     }
 
     override fun setReverb(enable: Boolean, preset: Int): Boolean

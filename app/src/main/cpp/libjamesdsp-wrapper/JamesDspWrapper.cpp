@@ -391,8 +391,16 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLimiter(JNIEnv *env, jobject obj, jlong self, jboolean enable, jfloat threshold, jfloat release)
 {
     DECLARE_DSP_B
-    JamesDSPSetLimiterEnabled(dsp, enable ? 1 : 0);
+    JamesDSPSetOutputControlEnabled(dsp, enable ? 1 : 0);
     JLimiterSetCoefficients(dsp, threshold, release);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setSmoothVolumeGain(JNIEnv *env, jobject obj, jlong self, jdouble gainDb)
+{
+    DECLARE_DSP_B
+    JamesDSPSetSmoothVolumeGain(dsp, gainDb);
     return true;
 }
 

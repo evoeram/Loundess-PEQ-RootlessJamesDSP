@@ -639,7 +639,10 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
     // Effect config
     abstract fun setOutputControl(enable: Boolean, threshold: Float, release: Float, postGain: Float): Boolean
-    abstract fun setPostGainDb(postGain: Float): Boolean
+
+    // Smooth volume (root mode): separate output gain stage that stays active
+    // even when the user disables the output control card
+    open fun setSmoothVolumeDb(db: Double): Boolean = false
     abstract fun setReverb(enable: Boolean, preset: Int): Boolean
     abstract fun setCrossfeed(enable: Boolean, mode: Int): Boolean
     abstract fun setCrossfeedCustom(enable: Boolean, fcut: Int, feed: Int): Boolean
