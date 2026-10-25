@@ -12,9 +12,9 @@
 #
 # Usage:
 #   ./build-module.sh
-#     -> builds the released configuration: v6.3.10-peq-loudness, code 114
+#     -> builds the released configuration: v6.3.14-peq-loudness, code 60314
 #
-#   ./build-module.sh -v v6.3.11-peq-loudness -c 115 [-d "release notes"]
+#   ./build-module.sh -v v6.3.15-peq-loudness -c 60315 [-d "release notes"]
 #                     [-a /path/to/root-universal-release.apk]
 #                     [-D YYYY-MM-DD] [--updatejson]
 #
@@ -42,9 +42,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-DEFAULT_VERSION="v6.3.10-peq-loudness"
-DEFAULT_VERSION_CODE="114"
-DEFAULT_NOTES="v6.3.8: Fix 32-bit audio HAL support - stage .so to lib AND lib64 soundfx paths (Qualcomm/OPLUS devices run 32-bit audio HAL that loads from /vendor/lib/soundfx). Patch ALL audio_effects configs, not just the first. Restart audio HAL on boot."
+DEFAULT_VERSION="v6.3.14-peq-loudness"
+DEFAULT_VERSION_CODE="60314"
+DEFAULT_NOTES="v6.3.14: Rootless engine now follows dynamic output sample rates (USB hardware rate and active content rate up to 384 kHz) instead of a fixed 44.1/48 kHz clamp."
 
 VERSION=""
 VERSION_CODE=""
