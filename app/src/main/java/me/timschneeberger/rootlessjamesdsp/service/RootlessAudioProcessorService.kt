@@ -812,23 +812,25 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                         val samples = recorder.read(shortBuffer, 0, shortBuffer.size, AudioRecord.READ_BLOCKING)
                         if (samples > 0) {
                             tracer.onRead(recorder, shortBuffer, samples)
-                            // Обработка всегда выполняется — DSP state должен быть непрерывным
-                            engine.processInt16(shortBuffer, shortOutBuffer)
+                            // Обработка всегда выполняется — DSP state должен быть непрерывным.
+                            // In-place: тот же буфер подаётся на вход и выход — нативный движок
+                            // видит один и тот же массив и обрабатывает без промежуточной копии
+                            engine.processInt16(shortBuffer, shortBuffer)
                             tracer.onProcessed()
                             if (queueControl.shouldDrop()) {
                                 tracer.onDropped(samples / 2)
                             } else {
-                                queueControl.shape(track, shortOutBuffer, samples)
+                                queueControl.shape(track, shortBuffer, samples)
                                 val written = writeShortOutput(
                                     track,
                                     outputFormat.encoding,
-                                    shortOutBuffer,
+                                    shortBuffer,
                                     samples,
                                     floatOutBuffer,
                                     packedOutputBuffer,
                                 )
                                 queueControl.onWritten(written)
-                                tracer.onWritten(track, shortOutBuffer, written)
+                                tracer.onWritten(track, shortBuffer, written)
                             }
                         }
                     }
@@ -836,23 +838,25 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                         val samples = recorder.read(floatBuffer, 0, floatBuffer.size, AudioRecord.READ_BLOCKING)
                         if (samples > 0) {
                             tracer.onRead(recorder, floatBuffer, samples)
-                            // Обработка всегда выполняется — DSP state должен быть непрерывным
-                            engine.processFloat(floatBuffer, floatOutBuffer)
+                            // Обработка всегда выполняется — DSP state должен быть непрерывным.
+                            // In-place: тот же буфер подаётся на вход и выход — нативный движок
+                            // видит один и тот же массив и обрабатывает без промежуточной копии
+                            engine.processFloat(floatBuffer, floatBuffer)
                             tracer.onProcessed()
                             if (queueControl.shouldDrop()) {
                                 tracer.onDropped(samples / 2)
                             } else {
-                                queueControl.shape(track, floatOutBuffer, samples)
+                                queueControl.shape(track, floatBuffer, samples)
                                 val written = writeFloatOutput(
                                     track,
                                     outputFormat.encoding,
-                                    floatOutBuffer,
+                                    floatBuffer,
                                     samples,
                                     shortOutBuffer,
                                     packedOutputBuffer,
                                 )
                                 queueControl.onWritten(written)
-                                tracer.onWritten(track, floatOutBuffer, written)
+                                tracer.onWritten(track, floatBuffer, written)
                             }
                         }
                     }

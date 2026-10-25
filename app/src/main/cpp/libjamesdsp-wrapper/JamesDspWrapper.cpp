@@ -236,16 +236,71 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
 {
     DECLARE_DSP_V
 
-    jsize inputLength;
-    if(size < 0)
-        inputLength = env->GetArrayLength(inputObj);
-    else
-        inputLength = size;
+    if(inputObj == nullptr || outputObj == nullptr)
+        return;
     if(offset < 0)
         offset = 0;
+    const jsize inputArrayLength = env->GetArrayLength(inputObj);
+    const jsize outputArrayLength = env->GetArrayLength(outputObj);
+    const jsize inputLength = size < 0 ? inputArrayLength - offset : size;
+    if(offset > inputArrayLength || inputLength < 2 || (inputLength & 1) != 0 ||
+       inputLength > inputArrayLength - offset || outputArrayLength < inputLength)
+        return;
+
+    if (env->IsSameObject(inputObj, outputObj))
+    {
+        auto input = env->GetShortArrayElements(inputObj, nullptr);
+        if(input == nullptr)
+            return;
+        dsp->processInt16Multiplexd(dsp, input + offset, input + offset, inputLength / 2);
+
+        // In-place path: the DSP output lives at input[offset..], so the PEQ and
+        // loudness cascade must process that same region, not the buffer start.
+        if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
+        {
+            size_t frames = inputLength / 2;
+            std::vector<float> tmp(frames * 2);
+            for (size_t i = 0; i < frames * 2; ++i)
+                tmp[i] = (float)(input[offset + i]) / 32768.0f;
+            wrapper->parametricEq->processInterleaved(tmp.data(), frames);
+            if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
+                wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
+            for (size_t i = 0; i < frames * 2; ++i)
+            {
+                float v = tmp[i] * 32768.0f;
+                if (v > 32767.0f) v = 32767.0f;
+                if (v < -32768.0f) v = -32768.0f;
+                input[offset + i] = (short)v;
+            }
+        }
+        else if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
+        {
+            size_t frames = inputLength / 2;
+            std::vector<float> tmp(frames * 2);
+            for (size_t i = 0; i < frames * 2; ++i)
+                tmp[i] = (float)(input[offset + i]) / 32768.0f;
+            wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
+            for (size_t i = 0; i < frames * 2; ++i)
+            {
+                float v = tmp[i] * 32768.0f;
+                if (v > 32767.0f) v = 32767.0f;
+                if (v < -32768.0f) v = -32768.0f;
+                input[offset + i] = (short)v;
+            }
+        }
+
+        env->ReleaseShortArrayElements(inputObj, input, 0);
+        return;
+    }
 
     auto input = env->GetShortArrayElements(inputObj, nullptr);
     auto output = env->GetShortArrayElements(outputObj, nullptr);
+    if(input == nullptr || output == nullptr)
+    {
+        if(input != nullptr) env->ReleaseShortArrayElements(inputObj, input, JNI_ABORT);
+        if(output != nullptr) env->ReleaseShortArrayElements(outputObj, output, JNI_ABORT);
+        return;
+    }
     // DSP пишет в output[0..], поэтому PEQ и loudness тоже должны
     // читать/писать с начала буфера. Раньше использовался offsetIdx * 2,
     // что при offset > 0 приводило к обработке мусора и пропуску начала.
@@ -296,16 +351,35 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt32(JN
 {
     DECLARE_DSP_V
 
-    jsize inputLength;
-    if(size < 0)
-        inputLength = env->GetArrayLength(inputObj);
-    else
-        inputLength = size;
+    if(inputObj == nullptr || outputObj == nullptr)
+        return;
     if(offset < 0)
         offset = 0;
+    const jsize inputArrayLength = env->GetArrayLength(inputObj);
+    const jsize outputArrayLength = env->GetArrayLength(outputObj);
+    const jsize inputLength = size < 0 ? inputArrayLength - offset : size;
+    if(offset > inputArrayLength || inputLength < 2 || (inputLength & 1) != 0 ||
+       inputLength > inputArrayLength - offset || outputArrayLength < inputLength)
+        return;
+
+    if (env->IsSameObject(inputObj, outputObj))
+    {
+        auto input = env->GetIntArrayElements(inputObj, nullptr);
+        if(input == nullptr)
+            return;
+        dsp->processInt32Multiplexd(dsp, input + offset, input + offset, inputLength / 2);
+        env->ReleaseIntArrayElements(inputObj, input, 0);
+        return;
+    }
 
     auto input = env->GetIntArrayElements(inputObj, nullptr);
     auto output = env->GetIntArrayElements(outputObj, nullptr);
+    if(input == nullptr || output == nullptr)
+    {
+        if(input != nullptr) env->ReleaseIntArrayElements(inputObj, input, JNI_ABORT);
+        if(output != nullptr) env->ReleaseIntArrayElements(outputObj, output, JNI_ABORT);
+        return;
+    }
     dsp->processInt32Multiplexd(dsp, input + offset, output, inputLength / 2);
     env->ReleaseIntArrayElements(inputObj, input, JNI_ABORT);
     env->ReleaseIntArrayElements(outputObj, output, 0);
@@ -355,16 +429,44 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
 {
     DECLARE_DSP_V
 
-    jsize inputLength;
-    if(size < 0)
-        inputLength = env->GetArrayLength(inputObj);
-    else
-        inputLength = size;
+    if(inputObj == nullptr || outputObj == nullptr)
+        return;
     if(offset < 0)
         offset = 0;
+    const jsize inputArrayLength = env->GetArrayLength(inputObj);
+    const jsize outputArrayLength = env->GetArrayLength(outputObj);
+    const jsize inputLength = size < 0 ? inputArrayLength - offset : size;
+    if(offset > inputArrayLength || inputLength < 2 || (inputLength & 1) != 0 ||
+       inputLength > inputArrayLength - offset || outputArrayLength < inputLength)
+        return;
+
+    if (env->IsSameObject(inputObj, outputObj))
+    {
+        auto input = env->GetFloatArrayElements(inputObj, nullptr);
+        if(input == nullptr)
+            return;
+        dsp->processFloatMultiplexd(dsp, input + offset, input + offset, inputLength / 2);
+
+        // In-place path: the DSP output lives at input[offset..], so the PEQ and
+        // loudness cascade must process that same region, not the buffer start.
+        if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
+            wrapper->parametricEq->processInterleaved(input + offset, inputLength / 2);
+
+        if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
+            wrapper->loudnessCorrection->processInterleaved(input + offset, inputLength / 2);
+
+        env->ReleaseFloatArrayElements(inputObj, input, 0);
+        return;
+    }
 
     auto input = env->GetFloatArrayElements(inputObj, nullptr);
     auto output = env->GetFloatArrayElements(outputObj, nullptr);
+    if(input == nullptr || output == nullptr)
+    {
+        if(input != nullptr) env->ReleaseFloatArrayElements(inputObj, input, JNI_ABORT);
+        if(output != nullptr) env->ReleaseFloatArrayElements(outputObj, output, JNI_ABORT);
+        return;
+    }
 
     // DSP пишет в output[0..], поэтому PEQ и loudness тоже должны
     // читать/писать с начала буфера. Раньше использовался offset * 2,
@@ -482,6 +584,13 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setCompander(JN
 {
     DECLARE_DSP_B
 
+    if(bands == nullptr)
+    {
+        LOGW("JamesDspWrapper::setCompander: Compander band pointer is NULL. Disabling compander");
+        CompressorDisable(dsp);
+        return true;
+    }
+
     if(env->GetArrayLength(bands) != 14)
     {
         LOGE("JamesDspWrapper::setCompander: Invalid compander data. 14 semicolon-separated fields expected, "
@@ -489,15 +598,11 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setCompander(JN
         return false;
     }
 
-    if(bands == nullptr)
-    {
-        LOGW("JamesDspWrapper::setCompander: Compander band pointer is NULL. Disabling compander");
-        MultimodalEqualizerDisable(dsp);
-        return true;
-    }
-
     if(enable)
     {
+        // Disable before re-configuring so the realtime thread never touches a
+        // half-updated state (fixes stuck/garbled compander state on preset switch)
+        CompressorDisable(dsp);
         CompressorSetParam(dsp, timeConstant, granularity, tfresolution, 0);
         auto* nativeBands = (env->GetDoubleArrayElements(bands, nullptr));
         CompressorSetGain(dsp, nativeBands, nativeBands + 7, 1);
@@ -518,6 +623,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setReverb(JNIEn
     DECLARE_DSP_B
     if(enable)
     {
+        // Disable before re-configuring: Reverb_SetParam rewrites the reverb
+        // state that the realtime thread is reading (stuck/garbled reverb)
+        ReverbDisable(dsp);
         Reverb_SetParam(dsp, preset);
         ReverbEnable(dsp);
     }
@@ -602,6 +710,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setCrossfeed(JN
                                                                              jboolean enable, jint mode, jint customFcut, jint customFeed)
 {
     DECLARE_DSP_B
+    // Disable before re-configuring: CrossfeedChangeMode/BS2BInit rewrite state
+    // that the realtime thread is reading (stuck crossfeed on mode switch)
+    CrossfeedDisable(dsp);
     if(mode == 99)
     {
         memset(&dsp->advXF.bs2b, 0, sizeof(dsp->advXF.bs2b));
@@ -750,6 +861,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLiveprog(JNI
     LiveProgDisable(dsp);
 
     const char *nativeString = env->GetStringUTFChars(liveprogContent, nullptr);
+    if(nativeString == nullptr)
+        return false;
     if(strlen(nativeString) < 1) {
         LOGD("JamesDspWrapper::setLiveprog: empty file")
         env->ReleaseStringUTFChars(liveprogContent, nativeString);
@@ -761,28 +874,30 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLiveprog(JNI
     int ret = LiveProgStringParser(dsp, (char*)nativeString); // Ignore constness, libjamesdsp does not modify it
     env->ReleaseStringUTFChars(liveprogContent, nativeString);
 
-    // Workaround due to library bug
-    jdsp_unlock(dsp);
-
-    const char* errorString = NSEEL_code_getcodeerror(dsp->eel.vm);
-    if(errorString != nullptr)
+    // NSEEL_code_getcodeerror may return NULL; route it through std::string so
+    // NewStringUTF never receives a dangling or null pointer
+    const char *compileError = NSEEL_code_getcodeerror(dsp->eel.vm);
+    const std::string errorString = compileError != nullptr ? compileError : "";
+    if(!errorString.empty())
     {
-        LOGW("JamesDspWrapper::setLiveprog: NSEEL_code_getcodeerror: Syntax error in script file, cannot load. Reason: %s", errorString);
+        LOGW("JamesDspWrapper::setLiveprog: NSEEL_code_getcodeerror: Syntax error in script file, cannot load. Reason: %s", errorString.c_str());
     }
     if(ret <= 0)
     {
         LOGW("JamesDspWrapper::setLiveprog: %s", checkErrorCode(ret));
     }
 
-    jstring errorStringJni = env->NewStringUTF(errorString);
+    jstring errorStringJni = env->NewStringUTF(errorString.c_str());
     env->CallVoidMethod(wrapper->callbackInterface, wrapper->callbackOnLiveprogResult, ret, id, errorStringJni);
     env->DeleteLocalRef(errorStringJni);
 
-    if(enable)
+    // Only enable the engine when the script actually compiled; a broken
+    // script must never enter the audio path
+    if(enable && ret > 0)
         LiveProgEnable(dsp);
     else
         LiveProgDisable(dsp);
-    return true;
+    return ret > 0;
 }
 
 

@@ -49,6 +49,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     {
         if(!enabled || handle == 0L)
         {
+            if (input === output) return
             if(offset < 0 && length < 0) {
                 input.copyInto(output)
             }
@@ -65,6 +66,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     {
         if(!enabled || handle == 0L)
         {
+            if (input === output) return
             if(offset < 0 && length < 0) {
                 input.copyInto(output)
             }
@@ -81,6 +83,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     {
         if(!enabled || handle == 0L)
         {
+            if (input === output) return
             if(offset < 0 && length < 0) {
                 input.copyInto(output)
             }
