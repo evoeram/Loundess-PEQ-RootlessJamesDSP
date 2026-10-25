@@ -29,8 +29,9 @@
 #       if none exists
 #   -D  build date stamped into module.prop (default: today; use
 #       -D 2026-10-06 to reproduce the released v6.3.10 verbatim)
-#   --updatejson     fill module.prop updateJson with the auto-update URL
-#   --no-updatejson  (default) leave updateJson empty, like all releases
+#   --updatejson     (default) fill module.prop updateJson with the
+#                    auto-update URL (releases/latest/download/update.json)
+#   --no-updatejson  leave module.prop updateJson empty (like v6.3.10)
 #
 # Output: magisk-module/ainur_jamesdsp-peq-loudness-<version>.zip and a
 # rendered update.json in magisk-module/build/ (attach it to the release as
@@ -50,7 +51,7 @@ VERSION_CODE=""
 NOTES=""
 APK=""
 BUILD_DATE="$(date +%Y-%m-%d)"
-SET_UPDATE_JSON=0
+SET_UPDATE_JSON=1
 VERSION_EXPLICIT=0
 
 while [[ $# -gt 0 ]]; do

@@ -219,6 +219,12 @@ jobs:
           name: magisk-module
           path: dist
 
+      - name: Flatten module files
+        if: ${{ needs.module.result == 'success' }}
+        run: |
+          [ -f dist/build/update.json ] && mv -v dist/build/update.json dist/update.json || true
+          ls -l dist/
+
       - name: Changelog
         uses: ardalanamini/auto-changelog@v3
         id: changelog
