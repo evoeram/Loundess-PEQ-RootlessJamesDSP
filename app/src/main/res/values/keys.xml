@@ -206,6 +206,7 @@
     <string name="key_loudness_subsonic_order" translatable="false">loudness_subsonic_order</string>
     <string name="key_loudness_subsonic_q" translatable="false">loudness_subsonic_q</string>
 
+    <string name="key_output_control_enable" translatable="false">output_control_enable</string>
     <string name="key_limiter_threshold" translatable="false">limiter_threshold</string>
     <string name="key_limiter_release" translatable="false">limiter_release</string>
     <string name="key_output_postgain" translatable="false">output_postgain</string>

@@ -126,14 +126,16 @@ class JamesDspRemoteEngine(
         super.close()
     }
 
-    override fun setOutputControl(threshold: Float, release: Float, postGain: Float): Boolean {
+    override fun setOutputControl(enable: Boolean, threshold: Float, release: Float, postGain: Float): Boolean {
         return effect.setParameterFloatArray(
             1500,
-            floatArrayOf(threshold, release, postGain)
+            floatArrayOf(threshold, release, postGain, if (enable) 1f else 0f)
         ) == AudioEffect.SUCCESS
     }
 
     override fun setPostGainDb(postGain: Float): Boolean {
+        // Legacy 3-float payload: understood by both old and new system-side
+        // effect libraries, and never touches the limiter enable flag.
         return effect.setParameterFloatArray(
             1500,
             floatArrayOf(-0.1f, 60f, postGain)

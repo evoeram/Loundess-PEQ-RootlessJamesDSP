@@ -94,8 +94,8 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     }
 
     // Effect config
-    override fun setOutputControl(threshold: Float, release: Float, postGain: Float): Boolean {
-        return JamesDspWrapper.setLimiter(handle, threshold, release) and JamesDspWrapper.setPostGain(handle, postGain)
+    override fun setOutputControl(enable: Boolean, threshold: Float, release: Float, postGain: Float): Boolean {
+        return JamesDspWrapper.setLimiter(handle, enable, threshold, release) and JamesDspWrapper.setPostGain(handle, postGain)
     }
 
     override fun setPostGainDb(postGain: Float): Boolean {

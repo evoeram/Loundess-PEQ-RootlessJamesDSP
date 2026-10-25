@@ -62,6 +62,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
         syncMutex.withLock {
             cache.select(Constants.PREF_OUTPUT)
+            val outputControlEnabled = cache.get(R.string.key_output_control_enable, true)
             val outputPostGain = cache.get(R.string.key_output_postgain, 0f)
             val limiterThreshold = cache.get(R.string.key_limiter_threshold, -0.1f)
             val limiterRelease = cache.get(R.string.key_limiter_release, 60f)
@@ -203,7 +204,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                 Timber.i("Committing new changes in namespace '$it'")
 
                 val result = when (it) {
-                    Constants.PREF_OUTPUT -> setOutputControl(limiterThreshold, limiterRelease, outputPostGain)
+                    Constants.PREF_OUTPUT -> setOutputControl(outputControlEnabled, limiterThreshold, limiterRelease, outputPostGain)
                     Constants.PREF_COMPANDER -> setCompander(compEnabled, compTimeConst, compGranularity, compTfTransforms, compResponse)
                     Constants.PREF_BASS -> setBassBoost(bassEnabled, bassMaxGain)
                     Constants.PREF_EQ -> setMultiEqualizer(eqEnabled, eqFilterType, eqInterpolationMode, eqBands)
@@ -637,7 +638,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         }
 
     // Effect config
-    abstract fun setOutputControl(threshold: Float, release: Float, postGain: Float): Boolean
+    abstract fun setOutputControl(enable: Boolean, threshold: Float, release: Float, postGain: Float): Boolean
     abstract fun setPostGainDb(postGain: Float): Boolean
     abstract fun setReverb(enable: Boolean, preset: Int): Boolean
     abstract fun setCrossfeed(enable: Boolean, mode: Int): Boolean
