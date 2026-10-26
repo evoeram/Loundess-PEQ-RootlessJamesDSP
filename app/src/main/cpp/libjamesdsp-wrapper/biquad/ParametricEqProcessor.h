@@ -17,9 +17,11 @@
 #pragma once
 
 #include "BiQuad.h"
+#include <atomic>
 #include <vector>
 #include <cstdint>
 #include <cstddef>
+#include <memory>
 #include <string>
 
 // Filter type codes (match Kotlin ParametricEqFilterType enum codes)
@@ -88,7 +90,7 @@ public:
     // Enable/disable the entire PEQ
     void setEnabled(bool enabled);
 
-    bool isEnabled() const { return enabled; }
+    bool isEnabled() const { return enabled.load(std::memory_order_acquire); }
 
     // Process interleaved stereo float audio in-place.
     // Each frame is [L, R]. n = number of frames (not samples).
@@ -111,12 +113,22 @@ private:
         double preampLinear;  // linear gain = 10^(gain/20) for preamp bands
     };
 
-    std::vector<BandState> bandStates;
-    double sampleRate;
-    double preampLinear; // linear gain = 10^(preampDb/20)
-    bool enabled;
+    // Immutable-after-publish band chain. configure() builds a fresh chain and
+    // publishes it via std::atomic_store; the audio thread takes a shared
+    // reference per block (std::atomic_load), so a reconfigure during playback
+    // can never free or tear the chain being processed. Biquad state inside a
+    // published chain is touched only by the (single) audio thread.
+    struct ChainConfig
+    {
+        std::vector<BandState> bands;
+        double preampLinear;
+    };
+    std::shared_ptr<ChainConfig> publishedChain;
 
-    // Temp buffers for deinterleaved processing
+    std::atomic<bool> enabled;
+    double sampleRate;  // config thread only
+
+    // Temp buffers for deinterleaved processing (audio thread only)
     std::vector<float> tmpL;
     std::vector<float> tmpR;
 

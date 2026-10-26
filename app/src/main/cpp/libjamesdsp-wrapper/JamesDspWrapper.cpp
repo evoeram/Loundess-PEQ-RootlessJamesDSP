@@ -909,6 +909,16 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_enumerateEelVar
     // Return empty array if DECLARE failed
     DECLARE_DSP(array.getJavaReference())
 
+    // The VM table is rebuilt by LiveProgStringParser (under jdsp_lock) when a
+    // script is (re)loaded; enumerate under the same lock and bail out when no
+    // VM exists, otherwise this races with the parser and can read freed memory
+    jdsp_lock(dsp);
+    if(dsp->eel.vm == nullptr)
+    {
+        jdsp_unlock(dsp);
+        return array.getJavaReference();
+    }
+
     auto *ctx = (compileContext*)dsp->eel.vm;
     for (int i = 0; i < ctx->varTable_numBlocks; i++)
     {
@@ -921,12 +931,13 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_enumerateEelVar
             if (ctx->varTable_Names[i][j])
             {
                 const char* name = ctx->varTable_Names[i][j];
-                const char* value;
-
-                if(isString)
-                    value = valid;
-                else
-                    value = std::to_string(ctx->varTable_Values[i][j]).c_str();
+                // Keep the string in a named local: std::to_string(...).c_str()
+                // returns a pointer into a temporary that dies at the end of
+                // the full expression (dangling pointer / use-after-free)
+                const std::string numericValue = isString
+                    ? std::string()
+                    : std::to_string(ctx->varTable_Values[i][j]);
+                const char* value = isString ? valid : numericValue.c_str();
 
                 auto var = EelVmVariable(env, name, value, isString);
                 array.add(var.getJavaReference());
@@ -934,6 +945,7 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_enumerateEelVar
         }
     }
 
+    jdsp_unlock(dsp);
     return array.getJavaReference();
 }
 
@@ -942,35 +954,47 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_manipulateEelVa
                                                                                       jstring name, jfloat value)
 {
     DECLARE_DSP_B
+    const char *nativeName = env->GetStringUTFChars(name, nullptr);
+    if(nativeName == nullptr)
+        return false;
+
+    // Writing varTable_Values races with script execution on the audio thread;
+    // do it under jdsp_lock, and bail out when no VM is loaded
+    jdsp_lock(dsp);
+    if(dsp->eel.vm == nullptr)
+    {
+        jdsp_unlock(dsp);
+        env->ReleaseStringUTFChars(name, nativeName);
+        return false;
+    }
+
     auto* ctx = (compileContext*)dsp->eel.vm;
     for (int i = 0; i < ctx->varTable_numBlocks; i++)
     {
         for (int j = 0; j < NSEEL_VARS_PER_BLOCK; j++)
         {
-            const char *nativeName = env->GetStringUTFChars(name, nullptr);
             if(!ctx->varTable_Names[i][j] || std::strcmp(ctx->varTable_Names[i][j], nativeName) != 0)
-            {
-                env->ReleaseStringUTFChars(name, nativeName);
                 continue;
-            }
 
             const char *valid = nullptr;//(char*)GetStringForIndex(ctx->region_context, ctx->varTable_Values[i][j], 1);
             if(valid)
             {
                 LOGE("JamesDspWrapper::manipulateEelVariable: variable '%s' is a string; currently only numerical variables can be manipulated", nativeName);
+                jdsp_unlock(dsp);
                 env->ReleaseStringUTFChars(name, nativeName);
                 return false;
             }
 
             ctx->varTable_Values[i][j] = value;
 
+            jdsp_unlock(dsp);
             env->ReleaseStringUTFChars(name, nativeName);
             return true;
         }
     }
 
-    const char *nativeName = env->GetStringUTFChars(name, nullptr);
     LOGE("JamesDspWrapper::manipulateEelVariable: variable '%s' not found", nativeName);
+    jdsp_unlock(dsp);
     env->ReleaseStringUTFChars(name, nativeName);
     return false;
 }
@@ -980,8 +1004,10 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_freezeLiveprogE
                                                                                         jboolean freeze)
 {
     DECLARE_DSP_V
-    dsp->eel.active = !freeze;
-    LOGD("JamesDspWrapper::freezeLiveprogExecution: Liveprog execution has been %s", (freeze ? "frozen" : "resumed"));
+    jdsp_lock(dsp);
+    if(dsp->eel.vm != nullptr)
+        dsp->eel.active = !freeze;
+    jdsp_unlock(dsp);
 }
 
 extern "C" JNIEXPORT jstring JNICALL

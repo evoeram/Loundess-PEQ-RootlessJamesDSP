@@ -9,9 +9,8 @@
 #include <cstring>
 
 ParametricEqProcessor::ParametricEqProcessor()
-    : sampleRate(48000.0)
-    , preampLinear(1.0)
-    , enabled(false)
+    : enabled(false)
+    , sampleRate(48000.0)
 {
 }
 
@@ -22,10 +21,13 @@ ParametricEqProcessor::~ParametricEqProcessor()
 void ParametricEqProcessor::configure(double sr, const ParametricEqBandConfig* bands, size_t count, double preampDb)
 {
     sampleRate = sr;
-    preampLinear = std::pow(10.0, preampDb / 20.0);
 
-    bandStates.clear();
-    bandStates.reserve(count);
+    // Build the new chain out-of-line, then publish it atomically. The audio
+    // thread keeps a shared reference to the previous chain until its current
+    // block finishes, so reconfiguring during playback is safe.
+    auto next = std::make_shared<ChainConfig>();
+    next->preampLinear = std::pow(10.0, preampDb / 20.0);
+    next->bands.reserve(count);
 
     for (size_t i = 0; i < count; ++i)
     {
@@ -46,7 +48,7 @@ void ParametricEqProcessor::configure(double sr, const ParametricEqBandConfig* b
         {
             state.isPreamp = true;
             state.preampLinear = std::pow(10.0, cfg.gain / 20.0);
-            bandStates.push_back(std::move(state));
+            next->bands.push_back(std::move(state));
             continue;
         }
 
@@ -67,19 +69,27 @@ void ParametricEqProcessor::configure(double sr, const ParametricEqBandConfig* b
         state.bqL = BiQuad(bqt, cfg.gain, freq, sampleRate, q, false);
         state.bqR = BiQuad(bqt, cfg.gain, freq, sampleRate, q, false);
 
-        bandStates.push_back(std::move(state));
+        next->bands.push_back(std::move(state));
     }
+
+    std::atomic_store(&publishedChain, std::shared_ptr<ChainConfig>(std::move(next)));
 }
 
 void ParametricEqProcessor::setEnabled(bool en)
 {
-    enabled = en;
+    enabled.store(en, std::memory_order_release);
 }
 
 void ParametricEqProcessor::processInterleaved(float* data, size_t numFrames)
 {
-    if (!enabled || bandStates.empty())
+    if (!enabled.load(std::memory_order_acquire))
         return;
+
+    {
+        std::shared_ptr<ChainConfig> chain = std::atomic_load(&publishedChain);
+        if (!chain || chain->bands.empty())
+            return;
+    }
 
     // Ensure temp buffers are large enough
     if (tmpL.size() < numFrames)
@@ -107,12 +117,22 @@ void ParametricEqProcessor::processInterleaved(float* data, size_t numFrames)
 
 void ParametricEqProcessor::processDeinterleaved(float* left, float* right, size_t numFrames)
 {
-    if (!enabled || bandStates.empty())
+    if (!enabled.load(std::memory_order_acquire))
         return;
 
+    // Shared reference to the published chain: a concurrent configure() may
+    // swap publishedChain, but the chain held here stays alive (with its
+    // biquad state) until this block ends
+    std::shared_ptr<ChainConfig> chain = std::atomic_load(&publishedChain);
+    if (!chain || chain->bands.empty())
+        return;
+
+    std::vector<BandState>& bandStates = chain->bands;
+
     // Apply preamp
-    if (preampLinear != 1.0)
+    if (chain->preampLinear != 1.0)
     {
+        const double preampLinear = chain->preampLinear;
         for (size_t i = 0; i < numFrames; ++i)
         {
             left[i]  = (float)(left[i]  * preampLinear);
