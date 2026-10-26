@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
 import android.content.res.Configuration.ORIENTATION_LANDSCAPE
+import android.media.AudioManager
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -20,10 +21,13 @@ import me.timschneeberger.rootlessjamesdsp.activity.ParametricEqualizerActivity
 import me.timschneeberger.rootlessjamesdsp.fragment.LiveEqBottomSheet
 import me.timschneeberger.rootlessjamesdsp.adapter.ParametricEqBandAdapter
 import me.timschneeberger.rootlessjamesdsp.databinding.FragmentParametricEqBinding
+import me.timschneeberger.rootlessjamesdsp.model.ApoImportResult
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
+import me.timschneeberger.rootlessjamesdsp.utils.AudioSampleRateDetector
+import me.timschneeberger.rootlessjamesdsp.utils.BiquadUtils
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
@@ -68,11 +72,12 @@ class ParametricEqualizerFragment : Fragment() {
                 save()
                 updateViewState()
                 val msg = getString(R.string.peq_import_success, adapter.bands.size)
+                var toast = msg
                 if (result.skippedFilters > 0) {
-                    requireContext().toast("$msg (${result.skippedFilters} unsupported filters skipped)")
-                } else {
-                    requireContext().toast(msg)
+                    toast += " (${result.skippedFilters} unsupported filters skipped)"
                 }
+                importWarnings(result)?.let { toast += "\n$it" }
+                requireContext().toast(toast)
             } catch (e: Exception) {
                 Timber.e(e, "Failed to import PEQ file")
                 requireContext().toast(R.string.peq_import_error)
@@ -161,6 +166,7 @@ class ParametricEqualizerFragment : Fragment() {
                     // Apply parsed preamp
                     binding.preampInput.value = result.preampDb.toFloat()
                     binding.equalizerSurface.setPreampDb(result.preampDb)
+                    importWarnings(result)?.let { requireContext().toast(it) }
                 }
                 save()
             }
@@ -463,12 +469,39 @@ class ParametricEqualizerFragment : Fragment() {
         }
 
         Timber.d("editorSave: confirming changes to band $editorBandUuid")
+        val savedUuid = editorBandUuid
         editorBandBackup = null
         editorBandUuid = null
         editorActive = false
 
         adapter.notifyDataSetChanged()
         updateViewState()
+
+        // Warn once per confirmed band when it is near instability; do not block saving
+        savedUuid?.let { uuid ->
+            adapter.bands.firstOrNull { it.uuid == uuid }?.let { band ->
+                if (!BiquadUtils.isBandStable(band, outputSampleRate()))
+                    requireContext().toast(R.string.peq_stability_warning_single)
+            }
+        }
+    }
+
+    /** Best-effort output sample rate for stability checks; 48 kHz when undetectable. */
+    private fun outputSampleRate(): Double {
+        val audioManager = requireContext().getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            ?: return 48000.0
+        return AudioSampleRateDetector.getActiveOutputSampleRate(audioManager).toDouble()
+    }
+
+    /** Warning lines for an imported band list; null when nothing to report. */
+    private fun importWarnings(result: ApoImportResult): String? {
+        val lines = mutableListOf<String>()
+        if (result.problematicFilters > 0)
+            lines += getString(R.string.peq_import_invalid_params, result.problematicFilters)
+        val unstable = adapter.bands.count { !BiquadUtils.isBandStable(it, outputSampleRate()) }
+        if (unstable > 0)
+            lines += getString(R.string.peq_stability_warning, unstable)
+        return if (lines.isEmpty()) null else lines.joinToString("\n")
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

@@ -22,14 +22,62 @@ object BiquadUtils {
     )
 
     /**
+     * Unity-gain fallback for [computeCoefficients]: flat 0 dB response,
+     * no phase shift, and pole-free (stable by construction).
+     */
+    val UNITY = BiquadCoefficients(
+        b0 = 1.0, b1 = 0.0, b2 = 0.0,
+        a0 = 1.0, a1 = 0.0, a2 = 0.0
+    )
+
+    /**
+     * Poles with a modulus above this threshold sit close enough to the unit
+     * circle for audible ringing; one rounding error away from divergence.
+     */
+    const val NEAR_UNITY_POLE_RADIUS = 0.999
+
+    /** Upper frequency bound as a fraction of Nyquist accepted by [computeCoefficients]. */
+    private const val NYQUIST_FRACTION = 0.999
+
+    /**
+     * Check filter parameters against the domain accepted by [computeCoefficients].
+     *
+     * A band outside this domain would produce degenerate or non-finite
+     * biquad coefficients (e.g. zero or above-Nyquist frequency, non-positive
+     * Q, non-finite inputs), which is why [computeCoefficients] rejects it.
+     *
+     * PREAMP is a flat gain stage: frequency and Q do not enter its formula
+     * and are not checked, so legacy presets with arbitrary Fc/Q keep working.
+     */
+    fun isFilterInputValid(
+        frequency: Double,
+        gain: Double,
+        q: Double,
+        filterType: ParametricEqFilterType,
+        sampleRate: Double
+    ): Boolean {
+        if (!sampleRate.isFinite() || sampleRate <= 0.0) return false
+        if (!gain.isFinite()) return false
+        if (filterType == ParametricEqFilterType.PREAMP) return true
+        if (!frequency.isFinite() || frequency <= 0.0) return false
+        if (frequency >= sampleRate * 0.5 * NYQUIST_FRACTION) return false
+        return q.isFinite() && q > 0.0
+    }
+
+    /**
      * Compute biquad coefficients for a parametric EQ band.
      *
-     * @param frequency Center/corner frequency in Hz
+     * Parameters outside the valid domain (see [isFilterInputValid]) and
+     * computations that overflow to non-finite values (e.g. absurd gains)
+     * return [UNITY] instead of degenerate coefficients, so callers never
+     * receive NaN or Infinity that would poison the rendered response.
+     *
+     * @param frequency Center/corner frequency in Hz (must be > 0 and < sampleRate/2 * 0.999)
      * @param gain Gain in dB
-     * @param q Q factor
+     * @param q Q factor (must be > 0)
      * @param filterType PEAKING, LOW_SHELF, HIGH_SHELF, etc.
      * @param sampleRate Sample rate in Hz
-     * @return Biquad coefficients (b0, b1, b2, a0, a1, a2)
+     * @return Biquad coefficients (b0, b1, b2, a0, a1, a2), or [UNITY] for invalid input
      */
     fun computeCoefficients(
         frequency: Double,
@@ -38,12 +86,16 @@ object BiquadUtils {
         filterType: ParametricEqFilterType,
         sampleRate: Double = 48000.0
     ): BiquadCoefficients {
+        if (!isFilterInputValid(frequency, gain, q, filterType, sampleRate)) {
+            return UNITY
+        }
+
         val A = 10.0.pow(gain / 40.0) // sqrt of linear gain
         val omega = 2.0 * PI * frequency / sampleRate
         val sinOmega = sin(omega)
         val cosOmega = cos(omega)
 
-        return when (filterType) {
+        val coeffs = when (filterType) {
             ParametricEqFilterType.PREAMP -> {
                 // Flat frequency-independent gain stage (ported PreampFilter).
                 // H(z) = 10^(gain/20); degenerate biquad with b0 = gain, a0 = 1.
@@ -146,6 +198,65 @@ object BiquadUtils {
                 )
             }
         }
+
+        return if (coeffs.hasFiniteCoefficients()) coeffs else UNITY
+    }
+
+    private fun BiquadCoefficients.hasFiniteCoefficients(): Boolean =
+        b0.isFinite() && b1.isFinite() && b2.isFinite() &&
+            a0.isFinite() && a1.isFinite() && a2.isFinite()
+
+    /**
+     * Maximum pole radius: the larger modulus of the roots of
+     * a0·z² + a1·z + a2 = 0 (the transfer function poles).
+     *
+     * Ported from DDCToolbox Biquad::CalculateStability / Biquad::iirroots
+     * (src/model/Biquad.cpp, GPL-3.0).
+     *
+     * Returns 0.0 for pole-free filters (e.g. PREAMP) and +∞ for degenerate
+     * or non-finite denominators.
+     */
+    fun poleRadius(coeffs: BiquadCoefficients): Double {
+        if (!coeffs.hasFiniteCoefficients() || coeffs.a0 == 0.0) {
+            return Double.POSITIVE_INFINITY
+        }
+        // Denominator divided by a0: z² + bz + c with b = a1/a0, c = a2/a0
+        val roots = iirroots(coeffs.a1 / coeffs.a0, coeffs.a2 / coeffs.a0)
+        val mag1 = sqrt(roots[0] * roots[0] + roots[1] * roots[1])
+        val mag2 = sqrt(roots[2] * roots[2] + roots[3] * roots[3])
+        return maxOf(mag1, mag2)
+    }
+
+    /** Roots of z² + bz + c as (re, im) pairs; port of DDCToolbox Biquad::iirroots. */
+    private fun iirroots(b: Double, c: Double): DoubleArray {
+        val delta = b * b - 4.0 * c
+        return if (delta >= 0.0) {
+            doubleArrayOf((-b - sqrt(delta)) / 2.0, 0.0, (-b + sqrt(delta)) / 2.0, 0.0)
+        } else {
+            val re = -b / 2.0
+            val im = sqrt(-delta) / 2.0
+            doubleArrayOf(re, im, re, -im)
+        }
+    }
+
+    /** A filter is stable when all poles lie strictly inside the unit circle. */
+    fun isStable(coeffs: BiquadCoefficients): Boolean = poleRadius(coeffs) < 1.0
+
+    /**
+     * Whether an EQ band is safe to render at [sampleRate].
+     *
+     * A band is problematic when its parameters are outside the domain of
+     * [computeCoefficients] (it would render as unity gain) or when its poles
+     * reach [NEAR_UNITY_POLE_RADIUS], where the filter rings audibly and
+     * risks divergence. PREAMP bands are always usable when the gain is finite.
+     */
+    fun isBandStable(band: ParametricEqBand, sampleRate: Double): Boolean {
+        if (!isFilterInputValid(band.frequency, band.gain, band.q, band.filterType, sampleRate)) {
+            return false
+        }
+        if (band.filterType == ParametricEqFilterType.PREAMP) return true
+        val coeffs = computeCoefficients(band.frequency, band.gain, band.q, band.filterType, sampleRate)
+        return poleRadius(coeffs) <= NEAR_UNITY_POLE_RADIUS
     }
 
     /**

@@ -71,6 +71,21 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+Biquad stability check
+----------------------
+File:
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/utils/BiquadUtils.kt
+
+The biquad pole-radius stability analysis (root computation for the
+denominator polynomial and the stability classification) is ported from
+DDCToolbox, https://github.com/ThePBone/DDCToolbox
+(src/model/Biquad.cpp, Biquad::CalculateStability and Biquad::iirroots).
+
+Copyright (c) James34602 (root solver), ThePBone and DDCToolbox contributors
+
+This port remains under the GNU General Public License v3.0, like the rest of
+this repository.
+
 Dynamic EQ
 ----------
 Files:

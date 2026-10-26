@@ -172,6 +172,9 @@
     <string name="peq_edit_hint">EqualizerAPO format</string>
     <string name="peq_preamp">Preamp</string>
     <string name="peq_preamp_range">Value between -30 dB and 0 dB</string>
+    <string name="peq_import_invalid_params">%d imported filters have invalid parameters and may be ignored</string>
+    <string name="peq_stability_warning">%d filters have poles near the unit circle and may ring — lower their Q or shift frequency</string>
+    <string name="peq_stability_warning_single">This filter has a pole near the unit circle and may ring — lower Q or shift frequency</string>
 
     <!-- Dynamic EQ -->
     <string name="dyneq_title">Dynamic EQ</string>

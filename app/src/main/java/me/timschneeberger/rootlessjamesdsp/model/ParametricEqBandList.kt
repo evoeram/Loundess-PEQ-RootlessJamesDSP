@@ -12,10 +12,14 @@ import java.util.*
  * Result of parsing an EqualizerAPO format string.
  * @param skippedFilters number of unsupported filter lines that were skipped
  * @param preampDb the parsed Preamp value in dB (0.0 if not present)
+ * @param problematicFilters number of imported bands with invalid parameters
+ * (non-positive or non-finite frequency/Q). They are kept in the list but the
+ * stability layer renders them inert; the UI reports them as a warning.
  */
 data class ApoImportResult(
     val skippedFilters: Int,
-    val preampDb: Double
+    val preampDb: Double,
+    val problematicFilters: Int = 0
 )
 
 class ParametricEqBandList : ObservableArrayList<ParametricEqBand>() {
@@ -113,11 +117,16 @@ class ParametricEqBandList : ObservableArrayList<ParametricEqBand>() {
      *
      * Parses Preamp value and filter bands. "Channel:" lines select the channels of the following
      * filters; filters for channels other than L/R are skipped.
+     *
+     * Bands with invalid parameters (non-positive or non-finite frequency/Q, which can also
+     * result from numeric overflow when parsing extreme values) are kept and counted in
+     * [ApoImportResult.problematicFilters] instead of crashing or being dropped.
      * Returns [ApoImportResult] with the parsed preamp and number of skipped filters.
      */
     fun fromApoString(text: String): ApoImportResult {
         this.clear()
         var skipped = 0
+        var problematic = 0
         var preampDb = 0.0
         // null: the current Channel selection contains neither L nor R
         var channel: ParametricEqChannel? = ParametricEqChannel.LEFT_RIGHT
@@ -182,10 +191,17 @@ class ParametricEqBandList : ObservableArrayList<ParametricEqBand>() {
                 continue
             }
 
+            // Extreme values may overflow to Infinity during parsing; keep the band
+            // (the biquad layer renders it inert) but flag it for the UI
+            if (!freq.isFinite() || !gain.isFinite() || !q.isFinite() || freq <= 0.0 || q <= 0.0) {
+                Timber.d("fromApoString: problematic filter parameters, keeping flagged: $trimmed")
+                problematic++
+            }
+
             this.add(ParametricEqBand(freq, gain, q, filterType, bandChannel))
         }
 
-        return ApoImportResult(skippedFilters = skipped, preampDb = preampDb)
+        return ApoImportResult(skippedFilters = skipped, preampDb = preampDb, problematicFilters = problematic)
     }
 
     private fun parseApoChannels(list: String): ParametricEqChannel? {
