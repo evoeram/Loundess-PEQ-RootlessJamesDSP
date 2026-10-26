@@ -44,6 +44,18 @@ android {
         }
     }
 
+    signingConfigs {
+        // Committed key so local and CI builds share one signature. CI runners
+        // generate a fresh debug keystore on every run, which makes each
+        // GitHub-built APK fail to install over the previous one.
+        create("release") {
+            storeFile = rootProject.file("keystore/release.jks")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             applicationIdSuffix = ".debug"
@@ -60,7 +72,7 @@ android {
             //proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
             isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
         create("preview") {
             initWith(getByName("release"))

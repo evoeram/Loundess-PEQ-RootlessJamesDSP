@@ -58,16 +58,6 @@ jobs:
             echo "BUILD_TYPE=preview" >> $GITHUB_ENV
           fi
 
-      - name: Declare signing mode
-        env:
-          KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
-        run: |
-          if [[ -n "$KEYSTORE" ]]; then
-            echo "SIGNING_SET=true" >> $GITHUB_ENV
-          else
-            echo "SIGNING_SET=false" >> $GITHUB_ENV
-          fi
-
       - name: Gradle build (release on tags, preview otherwise)
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
@@ -75,31 +65,6 @@ jobs:
           else
             ./gradlew assemble${{ matrix.flavor }}FullPreview
           fi
-
-      - name: Sign APKs
-        # Release builds are already debug-signed by Gradle, so this step is
-        # only needed when real signing secrets are configured
-        if: ${{ env.SIGNING_SET == 'true' }}
-        uses: ilharp/sign-android-release@v2
-        with:
-          buildToolsVersion: 35.0.0
-          releaseDir: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}
-          signingKey: ${{ secrets.SIGNING_KEYSTORE }}
-          keyAlias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-
-      - name: Rename build artifacts
-        run: |
-          set -e
-          DIR=app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}
-          ls -l $DIR
-          # Signed by the action: strip the -unsigned-signed suffix
-          for f in $DIR/*-unsigned-signed.apk; do
-            [ -e "$f" ] && mv -v "$f" "${f/-unsigned-signed/}" || true
-          done
-          rm -f $DIR/*unsigned*.apk || true
-          ls -l $DIR
 
       - name: Upload build artifact (universal)
         uses: actions/upload-artifact@v4
