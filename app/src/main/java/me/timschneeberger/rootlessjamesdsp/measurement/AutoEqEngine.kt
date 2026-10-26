@@ -52,6 +52,9 @@ class AutoEqEngine(
         // Nelder-Mead joint optimization
         val useNelderMead: Boolean = true,       // Совместная оптимизация после greedy placement
         val nelderMeadIterations: Int = 300,     // Итераций Nelder-Mead на каждый шаг
+        // Treble averaging (AutoEq `_optimizer_loss`)
+        val trebleAveragingEnabled: Boolean = true, // Выше порога loss учитывает только среднее области
+        val trebleAverageAboveHz: Double = 10000.0, // Порог ВЧ-усреднения, Гц
         // Sharpness penalty (AutoEq)
         val sharpnessPenaltyEnabled: Boolean = true,  // Штраф за наклон круче ~18 дБ/окт
         val sharpnessPenaltyWeight: Double = 1.0      // Вес штрафа в функции потерь
@@ -117,6 +120,13 @@ class AutoEqEngine(
             evalFreqs[i] >= config.matchRangeStart && evalFreqs[i] <= config.matchRangeEnd
         }
 
+        // ВЧ-усреднение (AutoEq): выше порога loss видит только среднее
+        // отклонение области, чтобы оптимизатор не тратил полосы на узкие
+        // ВЧ-пики, которые не слышны и нестабильны между измерениями
+        val trebleRange = trebleAverageRegion(evalFreqs, inRange, config)
+        val trebleMeanTarget = trebleRange?.let { meanOver(it, targetAtEval) } ?: 0.0
+        val residual = DoubleArray(evalFreqs.size)
+
         // Накопленные полосы PEQ
         val bands = mutableListOf<ParametricEqBand>()
         var overallBoost = 0.0
@@ -132,13 +142,19 @@ class AutoEqEngine(
                 calculator.compute(bands).leftResponseDb
             }
 
-            // Вектор ошибки: measured + filter - target
-            // filter уже применён, так что остаточная ошибка:
-            // E(f) = (measured(f) + filter(f)) - target(f)
+            // residual(f) = measured + filter — текущая скорректированная АЧХ
+            for (i in evalFreqs.indices) {
+                residual[i] = measuredAtEval[i] + filterResponse[i]
+            }
+
+            // Вектор ошибки: residual - target; выше порога ВЧ-усреднения
+            // вся область схлопывается в своё среднее отклонение
+            val trebleMeanResidual = trebleRange?.let { meanOver(it, residual) } ?: 0.0
             val error = DoubleArray(evalFreqs.size) { i ->
-                if (inRange[i]) {
-                    (measuredAtEval[i] + filterResponse[i]) - targetAtEval[i]
-                } else 0.0
+                if (!inRange[i]) 0.0
+                else if (trebleRange != null && i >= trebleRange.first)
+                    trebleMeanResidual - trebleMeanTarget
+                else residual[i] - targetAtEval[i]
             }
 
             // Поиск максимального |E(f)| в диапазоне
@@ -219,7 +235,10 @@ class AutoEqEngine(
 
             // Nelder-Mead joint optimization после каждого добавленного фильтра
             if (config.useNelderMead && bands.isNotEmpty()) {
-                jointlyOptimizeBands(bands, evalFreqs, measuredAtEval, targetAtEval, inRange, config)
+                jointlyOptimizeBands(
+                    bands, evalFreqs, measuredAtEval, targetAtEval, inRange,
+                    trebleRange, trebleMeanTarget, config
+                )
             }
 
             iteration++
@@ -258,11 +277,17 @@ class AutoEqEngine(
 
         // После масштабирования бустов остаточное отклонение нужно пересчитать.
         val finalDeviation = if (boostScaled) {
+            for (i in evalFreqs.indices) {
+                residual[i] = measuredAtEval[i] + filterResponse.leftResponseDb[i]
+            }
+            val trebleMeanResidual = trebleRange?.let { meanOver(it, residual) } ?: 0.0
             var dev = 0.0
             for (i in evalFreqs.indices) {
                 if (!inRange[i]) continue
                 val err = abs(
-                    (measuredAtEval[i] + filterResponse.leftResponseDb[i]) - targetAtEval[i]
+                    if (trebleRange != null && i >= trebleRange.first)
+                        trebleMeanResidual - trebleMeanTarget
+                    else residual[i] - targetAtEval[i]
                 )
                 if (err > dev) dev = err
             }
@@ -407,6 +432,8 @@ class AutoEqEngine(
         measuredAtEval: DoubleArray,
         targetAtEval: DoubleArray,
         inRange: BooleanArray,
+        trebleRange: IntRange?,
+        trebleMeanTarget: Double,
         config: Config
     ) {
         val nBands = bands.size
@@ -427,6 +454,8 @@ class AutoEqEngine(
             bounds.add(-config.individualMaxBoost to config.individualMaxBoost)  // gain
         }
 
+        val residual = DoubleArray(evalFreqs.size)
+
         // Целевая функция
         val fn: (DoubleArray) -> Double = { params ->
             val tempBands = (0 until nBands).map { i ->
@@ -439,11 +468,27 @@ class AutoEqEngine(
                 )
             }
             val filterResponse = calculator.compute(tempBands).leftResponseDb
+            for (i in evalFreqs.indices) {
+                residual[i] = measuredAtEval[i] + filterResponse[i]
+            }
+            val trebleMeanResidual = trebleRange?.let { meanOver(it, residual) } ?: 0.0
+
             var mse = 0.0
             var count = 0
             for (i in evalFreqs.indices) {
                 if (!inRange[i]) continue
-                val diff = (measuredAtEval[i] + filterResponse[i]) - targetAtEval[i]
+                if (trebleRange != null && i >= trebleRange.first) continue
+                val diff = residual[i] - targetAtEval[i]
+                mse += diff * diff
+                count++
+            }
+            if (trebleRange != null) {
+                // Регион ВЧ-усреднения входит в loss одним слагаемым: его
+                // отклонение — константа, и учёт каждой точки (как при
+                // буквальном замене массивов в AutoEq) даёт константе вес
+                // пропорционально длине региона, из-за чего оптимизатор
+                // жертвует точностью средних частот ради обнуления среднего
+                val diff = trebleMeanResidual - trebleMeanTarget
                 mse += diff * diff
                 count++
             }
@@ -572,6 +617,35 @@ class AutoEqEngine(
 
         val bestIdx = (0..n).minByOrNull { fvals[it] } ?: 0
         return simplex[bestIdx]
+    }
+
+    /**
+     * Диапазон индексов ВЧ-усреднения (AutoEq `_optimizer_loss`): непрерывная
+     * область inRange с частотой не ниже порога. Область считается по всему
+     * evaluation-диапазону, как у AutoEq, где среднее берётся от 10 кГц до
+     * конца сетки. Null — усреднение выключено или область пуста.
+     */
+    private fun trebleAverageRegion(
+        evalFreqs: DoubleArray,
+        inRange: BooleanArray,
+        config: Config
+    ): IntRange? {
+        if (!config.trebleAveragingEnabled) return null
+        var first = -1
+        var last = -1
+        for (i in evalFreqs.indices) {
+            if (inRange[i] && evalFreqs[i] >= config.trebleAverageAboveHz) {
+                if (first < 0) first = i
+                last = i
+            }
+        }
+        return if (first >= 0) first..last else null
+    }
+
+    private fun meanOver(range: IntRange, values: DoubleArray): Double {
+        var sum = 0.0
+        for (i in range) sum += values[i]
+        return sum / (range.last - range.first + 1)
     }
 
     /**

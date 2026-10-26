@@ -38,7 +38,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-AutoEq sharpness penalty
+AutoEq optimizer ports
 ------------------------
 File:
   app/src/main/java/me/timschneeberger/rootlessjamesdsp/measurement/AutoEqEngine.kt
@@ -46,6 +46,10 @@ File:
 The Auto-EQ sharpness penalty (gain limit for an ~18 dB/oct slope and the
 sigmoid coefficient) is ported from AutoEq, https://github.com/jaakkopasanen/AutoEq
 (autoeq/peq.py, Peaking.sharpness_penalty).
+
+The treble averaging in the optimizer loss (target and equalized response
+collapsed to their region mean above a threshold frequency) is ported from
+AutoEq (autoeq/peq.py, ParametricEqOptimizer._optimizer_loss).
 
 Copyright (c) 2018-2022 Jaakko Pasanen
 

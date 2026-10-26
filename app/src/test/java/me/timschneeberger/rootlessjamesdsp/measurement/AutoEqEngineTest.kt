@@ -3,10 +3,12 @@ package me.timschneeberger.rootlessjamesdsp.measurement
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
+import me.timschneeberger.rootlessjamesdsp.utils.ParametricEqResponseCalculator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
+import kotlin.math.log10
 
 /**
  * Unit tests for [AutoEqEngine].
@@ -229,7 +231,9 @@ class AutoEqEngineTest {
             maxBands = 5,
             minQ = 0.5,
             maxQHigh = 5.0,
-            maxQLow = 15.0
+            maxQLow = 15.0,
+            // Averaging would absorb the 10 kHz peak before Q clamping is exercised
+            trebleAveragingEnabled = false
         )
         val result = engine.run(freqs, spl, target, config)
 
@@ -358,7 +362,10 @@ class AutoEqEngineTest {
         flatnessTarget = 0.1,
         dipMaxDepth = 20.0,
         dipMinWidthHz = 10.0,
-        sharpnessPenaltyEnabled = penaltyEnabled
+        sharpnessPenaltyEnabled = penaltyEnabled,
+        // Golden pins the pre-treble-averaging behavior; enabled variant is
+        // covered by the dedicated tests below
+        trebleAveragingEnabled = false
     )
 
     @Test
@@ -471,6 +478,166 @@ class AutoEqEngineTest {
         assertTrue(
             "Residual deviation may grow by at most 0.2 dB (grew by $deviationCost)",
             deviationCost <= 0.2
+        )
+    }
+
+    // ---- Treble averaging (AutoEq) ----
+
+    private val evalCalc = ParametricEqResponseCalculator(sampleRate, 20.0, 20000.0, 512)
+
+    /** (mean, max) of the post-correction residual above [aboveHz] on the eval grid. */
+    private fun residualStatsAbove(
+        spl: DoubleArray, target: TargetCurve, result: AutoEqEngine.Result, aboveHz: Double
+    ): Pair<Double, Double> {
+        val evalFreqs = evalCalc.logSpacedFrequencies()
+        val resp = evalCalc.compute(result.bands).leftResponseDb
+        val targetAtEval = target.gainAtAll(evalFreqs)
+        var sum = 0.0
+        var max = -Double.MAX_VALUE
+        var count = 0
+        for (i in evalFreqs.indices) {
+            if (evalFreqs[i] < aboveHz) continue
+            val diff = (spl[i] + resp[i]) - targetAtEval[i]
+            sum += diff
+            if (diff > max) max = diff
+            count++
+        }
+        return (sum / count) to max
+    }
+
+    private fun mseInBand(
+        spl: DoubleArray, target: TargetCurve, result: AutoEqEngine.Result,
+        fMin: Double, fMax: Double
+    ): Double {
+        val evalFreqs = evalCalc.logSpacedFrequencies()
+        val resp = evalCalc.compute(result.bands).leftResponseDb
+        val targetAtEval = target.gainAtAll(evalFreqs)
+        var mse = 0.0
+        var count = 0
+        for (i in evalFreqs.indices) {
+            val f = evalFreqs[i]
+            if (f < fMin || f > fMax) continue
+            val diff = (spl[i] + resp[i]) - targetAtEval[i]
+            mse += diff * diff
+            count++
+        }
+        return mse / count
+    }
+
+    private fun maxTrebleQ(bands: List<ParametricEqBand>, aboveHz: Double = 5000.0): Double =
+        bands.filter { it.frequency >= aboveHz }.maxOfOrNull { it.q } ?: 0.0
+
+    /** Range (max - min) of the applied correction cascade above [aboveHz]. */
+    private fun correctionRangeAbove(result: AutoEqEngine.Result, aboveHz: Double): Double {
+        val evalFreqs = evalCalc.logSpacedFrequencies()
+        val resp = evalCalc.compute(result.bands).leftResponseDb
+        var min = Double.MAX_VALUE
+        var max = -Double.MAX_VALUE
+        for (i in evalFreqs.indices) {
+            if (evalFreqs[i] < aboveHz) continue
+            if (resp[i] < min) min = resp[i]
+            if (resp[i] > max) max = resp[i]
+        }
+        return max - min
+    }
+
+    @Test
+    fun `treble averaging reports mean deviation instead of chasing narrow treble peak`() {
+        val freqs = logSpacedFreqs(512)
+        val spl = gaussianPeak(freqs, 15000.0, 8.0, 0.0002)
+        val target = TargetCurve.flat()
+
+        val on = engine.run(freqs, spl, target, AutoEqEngine.Config(trebleAveragingEnabled = true))
+        val off = engine.run(freqs, spl, target, AutoEqEngine.Config(trebleAveragingEnabled = false))
+
+        // The narrow peak is below the averaging resolution: its mean over the
+        // region is small, so the engine must not spend bands on it and must
+        // report the mean deviation, not the ~8 dB peak. Tolerance covers the
+        // engine's region ending at the last in-range grid index.
+        val (meanOn, _) = residualStatsAbove(spl, target, on, 10000.0)
+        assertEquals(meanOn, on.finalMaxDeviation, 0.05)
+        assertTrue(
+            "Reported deviation must be the region mean, not the peak (${on.finalMaxDeviation})",
+            on.finalMaxDeviation <= 1.0
+        )
+        assertTrue(
+            "Engine must not chase the narrow treble peak: ${on.bands}",
+            on.bands.isEmpty()
+        )
+
+        // Legacy view sees the raw ~8 dB peak and burns multiple bands on it
+        assertTrue(
+            "Legacy optimizer must chase the peak (used ${off.bands.size} bands)",
+            off.bands.size >= 3
+        )
+    }
+
+    @Test
+    fun `treble averaging widens correction of rising treble response`() {
+        val freqs = logSpacedFreqs(512)
+        val target = TargetCurve.flat()
+        val spl = DoubleArray(freqs.size) { i ->
+            val f = freqs[i]
+            if (f < 12000.0) 0.0
+            else 8.0 * ((log10(f) - log10(12000.0)) / (log10(20000.0) - log10(12000.0)))
+        }
+
+        val on = engine.run(freqs, spl, target, AutoEqEngine.Config())
+        val off = engine.run(
+            freqs, spl, target, AutoEqEngine.Config(trebleAveragingEnabled = false)
+        )
+
+        assertTrue("Rising treble must be corrected", on.bands.isNotEmpty())
+
+        // Reported deviation reflects the region mean, while the raw residual
+        // above 10 kHz keeps its ramp shape and peaks much higher
+        val (_, rawMaxOn) = residualStatsAbove(spl, target, on, 10000.0)
+        assertTrue(
+            "Reported deviation (${on.finalMaxDeviation}) must be the region mean, " +
+                "not the raw peak ($rawMaxOn)",
+            on.finalMaxDeviation < rawMaxOn - 1.0
+        )
+
+        // Treble correction must be wider than the raw-error chasing variant
+        val maxQOn = maxTrebleQ(on.bands)
+        val maxQOff = maxTrebleQ(off.bands)
+        assertTrue(
+            "Treble correction must be wider with averaging (max Q $maxQOn vs $maxQOff)",
+            maxQOn < maxQOff
+        )
+
+        // Midband accuracy must not regress
+        val mseOn = mseInBand(spl, target, on, 20.0, 10000.0)
+        val mseOff = mseInBand(spl, target, off, 20.0, 10000.0)
+        assertTrue(
+            "MSE 20 Hz-10 kHz must not grow ($mseOn vs $mseOff)",
+            mseOn <= mseOff + 0.01
+        )
+    }
+
+    @Test
+    fun `treble averaging widens treble correction on fixture without midband regression`() {
+        val (freqs, spl) = legacyFixture()
+        val target = TargetCurve.flat()
+        val on = engine.run(
+            freqs, spl, target, legacyConfig(false).copy(trebleAveragingEnabled = true)
+        )
+        val off = engine.run(freqs, spl, target, legacyConfig(false))
+
+        // Above the threshold the averaged view yields one smooth wide
+        // correction instead of narrow bands fitted to the tail shape
+        val rangeOn = correctionRangeAbove(on, 10000.0)
+        val rangeOff = correctionRangeAbove(off, 10000.0)
+        assertTrue(
+            "Treble correction must be smoother with averaging ($rangeOn vs $rangeOff)",
+            rangeOn < rangeOff
+        )
+
+        val mseOn = mseInBand(spl, target, on, 20.0, 10000.0)
+        val mseOff = mseInBand(spl, target, off, 20.0, 10000.0)
+        assertTrue(
+            "MSE 20 Hz-10 kHz must not grow ($mseOn vs $mseOff)",
+            mseOn <= mseOff + 0.01
         )
     }
 }
