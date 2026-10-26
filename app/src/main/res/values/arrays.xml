@@ -204,6 +204,17 @@
         <item>1</item>
     </string-array>
 
+    <string-array name="lufs_modes" translatable="false">
+        <item>@string/lufs_mode_slow</item>
+        <item>@string/lufs_mode_normal</item>
+        <item>@string/lufs_mode_fast</item>
+    </string-array>
+    <string-array name="lufs_modes_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+
     <string-array name="dyneq_modes" translatable="false">
         <item>@string/dyneq_mode_compressor</item>
         <item>@string/dyneq_mode_expander</item>

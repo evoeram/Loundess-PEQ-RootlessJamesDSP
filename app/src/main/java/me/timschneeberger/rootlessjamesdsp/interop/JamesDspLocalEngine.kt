@@ -331,6 +331,25 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         return JamesDspWrapper.setLoudnessSubsonic(handle, enable, freq, order, qFactor)
     }
 
+    override fun setLufsNormalizer(
+        enable: Boolean,
+        sampleRate: Double,
+        targetLufs: Double,
+        maxGainDb: Double,
+        mode: Int
+    ): Boolean {
+        // K-weighting coefficients and window sizes depend on the sample rate;
+        // a zero rate would produce invalid filters. Re-applied when known.
+        if (enable && sampleRate <= 0.0) {
+            Timber.w("setLufsNormalizer: skipping, sample rate not yet known ($sampleRate)")
+            return false
+        }
+        if (handle == 0L) return false
+        return JamesDspWrapper.setLufsNormalizer(
+            handle, enable, sampleRate, targetLufs, maxGainDb, mode
+        )
+    }
+
     // ---- Auto system volume tracking ----
 
     private var volumeReceiverRegistered = false

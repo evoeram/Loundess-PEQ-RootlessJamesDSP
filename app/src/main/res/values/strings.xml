@@ -266,6 +266,15 @@
     <string name="loudness_subsonic_order">Filter order (slope)</string>
     <string name="loudness_subsonic_q">Q factor</string>
 
+    <string name="lufs_enable">LUFS normalizer</string>
+    <string name="lufs_summary">BS.1770 loudness targeting: measures program loudness (K-weighting, gated) and smoothly adjusts gain towards the target level</string>
+    <string name="lufs_target">Target loudness</string>
+    <string name="lufs_max_gain">Maximum correction</string>
+    <string name="lufs_mode">Gain smoothing</string>
+    <string name="lufs_mode_slow">Slow (gentle, least audible)</string>
+    <string name="lufs_mode_normal">Normal</string>
+    <string name="lufs_mode_fast">Fast (tighter loudness control)</string>
+
     <string name="geq_enable">Arbitrary response equalizer</string>
     <string name="geq_nodes">Magnitude response</string>
 

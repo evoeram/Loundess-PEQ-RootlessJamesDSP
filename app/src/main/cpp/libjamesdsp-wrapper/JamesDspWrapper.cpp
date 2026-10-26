@@ -94,6 +94,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_alloc(JNIEnv *e
     self->loudnessCorrection = new LoudnessCorrectionProcessor();
     self->dynamicEq = new dynamicEq_t();
     dynamicEq_init(self->dynamicEq);
+    self->lufsNormalizer = new lufs_normalizer_t();
+    lufs_normalizer_init(self->lufsNormalizer);
 
     jclass callbackClass = env->GetObjectClass(callback);
     if (callbackClass == nullptr)
@@ -173,6 +175,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_free(JNIEnv *en
     dynamicEq_destroy(wrapper->dynamicEq);
     delete wrapper->dynamicEq;
     wrapper->dynamicEq = nullptr;
+
+    delete wrapper->lufsNormalizer;
+    wrapper->lufsNormalizer = nullptr;
 
     JamesDSPGlobalMemoryDeallocation();
 
@@ -268,7 +273,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
          * finish its click-free fade-out. It fast-paths when fully off. */
         const bool deqActive = wrapper->dynamicEq && dynamicEq_is_active(wrapper->dynamicEq);
         const bool loudEnabled = wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled();
-        if (peqEnabled || deqActive || loudEnabled)
+        const bool lufsEnabled = wrapper->lufsNormalizer && wrapper->lufsNormalizer->enabled;
+        if (peqEnabled || deqActive || loudEnabled || lufsEnabled)
         {
             size_t frames = inputLength / 2;
             std::vector<float> tmp(frames * 2);
@@ -280,6 +286,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
                 dynamicEq_process_interleaved(wrapper->dynamicEq, tmp.data(), frames);
             if (loudEnabled)
                 wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
+            if (lufsEnabled)
+                lufs_normalizer_process_interleaved(wrapper->lufsNormalizer, tmp.data(), frames);
             for (size_t i = 0; i < frames * 2; ++i)
             {
                 float v = tmp[i] * 32768.0f;
@@ -312,7 +320,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
     /* Called while disabled too, so the fade-out can finish. */
     const bool deqActive = wrapper->dynamicEq && dynamicEq_is_active(wrapper->dynamicEq);
     const bool loudEnabled = wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled();
-    if (peqEnabled || deqActive || loudEnabled)
+    const bool lufsEnabled = wrapper->lufsNormalizer && wrapper->lufsNormalizer->enabled;
+    if (peqEnabled || deqActive || loudEnabled || lufsEnabled)
     {
         size_t frames = inputLength / 2;
         std::vector<float> tmp(frames * 2);
@@ -324,6 +333,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
             dynamicEq_process_interleaved(wrapper->dynamicEq, tmp.data(), frames);
         if (loudEnabled)
             wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
+        if (lufsEnabled)
+            lufs_normalizer_process_interleaved(wrapper->lufsNormalizer, tmp.data(), frames);
         for (size_t i = 0; i < frames * 2; ++i)
         {
             float v = tmp[i] * 32768.0f;
@@ -450,6 +461,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
         if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
             wrapper->loudnessCorrection->processInterleaved(input + offset, inputLength / 2);
 
+        if (wrapper->lufsNormalizer && wrapper->lufsNormalizer->enabled)
+            lufs_normalizer_process_interleaved(wrapper->lufsNormalizer, input + offset, inputLength / 2);
+
         env->ReleaseFloatArrayElements(inputObj, input, 0);
         return;
     }
@@ -469,7 +483,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
     dsp->processFloatMultiplexd(dsp, input + offset, output, inputLength / 2);
 
     // Apply the time-domain chain after the main DSP chain: PEQ first, then
-    // Dynamic EQ, then loudness (which must see the corrected signal).
+    // Dynamic EQ, then loudness (which must see the corrected signal), then
+    // LUFS targeting on the final program.
     if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
     {
         wrapper->parametricEq->processInterleaved(output, inputLength / 2);
@@ -483,6 +498,11 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
     if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
     {
         wrapper->loudnessCorrection->processInterleaved(output, inputLength / 2);
+    }
+
+    if (wrapper->lufsNormalizer && wrapper->lufsNormalizer->enabled)
+    {
+        lufs_normalizer_process_interleaved(wrapper->lufsNormalizer, output, inputLength / 2);
     }
 
     env->ReleaseFloatArrayElements(inputObj, input, JNI_ABORT);
@@ -1217,6 +1237,39 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLoudnessCorr
         return false;
 
     wrapper->loudnessCorrection->setVolume(currentVolumeDb);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLufsNormalizer(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble sampleRate, jdouble targetLufs,
+    jdouble maxGainDb, jint mode)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->lufsNormalizer == nullptr)
+        return false;
+
+    if (!enable)
+    {
+        lufs_normalizer_set_enabled(wrapper->lufsNormalizer, false);
+        return true;
+    }
+
+    // K-weighting coefficients and window sizes depend on the sample rate;
+    // applying with sr=0 would produce invalid filters. Re-applied when the
+    // rate becomes known.
+    if (sampleRate <= 0.0)
+    {
+        LOGW("JamesDspWrapper::setLufsNormalizer: skipping, sample rate not yet known (%.0f)", sampleRate);
+        return false;
+    }
+
+    lufs_normalizer_configure(wrapper->lufsNormalizer, sampleRate,
+                              targetLufs, maxGainDb, (int)mode);
+    lufs_normalizer_set_enabled(wrapper->lufsNormalizer, true);
+
+    LOGD("JamesDspWrapper::setLufsNormalizer: target=%.1f LUFS, maxGain=%.1f dB, mode=%d, sr=%.0f",
+         targetLufs, maxGainDb, (int)mode, sampleRate);
     return true;
 }
 

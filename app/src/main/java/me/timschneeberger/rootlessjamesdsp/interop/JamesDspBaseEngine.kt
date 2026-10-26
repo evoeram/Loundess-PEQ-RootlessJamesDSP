@@ -194,6 +194,13 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val subsonicOrder = cache.get(R.string.key_loudness_subsonic_order, 4f).toInt()
             val subsonicQ = cache.get(R.string.key_loudness_subsonic_q, 707f).toDouble() / 1000.0
 
+            // LUFS normalizer (BS.1770 targeting); stored in the loudness
+            // namespace because it lives on the loudness settings screen.
+            val lufsEnabled = cache.get(R.string.key_lufs_enable, false)
+            val lufsTarget = cache.get(R.string.key_lufs_target, -140) / 10.0
+            val lufsMaxGain = cache.get(R.string.key_lufs_max_gain, 6f).toDouble()
+            val lufsMode = cache.get(R.string.key_lufs_mode, "1").toInt()
+
             cache.select(Constants.PREF_CONVOLVER)
             val convolverEnabled = cache.get(R.string.key_convolver_enable, false)
             val convolverFile = cache.get(R.string.key_convolver_file, "")
@@ -345,6 +352,11 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                                 loudnessRefLevel.toDouble(), loudnessRefOffset.toDouble(),
                                 loudnessAttenuation.toDouble(), effectiveVolume,
                                 loudnessMode
+                            )
+                            // LUFS targeting runs after loudness correction
+                            setLufsNormalizer(
+                                lufsEnabled, sampleRate.toDouble(),
+                                lufsTarget, lufsMaxGain, lufsMode
                             )
                         } else {
                             true
@@ -732,6 +744,16 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
     // Set subsonic (infrasonic) high-pass filter for loudness module.
     open fun setLoudnessSubsonic(
         enable: Boolean, freq: Double, order: Int, qFactor: Double
+    ): Boolean = false
+
+    // LUFS normalizer: BS.1770 integrated-loudness targeting with K-weighting
+    // and gating. mode: 0 = slow, 1 = normal, 2 = fast gain smoothing.
+    open fun setLufsNormalizer(
+        enable: Boolean,
+        sampleRate: Double,
+        targetLufs: Double,
+        maxGainDb: Double,
+        mode: Int
     ): Boolean = false
 
     // Enable/disable automatic system media volume tracking for loudness correction.

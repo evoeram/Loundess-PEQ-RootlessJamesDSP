@@ -211,4 +211,45 @@
                 app:iconSpaceReserved="false"/>
         </PreferenceCategory>
     </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
+
+    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+        android:disableDependentsState="false"
+        android:key="@string/key_lufs_enable"
+        android:title="@string/lufs_enable"
+        android:summary="@string/lufs_summary"
+        android:icon="@drawable/ic_twotone_volume_up_24dp"
+        app:iconSpaceReserved="false">
+        <ListPreference
+            android:key="@string/key_lufs_mode"
+            android:title="@string/lufs_mode"
+            android:defaultValue="1"
+            android:entries="@array/lufs_modes"
+            android:entryValues="@array/lufs_modes_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false"/>
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_lufs_target"
+            android:title="@string/lufs_target"
+            android:defaultValue="-140"
+            app:minValue="-300"
+            app:maxValue="0"
+            app:seekBarIncrement="5"
+            app:unit=""
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false"/>
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_lufs_max_gain"
+            android:title="@string/lufs_max_gain"
+            android:defaultValue="6"
+            app:minValue="0"
+            app:maxValue="12"
+            app:seekBarIncrement="1"
+            app:unit="dB"
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false"/>
+    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

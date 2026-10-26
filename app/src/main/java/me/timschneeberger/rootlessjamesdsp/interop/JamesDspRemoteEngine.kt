@@ -459,6 +459,27 @@ class JamesDspRemoteEngine(
         return effect.setParameterFloatArray(1304, data) == AudioEffect.SUCCESS
     }
 
+    // LUFS normalizer via AudioEffect parameter API (jamesdsp.c).
+    // The root effect measures with the real AudioFlinger rate (jdsp.fs), so
+    // the config payload carries no sample rate.
+    override fun setLufsNormalizer(
+        enable: Boolean,
+        sampleRate: Double,
+        targetLufs: Double,
+        maxGainDb: Double,
+        mode: Int
+    ): Boolean {
+        // 3 floats: targetLufs, maxGainDb, mode (0 slow, 1 normal, 2 fast)
+        val data = floatArrayOf(
+            targetLufs.toFloat(),
+            maxGainDb.toFloat(),
+            mode.toFloat()
+        )
+        val configResult = effect.setParameterFloatArray(1309, data) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1220, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
+    }
+
     // ---- Auto system volume tracking (root/remote engine) ----
 
     private var volumeReceiverRegistered = false

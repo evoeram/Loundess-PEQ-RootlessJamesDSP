@@ -4,6 +4,7 @@
 #include <jni.h>
 
 #include <Effects/dynamicEq.h>
+#include <Effects/lufs_normalizer.h>
 
 // Forward declaration (opaque pointer for C interop)
 class ParametricEqProcessor;
@@ -21,6 +22,7 @@ typedef struct
     ParametricEqProcessor* parametricEq;
     LoudnessCorrectionProcessor* loudnessCorrection;
     dynamicEq_t* dynamicEq;
+    lufs_normalizer_t* lufsNormalizer;
 } JamesDspWrapper;
 
 /* C interop function */

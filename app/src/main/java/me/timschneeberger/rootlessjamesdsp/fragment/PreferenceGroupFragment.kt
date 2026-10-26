@@ -104,9 +104,10 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
     }
 
     private fun updateIconState() {
-        if(preferenceScreen.preferenceCount > 0) {
-            (preferenceScreen.getPreference(0) as? SwitchPreferenceGroup?)
-                ?.setIsIconVisible(prefsApp.get<Boolean>(R.string.key_appearance_show_icons))
+        val show = prefsApp.get<Boolean>(R.string.key_appearance_show_icons)
+        // A screen may host several SwitchPreferenceGroup cards (loudness + LUFS)
+        for (i in 0 until preferenceScreen.preferenceCount) {
+            (preferenceScreen.getPreference(i) as? SwitchPreferenceGroup)?.setIsIconVisible(show)
         }
     }
 
@@ -127,6 +128,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             R.xml.dsp_loudness_preferences -> {
                 setupLoudnessCalibration()
                 setupLoudnessTuningLabels()
+                setupLufsLabels()
             }
             R.xml.dsp_compander_preferences -> {
                 findPreference<MaterialSeekbarPreference>(getString(R.string.key_compander_granularity))?.valueLabelOverride =
@@ -617,6 +619,14 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
         // subsonic_q: stored /1000 → 0.10..2.00
         findPreference<MaterialSeekbarPreference>(getString(R.string.key_loudness_subsonic_q))?.valueLabelOverride =
             fun(it: Float): String { return "%.2f".format(it / 1000f) }
+    }
+
+    /**
+     * LUFS normalizer: target stored ×10 (tenths of LUFS).
+     */
+    private fun setupLufsLabels() {
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_lufs_target))?.valueLabelOverride =
+            fun(it: Float): String { return "%.1f LUFS".format(it / 10f) }
     }
 
     /**

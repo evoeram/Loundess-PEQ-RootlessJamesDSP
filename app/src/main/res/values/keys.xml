@@ -212,6 +212,12 @@
     <string name="key_loudness_subsonic_order" translatable="false">loudness_subsonic_order</string>
     <string name="key_loudness_subsonic_q" translatable="false">loudness_subsonic_q</string>
 
+    <!-- LUFS normalizer (BS.1770 targeting; shares the dsp_loudness namespace) -->
+    <string name="key_lufs_enable" translatable="false">lufs_enable</string>
+    <string name="key_lufs_target" translatable="false">lufs_target</string>
+    <string name="key_lufs_max_gain" translatable="false">lufs_max_gain</string>
+    <string name="key_lufs_mode" translatable="false">lufs_mode</string>
+
     <string name="key_output_control_enable" translatable="false">output_control_enable</string>
     <string name="key_limiter_threshold" translatable="false">limiter_threshold</string>
     <string name="key_limiter_release" translatable="false">limiter_release</string>

@@ -110,6 +110,17 @@ object JamesDspWrapper {
         qFactor: Double
     ): Boolean
 
+    // LUFS normalizer (BS.1770 loudness targeting with K-weighting + gating).
+    // mode: 0 = slow, 1 = normal, 2 = fast gain smoothing.
+    external fun setLufsNormalizer(
+        self: JamesDspHandle,
+        enable: Boolean,
+        sampleRate: Double,
+        targetLufs: Double,
+        maxGainDb: Double,
+        mode: Int
+    ): Boolean
+
     // EEL VM utilities
     external fun enumerateEelVariables(self: JamesDspHandle): ArrayList<EelVmVariable>
     external fun manipulateEelVariable(self: JamesDspHandle, name: String, value: Float): Boolean

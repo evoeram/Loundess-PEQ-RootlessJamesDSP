@@ -102,5 +102,32 @@ Copyright (c) alienware377 and contributors
 This port remains under the GNU General Public License v3.0, like the rest of
 this repository.
 
+LUFS normalizer
+---------------
+Files:
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/lufs_normalizer.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/lufs_normalizer.h
+
+The LUFS loudness targeting concept (K-weighted integrated-loudness
+measurement over a sliding 400 ms window with a 100 ms step, and smooth
+attack/release gain control towards a user target level) follows the
+implementation in ViPERDSP, https://github.com/likelikeslike/ViPERDSP
+(viper/effects/LUFSTargeting.cpp), a reverse engineering of ViPER4Android.
+
+The original intellectual property of ViPER4Android belongs to Zhuhang and
+ViPER520. ViPERDSP reverse engineering by Martmists, Iscle and likelikeslike
+(https://github.com/AndroidAudioMods/ViPERFX_RE).
+
+The loudness measurement itself implements the ITU-R BS.1770 method. The
+K-weighting stages use the matched-biquad design published by Martin
+Vicanek ("Matched Biquads") as formulated in libebur128,
+https://github.com/jiixyj/libebur128 (MIT), which reproduces the standard's
+published 48 kHz coefficient sets exactly at any sample rate. The relative
+gate (-10 LU), silence-safe gain behaviour and the rootless/root
+integration are this repository's own implementation.
+
+This port remains under the GNU General Public License v3.0, like the rest of
+this repository.
+
 This notice is shipped inside the Magisk module zip as NOTICE, next to the
 generated sepolicy.rule.
