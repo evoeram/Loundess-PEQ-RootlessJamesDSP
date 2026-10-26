@@ -324,4 +324,153 @@ class AutoEqEngineTest {
                 ParametricEqChannel.LEFT_RIGHT, band.channel)
         }
     }
+
+    // ---- Sharpness penalty ----
+
+    private fun gaussianPeak(
+        freqs: DoubleArray, centerHz: Double, gainDb: Double, sigma: Double
+    ): DoubleArray = DoubleArray(freqs.size) { i ->
+        val d = kotlin.math.log10(freqs[i]) - kotlin.math.log10(centerHz)
+        gainDb * kotlin.math.exp(-(d * d) / sigma)
+    }
+
+    private fun maxCutQ(bands: List<ParametricEqBand>): Double =
+        bands.filter { it.gain < 0.0 }.maxOfOrNull { it.q } ?: 0.0
+
+    /** Five-feature SPL used to pin the pre-penalty optimizer output. */
+    private fun legacyFixture(): Pair<DoubleArray, DoubleArray> {
+        val freqs = logSpacedFreqs(512)
+        fun g(lf: Double, hz: Double, gain: Double, sigma: Double): Double {
+            val d = lf - kotlin.math.log10(hz)
+            return gain * kotlin.math.exp(-(d * d) / sigma)
+        }
+        val spl = DoubleArray(freqs.size) { i ->
+            val lf = kotlin.math.log10(freqs[i])
+            g(lf, 60.0, 4.0, 0.08) + g(lf, 250.0, -3.0, 0.02) +
+                g(lf, 1200.0, 6.0, 0.01) + g(lf, 3000.0, -4.0, 0.015) +
+                g(lf, 7000.0, 5.0, 0.02)
+        }
+        return freqs to spl
+    }
+
+    private fun legacyConfig(penaltyEnabled: Boolean) = AutoEqEngine.Config(
+        maxBands = 10,
+        flatnessTarget = 0.1,
+        dipMaxDepth = 20.0,
+        dipMinWidthHz = 10.0,
+        sharpnessPenaltyEnabled = penaltyEnabled
+    )
+
+    @Test
+    fun `sharpness penalty forbids high gain at high q for narrow peak`() {
+        val freqs = logSpacedFreqs(512)
+        val spl = gaussianPeak(freqs, 3000.0, 10.0, 0.0005)
+        val base = AutoEqEngine.Config(
+            maxBands = 10,
+            flatnessTarget = 0.05,
+            maxQHigh = 20.0
+        )
+
+        val without = engine.run(
+            freqs, spl, TargetCurve.flat(),
+            base.copy(sharpnessPenaltyEnabled = false)
+        )
+        assertTrue("Legacy optimizer should produce a sharp cut",
+            without.bands.any { abs(it.gain) > 6.0 && it.q > 8.0 })
+
+        val with = engine.run(
+            freqs, spl, TargetCurve.flat(),
+            base.copy(sharpnessPenaltyEnabled = true)
+        )
+        assertTrue("Penalty must not remove all correction", with.bands.isNotEmpty())
+        val violating = with.bands.filter { abs(it.gain) > 6.0 && it.q > 8.0 }
+        assertTrue("No band may combine |gain| > 6 dB with q > 8: $violating",
+            violating.isEmpty())
+    }
+
+    @Test
+    fun `sharpness penalty disabled preserves legacy band set`() {
+        val (freqs, spl) = legacyFixture()
+        val result = engine.run(freqs, spl, TargetCurve.flat(), legacyConfig(false))
+
+        assertEquals(10, result.bands.size)
+        assertEquals(10, result.iterations)
+        assertEquals(-4.318013425866377, result.preampDb, 1e-6)
+        assertEquals(0.4610197937727971, result.finalMaxDeviation, 1e-6)
+
+        val expectedFc = doubleArrayOf(
+            1246.164010045221, 5047.447247031811, 117.765751102041,
+            2819.777990665010, 251.784276083040, 9513.144194983320,
+            35.555378012516, 1070.533461039238, 3366.930276652351,
+            9025.759253160970
+        )
+        val expectedGain = doubleArrayOf(
+            -5.821984121431, -2.913223771741, -3.014072858702,
+            3.612478155234, 3.081538823128, 2.408055227187,
+            2.025004738136, -2.129832267314, 1.039239475077,
+            0.015838263486
+        )
+        val expectedQ = doubleArrayOf(
+            3.394711643730, 1.648248333310, 0.979722112263,
+            3.248807391953, 2.418065280610, 1.555254189773,
+            1.357565973201, 4.917918462476, 5.015197712200,
+            4.896164136777
+        )
+        val expectedTypes = arrayOf(
+            ParametricEqFilterType.PEAKING, ParametricEqFilterType.HIGH_SHELF,
+            ParametricEqFilterType.LOW_SHELF, ParametricEqFilterType.PEAKING,
+            ParametricEqFilterType.PEAKING, ParametricEqFilterType.HIGH_SHELF,
+            ParametricEqFilterType.LOW_SHELF, ParametricEqFilterType.PEAKING,
+            ParametricEqFilterType.PEAKING, ParametricEqFilterType.HIGH_SHELF
+        )
+
+        result.bands.forEachIndexed { i, band ->
+            assertEquals("band $i frequency", expectedFc[i], band.frequency, 1e-3)
+            assertEquals("band $i gain", expectedGain[i], band.gain, 1e-6)
+            assertEquals("band $i q", expectedQ[i], band.q, 1e-6)
+            assertEquals("band $i type", expectedTypes[i], band.filterType)
+        }
+    }
+
+    @Test
+    fun `zero sharpness penalty weight is equivalent to disabled`() {
+        val (freqs, spl) = legacyFixture()
+        val disabled = engine.run(freqs, spl, TargetCurve.flat(), legacyConfig(false))
+        val zeroWeight = engine.run(
+            freqs, spl, TargetCurve.flat(),
+            legacyConfig(true).copy(sharpnessPenaltyWeight = 0.0)
+        )
+
+        assertEquals(disabled.preampDb, zeroWeight.preampDb, 0.0)
+        assertEquals(disabled.finalMaxDeviation, zeroWeight.finalMaxDeviation, 0.0)
+        assertEquals(disabled.bands, zeroWeight.bands)
+    }
+
+    @Test
+    fun `sharpness penalty lowers max cut q with small deviation cost`() {
+        val freqs = logSpacedFreqs(512)
+        val spl = gaussianPeak(freqs, 150.0, 8.0, 0.02)
+        val config = AutoEqEngine.Config(maxBands = 10, flatnessTarget = 0.05)
+
+        val without = engine.run(
+            freqs, spl, TargetCurve.flat(),
+            config.copy(sharpnessPenaltyEnabled = false)
+        )
+        val with = engine.run(
+            freqs, spl, TargetCurve.flat(),
+            config.copy(sharpnessPenaltyEnabled = true)
+        )
+
+        assertTrue("Fixture must exercise a high-Q cut",
+            maxCutQ(without.bands) > 10.0)
+        assertTrue(
+            "Penalty should reduce max cut Q (${maxCutQ(without.bands)} -> ${maxCutQ(with.bands)})",
+            maxCutQ(with.bands) < maxCutQ(without.bands)
+        )
+        val deviationCost = with.finalMaxDeviation - without.finalMaxDeviation
+        assertTrue(
+            "Residual deviation may grow by at most 0.2 dB (grew by $deviationCost)",
+            deviationCost <= 0.2
+        )
+    }
 }

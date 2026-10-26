@@ -92,6 +92,25 @@ class ParametricEqResponseCalculator(
         return freqs
     }
 
+    /**
+     * Magnitude response of a single band in dB at each frequency in [freqs].
+     *
+     * Unlike [compute], this returns the response of one filter only, which is
+     * what AutoEq's sharpness penalty scores (its ringing depends on the slope
+     * of that filter, not on the summed cascade).
+     */
+    fun bandMagnitudeDb(band: ParametricEqBand, freqs: DoubleArray): DoubleArray {
+        val coeffs = computeCoefficients(
+            band.frequency, band.gain, band.q, band.filterType, sampleRate
+        )
+        val response = DoubleArray(freqs.size)
+        for (i in freqs.indices) {
+            val mag = complexMagnitude(transferFunction(coeffs, freqs[i], sampleRate))
+            response[i] = if (mag > 0.0) 20.0 * log10(mag) else 0.0
+        }
+        return response
+    }
+
     /** Filter bands that affect the given channel. */
     private fun bandsForChannel(
         bands: List<ParametricEqBand>,

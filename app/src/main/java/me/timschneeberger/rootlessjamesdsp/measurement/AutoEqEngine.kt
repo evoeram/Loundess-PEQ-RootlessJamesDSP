@@ -51,7 +51,10 @@ class AutoEqEngine(
         val highShelfCutoffHz: Double = 5000.0,  // Частоты выше этой → high-shelf кандидат
         // Nelder-Mead joint optimization
         val useNelderMead: Boolean = true,       // Совместная оптимизация после greedy placement
-        val nelderMeadIterations: Int = 300      // Итераций Nelder-Mead на каждый шаг
+        val nelderMeadIterations: Int = 300,     // Итераций Nelder-Mead на каждый шаг
+        // Sharpness penalty (AutoEq)
+        val sharpnessPenaltyEnabled: Boolean = true,  // Штраф за наклон круче ~18 дБ/окт
+        val sharpnessPenaltyWeight: Double = 1.0      // Вес штрафа в функции потерь
     )
 
     /** Результат Auto-EQ. */
@@ -66,6 +69,20 @@ class AutoEqEngine(
     private val calculator = ParametricEqResponseCalculator(
         sampleRate, 20.0, 20000.0, numPoints
     )
+
+    /**
+     * Грубая log-сетка для штрафа за резкость: 128 точек на весь диапазон,
+     * чтобы штраф не удорожал loss пропорционально [numPoints].
+     */
+    private val sharpnessFreqs: DoubleArray by lazy {
+        DoubleArray(SHARPNESS_POINTS) { i ->
+            val t = i.toDouble() / (SHARPNESS_POINTS - 1)
+            10.0.pow(
+                log10(SHARPNESS_MIN_HZ) +
+                    t * (log10(SHARPNESS_MAX_HZ) - log10(SHARPNESS_MIN_HZ))
+            )
+        }
+    }
 
     /**
      * Запустить Auto-EQ.
@@ -208,6 +225,25 @@ class AutoEqEngine(
             iteration++
         }
 
+        // overallMaxBoost — жёсткий предел суммарного буста каскада.
+        // Nelder-Mead ограничивает только усиление отдельных полос, поэтому
+        // при превышении лимита положительные gains масштабируются один раз
+        // после оптимизации, не меняя траекторию поиска.
+        val totalBoost = bands.sumOf { if (it.gain > 0.0) it.gain else 0.0 }
+        val boostScaled = totalBoost > config.overallMaxBoost
+        if (boostScaled) {
+            val scale = config.overallMaxBoost / totalBoost
+            for (i in bands.indices) {
+                val band = bands[i]
+                if (band.gain > 0.0) {
+                    bands[i] = ParametricEqBand(
+                        band.frequency, band.gain * scale, band.q,
+                        band.filterType, band.channel
+                    )
+                }
+            }
+        }
+
         // Вычисление preamp из реальной суммарной АЧХ каскада фильтров,
         // а не из max(gain отдельной полосы). Каскад shelf/peaking фильтров
         // может давать пик выше gain любой отдельной полосы (особенно
@@ -220,12 +256,27 @@ class AutoEqEngine(
         )
         val preampDb = if (maxPeak > 0.0) -maxPeak else 0.0
 
+        // После масштабирования бустов остаточное отклонение нужно пересчитать.
+        val finalDeviation = if (boostScaled) {
+            var dev = 0.0
+            for (i in evalFreqs.indices) {
+                if (!inRange[i]) continue
+                val err = abs(
+                    (measuredAtEval[i] + filterResponse.leftResponseDb[i]) - targetAtEval[i]
+                )
+                if (err > dev) dev = err
+            }
+            dev
+        } else {
+            maxDeviation
+        }
+
         return Result(
             bands = bands,
             preampDb = preampDb,
             iterations = iteration,
-            finalMaxDeviation = maxDeviation,
-            targetMet = maxDeviation <= config.flatnessTarget
+            finalMaxDeviation = finalDeviation,
+            targetMet = finalDeviation <= config.flatnessTarget
         )
     }
 
@@ -307,6 +358,42 @@ class AutoEqEngine(
     }
 
     /**
+     * Штраф AutoEq за слишком крутой скат пикового фильтра.
+     *
+     * gainLimit — усиление, при котором наклон достигает ~18 дБ/окт;
+     * сигмоида вокруг него быстро включает штраф. Штраф считается по АЧХ
+     * самой полосы на отдельной грубой сетке, а не по общему каскаду.
+     * Shelf-фильтры, как и в AutoEq, не штрафуются.
+     *
+     * AutoEq использует знаковое усиление, поэтому для вырезов коэффициент
+     * обращается в ноль. Вырез с тем же |gain| имеет тот же наклон и так же
+     * звенит, поэтому здесь берётся модуль усиления.
+     */
+    private fun sharpnessPenalty(bands: List<ParametricEqBand>, weight: Double): Double {
+        var total = 0.0
+        for (band in bands) {
+            if (band.filterType != ParametricEqFilterType.PEAKING) continue
+            if (band.q <= 0.0) continue
+
+            val gainLimit = -0.09503189270199464 + 20.575128011847003 / band.q
+            if (gainLimit <= 0.0) continue
+
+            val x = abs(band.gain) / gainLimit - 1.0
+            val coefficient = 1.0 / (1.0 + exp(-100.0 * x))
+            if (coefficient < SHARPNESS_MIN_COEFFICIENT) continue
+
+            val response = calculator.bandMagnitudeDb(band, sharpnessFreqs)
+            var sum = 0.0
+            for (v in response) {
+                val scaled = v * coefficient
+                sum += scaled * scaled
+            }
+            total += sum / response.size
+        }
+        return total * weight
+    }
+
+    /**
      * Совместная оптимизация параметров всех полос через Nelder-Mead Simplex.
      *
      * Оптимизирует Fc, Q и Gain каждой полосы для минимизации
@@ -371,6 +458,11 @@ class AutoEqEngine(
                     penalty += 0.5 * (q - maxQ).pow(2)
                 }
             }
+
+            if (config.sharpnessPenaltyEnabled && config.sharpnessPenaltyWeight > 0.0) {
+                penalty += sharpnessPenalty(tempBands, config.sharpnessPenaltyWeight)
+            }
+
             mse + penalty
         }
 
@@ -524,5 +616,14 @@ class AutoEqEngine(
         }
 
         return result
+    }
+
+    private companion object {
+        const val SHARPNESS_POINTS = 128
+        const val SHARPNESS_MIN_HZ = 20.0
+        const val SHARPNESS_MAX_HZ = 20000.0
+
+        /** Ниже этого коэффициента штраф пренебрежим — АЧХ полосы не считается. */
+        const val SHARPNESS_MIN_COEFFICIENT = 1e-4
     }
 }
