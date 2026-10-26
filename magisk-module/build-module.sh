@@ -131,10 +131,30 @@ for ABI in arm64-v8a armeabi-v7a x86 x86_64; do
 done
 
 # ---------------------------------------------------------------------------
-# 3. Copy static templates (scripts only — no audio_effects configs)
+# 3. Copy static templates (scripts + SELinux rules — no audio_effects configs)
 # ---------------------------------------------------------------------------
+# The static sepolicy.rule is the fallback for installs where customize.sh
+# cannot render the template. Its allow rules must stay equal to the template
+# with every "#@IF <type>" block stripped; headers may differ.
+strip_gated_sepolicy() {
+    awk '/^#@IF /{skip=1;next} /^#@ENDIF/{skip=0;next} skip!=1 && /^allow /{print}' "$1"
+}
+if ! diff -q <(strip_gated_sepolicy "$SCRIPT_DIR/src/sepolicy.rule.template") \
+             <(grep -E '^allow ' "$SCRIPT_DIR/src/sepolicy.rule") >/dev/null; then
+    echo "ERROR: src/sepolicy.rule is out of sync with src/sepolicy.rule.template" >&2
+    echo "       (the static file must carry the template's ungated allow rules)" >&2
+    exit 1
+fi
+[[ -f "$REPO_ROOT/NOTICE" ]] || {
+    echo "ERROR: NOTICE is missing; it carries the MIT attribution for the" >&2
+    echo "       sepolicy rules and must ship with the module" >&2
+    exit 1
+}
+
 cp "$SCRIPT_DIR"/src/customize.sh "$SCRIPT_DIR"/src/service.sh \
    "$SCRIPT_DIR"/src/uninstall.sh "$SCRIPT_DIR"/src/post-fs-data.sh "$STAGING/"
+cp "$SCRIPT_DIR"/src/sepolicy.rule "$SCRIPT_DIR"/src/sepolicy.rule.template "$STAGING/"
+cp "$REPO_ROOT/NOTICE" "$STAGING/NOTICE"
 mkdir -p "$STAGING/common"
 cp "$SCRIPT_DIR"/src/common/patch_audio_config.sh "$STAGING/common/"
 
@@ -192,4 +212,10 @@ fi
 echo ""
 echo "== Built: $OUT =="
 unzip -l "$OUT"
+for f in sepolicy.rule sepolicy.rule.template NOTICE; do
+    unzip -l "$OUT" | grep -Eq "[ /]$f$" || {
+        echo "ERROR: $f is missing from $OUT" >&2
+        exit 1
+    }
+done
 echo "== Rendered: $SCRIPT_DIR/build/update.json (attach to the release) =="

@@ -145,6 +145,93 @@ else
   patch_audio_config || abort "! Aborting rather than installing something inert"
 fi
 
+# --- SELinux rules ---------------------------------------------------------
+# Magisk applies $MODPATH/sepolicy.rule as live policy at post-fs-data.
+# AOSP rules are always kept; a vendor block is kept only when the device
+# policy really defines its type, because vendor audio HAL domains differ
+# between SoCs and a reference to an unknown type is rejected by the parser.
+#
+# Android 13+ compresses /sys/fs/selinux/policy, so grepping that file cannot
+# be the primary check: magiskpolicy (Magisk, KernelSU) decompresses it and
+# --print-rules is authoritative. The plain grep stays as a fallback for older
+# devices without the tool; when neither works, sepolicy.rule keeps only the
+# AOSP rules, which are always valid.
+selinux_existing_types() {
+  local tool=""
+  for p in magiskpolicy "$MAGISKTMP/magiskpolicy" /data/adb/magisk/magiskpolicy \
+           /data/adb/ksu/bin/magiskpolicy; do
+    case "$p" in
+      /*) if [ -x "$p" ]; then tool="$p"; break; fi ;;
+      *)  if command -v "$p" >/dev/null 2>&1; then tool="$(command -v "$p")"; break; fi ;;
+    esac
+  done
+
+  if [ -n "$tool" ]; then
+    "$tool" --print-rules 2>/dev/null | awk -v types="$*" '
+      BEGIN { n = split(types, a, " "); left = n }
+      { for (i = 1; i <= n; i++)
+          if (!done[i] && index($0, a[i])) { print a[i]; done[i] = 1; left-- }
+        if (left == 0) exit }
+    '
+    return 0
+  fi
+
+  [ -r /sys/fs/selinux/policy ] || return 1
+  for t in "$@"; do
+    grep -q "$t" /sys/fs/selinux/policy 2>/dev/null && echo "$t"
+  done
+  return 0
+}
+
+render_sepolicy() {
+  local template="$1" out="$2" enabled="$3"
+  awk -v enabled=" $enabled " '
+    /^#@IF / { name = $2; skip = (index(enabled, " " name " ") == 0); next }
+    /^#@ENDIF/ { skip = 0; next }
+    skip != 1 { print }
+  ' "$template" > "$out"
+}
+
+SEPOLICY_TEMPLATE="$MODPATH/sepolicy.rule.template"
+SEPOLICY_RULE="$MODPATH/sepolicy.rule"
+if [ -f "$SEPOLICY_TEMPLATE" ]; then
+  GATED_TYPES="$(sed -n 's/^#@IF \([A-Za-z0-9_]*\).*$/\1/p' "$SEPOLICY_TEMPLATE" | sort -u)"
+  ENABLED_TYPES=""
+  if [ -n "$GATED_TYPES" ]; then
+    if DETECTED_TYPES="$(selinux_existing_types $GATED_TYPES)"; then
+      for t in $DETECTED_TYPES; do
+        ENABLED_TYPES="$ENABLED_TYPES $t"
+        ui_print "  SELinux: policy defines $t, including its rules"
+      done
+      [ -n "$ENABLED_TYPES" ] || ui_print "- SELinux: no optional domains found, AOSP rules only"
+    else
+      ui_print "- SELinux policy is not readable; keeping the AOSP-only rules"
+    fi
+  fi
+
+  if render_sepolicy "$SEPOLICY_TEMPLATE" "$SEPOLICY_RULE.new" "$ENABLED_TYPES"; then
+    mv -f "$SEPOLICY_RULE.new" "$SEPOLICY_RULE"
+    set_perm "$SEPOLICY_RULE" 0 0 0644
+    ui_print "- SELinux rules written to sepolicy.rule"
+  else
+    rm -f "$SEPOLICY_RULE.new"
+    ui_print "! Could not render sepolicy.rule; keeping the static fallback"
+  fi
+fi
+
+case "$(getenforce 2>/dev/null)" in
+  Enforcing)  ui_print "- SELinux is enforcing" ;;
+  Permissive) ui_print "- SELinux is permissive; the rules are not required" ;;
+esac
+
+if [ "$ROOT_IMPL" = "APatch" ]; then
+  ui_print " "
+  ui_print "! APatch does not apply Magisk-style sepolicy.rule files."
+  ui_print "  On an enforcing device the effect may fail to load; the"
+  ui_print "  rules stay in the module directory (sepolicy.rule) for"
+  ui_print "  manual application. Installation continues."
+fi
+
 ui_print "- Reboot to load the engine"
 ui_print " "
 ui_print "  If the device fails to boot, boot into Safe Mode,"

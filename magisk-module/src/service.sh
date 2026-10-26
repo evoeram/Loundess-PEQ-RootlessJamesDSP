@@ -35,6 +35,13 @@ sleep 1
 start audioserver
 start vendor.audio-hal 2>/dev/null
 
+# SELinux diagnostics: enforcement state and denials that mention our effect.
+# Overwritten every boot so it cannot grow and never affects boot behaviour.
+{
+  echo "enforce=$(getenforce 2>/dev/null)"
+  dmesg 2>/dev/null | grep -iE "avc: +denied" | grep -iE "jamesdsp|soundfx"
+} > "$MODDIR/selinux.log" 2>/dev/null
+
 # Clear boot watchdog marker if boot completed successfully
 if [ "$(getprop sys.boot_completed)" = "1" ]; then
   rm -f "$MODDIR/.boot_incomplete" "$MODDIR/.boot_strikes" 2>/dev/null

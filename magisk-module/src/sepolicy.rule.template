@@ -1,0 +1,73 @@
+# JamesDSP Magisk module -- SELinux rules for the legacy audio effects HAL.
+#
+# Template used by customize.sh to build $MODPATH/sepolicy.rule at install
+# time. Rules outside gated marker blocks are always kept; a block is kept
+# only when /sys/fs/selinux/policy defines its type, because vendor HAL domain
+# names differ between SoCs and an unknown type would invalidate the rule.
+#
+# The version with every gated block stripped must equal sepolicy.rule;
+# build-module.sh enforces that.
+#
+# Derived from the Audio Modification Library (Ryuki Mod) by Rei Ryuki (2022),
+# MIT License. See NOTICE for the copyright and permission notice.
+#
+# Only the domains involved in loading the effect are touched: no permissive
+# domains, no wildcard sources or targets. Deliberately not carried over from
+# the reference set: "allow system_server system_file file write" (system_server
+# reaches effects through audioserver, not the filesystem), diag_device,
+# tcp_socket, capability sys_admin and the FIFO writes to app domains.
+
+# --- overlay mounting -------------------------------------------------------
+# Magisk binds the patched audio_effects configs over /vendor and /odm, so the
+# filesystem has to associate the module's file contexts, and init has to be
+# able to relabel its own mount points.
+allow { system_file system_lib_file vendor_file vendor_configs_file } labeledfs filesystem associate
+allow init { system_file system_lib_file vendor_file vendor_configs_file } { dir file } relabelfrom
+
+# --- audioserver ------------------------------------------------------------
+# AudioFlinger dlopens the effect library from lib*/soundfx (system and vendor
+# overlays) and reads the patched effect config plus the audio properties.
+allow audioserver system_file file { getattr open read map }
+allow audioserver vendor_file file { getattr open read map execute }
+allow audioserver vendor_configs_file file { getattr open read }
+allow audioserver { default_prop boottime_prop audio_prop boot_status_prop } file { read open getattr map }
+allow audioserver { system_prop vendor_default_prop } file { read open getattr }
+allow audioserver { system_suspend_hwservice default_android_hwservice } hwservice_manager find
+allow audioserver default_android_hwservice hwservice_manager add
+allow audioserver hal_system_suspend_service service_manager find
+allow audioserver system_suspend binder call
+allow audioserver logd_socket sock_file write
+allow audioserver logd unix_stream_socket connectto
+
+#@IF hal_audio_default
+# --- audio HAL, AOSP default domain -----------------------------------------
+# Present on most devices; gated anyway so an unusual policy keeps only the
+# rules that can actually be applied.
+allow hal_audio_default system_file file { getattr open read map }
+allow hal_audio_default vendor_file file { getattr open read map execute }
+allow hal_audio_default vendor_configs_file file { getattr open read }
+allow hal_audio_default { default_prop boottime_prop audio_prop boot_status_prop } file { read open getattr map }
+allow hal_audio_default { system_prop vendor_default_prop } file { read open getattr }
+allow hal_audio_default { system_suspend_hwservice default_android_hwservice } hwservice_manager find
+allow hal_audio_default default_android_hwservice hwservice_manager add
+allow hal_audio_default hal_system_suspend_service service_manager find
+allow hal_audio_default system_suspend binder call
+allow hal_audio_default logd_socket sock_file write
+allow hal_audio_default logd unix_stream_socket connectto
+#@ENDIF
+
+#@IF mtk_hal_audio
+# --- audio HAL, MediaTek ----------------------------------------------------
+# MediaTek devices run their own HAL domain instead of hal_audio_default.
+allow mtk_hal_audio system_file file { getattr open read map }
+allow mtk_hal_audio vendor_file file { getattr open read map execute }
+allow mtk_hal_audio vendor_configs_file file { getattr open read }
+allow mtk_hal_audio { default_prop boottime_prop audio_prop boot_status_prop } file { read open getattr map }
+allow mtk_hal_audio { system_prop vendor_default_prop } file { read open getattr }
+allow mtk_hal_audio { system_suspend_hwservice default_android_hwservice } hwservice_manager find
+allow mtk_hal_audio default_android_hwservice hwservice_manager add
+allow mtk_hal_audio hal_system_suspend_service service_manager find
+allow mtk_hal_audio system_suspend binder call
+allow mtk_hal_audio logd_socket sock_file write
+allow mtk_hal_audio logd unix_stream_socket connectto
+#@ENDIF

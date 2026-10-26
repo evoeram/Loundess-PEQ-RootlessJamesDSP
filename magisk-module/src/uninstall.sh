@@ -7,7 +7,7 @@
 MODDIR=${0%/*}
 
 # Remove boot watchdog state
-rm -f "$MODDIR/.boot_incomplete" "$MODDIR/.boot_strikes" "$MODDIR/.source_config" "$MODDIR/boot.log"
+rm -f "$MODDIR/.boot_incomplete" "$MODDIR/.boot_strikes" "$MODDIR/.source_config" "$MODDIR/boot.log" "$MODDIR/selinux.log"
 
 # Remove AML fragment if we wrote one
 rm -f "$MODDIR/aml.sh"
