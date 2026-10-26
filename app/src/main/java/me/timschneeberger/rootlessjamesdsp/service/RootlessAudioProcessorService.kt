@@ -440,7 +440,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     private val broadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_LOUDNESS))
+                ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_DYNAMICEQ, Constants.PREF_LOUDNESS))
                 ACTION_PREFERENCES_UPDATED -> engine.syncWithPreferences()
                 Constants.ACTION_SQUIG_PEQ_CHANGED -> engine.syncWithPreferences(arrayOf(Constants.PREF_SQUIG, Constants.PREF_PEQ))
                 ACTION_SERVICE_RELOAD_LIVEPROG -> engine.syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))

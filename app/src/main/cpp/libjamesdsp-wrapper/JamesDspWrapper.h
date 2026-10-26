@@ -3,6 +3,8 @@
 
 #include <jni.h>
 
+#include <Effects/dynamicEq.h>
+
 // Forward declaration (opaque pointer for C interop)
 class ParametricEqProcessor;
 class LoudnessCorrectionProcessor;
@@ -18,6 +20,7 @@ typedef struct
     jmethodID callbackOnVdcParseError;
     ParametricEqProcessor* parametricEq;
     LoudnessCorrectionProcessor* loudnessCorrection;
+    dynamicEq_t* dynamicEq;
 } JamesDspWrapper;
 
 /* C interop function */

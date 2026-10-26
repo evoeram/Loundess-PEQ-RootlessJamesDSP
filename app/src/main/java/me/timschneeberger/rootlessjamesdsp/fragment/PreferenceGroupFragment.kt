@@ -18,6 +18,7 @@ import androidx.preference.PreferenceScreen
 import androidx.recyclerview.widget.RecyclerView
 import me.timschneeberger.rootlessjamesdsp.MainApplication
 import me.timschneeberger.rootlessjamesdsp.R
+import me.timschneeberger.rootlessjamesdsp.activity.DynamicEqActivity
 import me.timschneeberger.rootlessjamesdsp.activity.GraphicEqualizerActivity
 import me.timschneeberger.rootlessjamesdsp.activity.LiveprogEditorActivity
 import me.timschneeberger.rootlessjamesdsp.activity.ParametricEqualizerActivity
@@ -264,6 +265,13 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             R.xml.dsp_parametriceq_preferences -> {
                 findPreference<Preference>(getString(R.string.key_peq_bands))?.setOnPreferenceClickListener {
                     val intent = Intent(requireContext(), ParametricEqualizerActivity::class.java)
+                    startActivity(intent)
+                    true
+                }
+            }
+            R.xml.dsp_dynamiceq_preferences -> {
+                findPreference<Preference>(getString(R.string.key_dynamiceq_bands))?.setOnPreferenceClickListener {
+                    val intent = Intent(requireContext(), DynamicEqActivity::class.java)
                     startActivity(intent)
                     true
                 }

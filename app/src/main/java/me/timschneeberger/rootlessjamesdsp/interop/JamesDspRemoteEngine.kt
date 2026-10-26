@@ -36,7 +36,7 @@ class JamesDspRemoteEngine(
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                Constants.ACTION_SAMPLE_RATE_UPDATED -> syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_LOUDNESS))
+                Constants.ACTION_SAMPLE_RATE_UPDATED -> syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_DYNAMICEQ, Constants.PREF_LOUDNESS))
                 Constants.ACTION_PREFERENCES_UPDATED -> syncWithPreferences()
                 Constants.ACTION_SQUIG_PEQ_CHANGED -> syncWithPreferences(arrayOf(Constants.PREF_SQUIG, Constants.PREF_PEQ))
                 Constants.ACTION_SERVICE_RELOAD_LIVEPROG -> syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
@@ -307,7 +307,7 @@ class JamesDspRemoteEngine(
                 "Sample rate changed from ${convolverSampleRate}Hz to ${currentSampleRate}Hz; "
                 + "re-syncing convolver, PEQ, and loudness with new sample rate"
             )
-            syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_LOUDNESS))
+            syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_DYNAMICEQ, Constants.PREF_LOUDNESS))
         }
     }
 
@@ -373,6 +373,31 @@ class JamesDspRemoteEngine(
 
         val configResult = effect.setParameterFloatArray(1300, data) == AudioEffect.SUCCESS
         val enableResult = effect.setParameter(1214, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
+    }
+
+    // Dynamic EQ via AudioEffect parameter API (jamesdsp.c).
+    // Payload: [mix, msMode, bandCount, band0(8 floats), ...], max 8 bands.
+    override fun setDynamicEq(
+        enable: Boolean,
+        sampleRate: Double,
+        bands: List<me.timschneeberger.rootlessjamesdsp.model.DynamicEqBand>,
+        mix: Float,
+        msMode: Int
+    ): Boolean {
+        val bandList = me.timschneeberger.rootlessjamesdsp.model.DynamicEqBandList()
+        bandList.addAll(bands)
+        val config = bandList.toNativeConfig()
+        val count = config.size / me.timschneeberger.rootlessjamesdsp.model.DynamicEqBandList.VALUES_PER_BAND
+
+        val data = FloatArray(3 + config.size)
+        data[0] = mix
+        data[1] = msMode.toFloat()
+        data[2] = count.toFloat()
+        config.copyInto(data, 3)
+
+        val configResult = effect.setParameterFloatArray(1308, data) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1219, enable.toShort()) == AudioEffect.SUCCESS
         return configResult && enableResult
     }
 

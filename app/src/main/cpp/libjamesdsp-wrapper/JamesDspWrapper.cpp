@@ -92,6 +92,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_alloc(JNIEnv *e
     self->env = env;
     self->parametricEq = new ParametricEqProcessor();
     self->loudnessCorrection = new LoudnessCorrectionProcessor();
+    self->dynamicEq = new dynamicEq_t();
+    dynamicEq_init(self->dynamicEq);
 
     jclass callbackClass = env->GetObjectClass(callback);
     if (callbackClass == nullptr)
@@ -167,6 +169,10 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_free(JNIEnv *en
 
     delete wrapper->loudnessCorrection;
     wrapper->loudnessCorrection = nullptr;
+
+    dynamicEq_destroy(wrapper->dynamicEq);
+    delete wrapper->dynamicEq;
+    wrapper->dynamicEq = nullptr;
 
     JamesDSPGlobalMemoryDeallocation();
 
@@ -254,32 +260,26 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
             return;
         dsp->processInt16Multiplexd(dsp, input + offset, input + offset, inputLength / 2);
 
-        // In-place path: the DSP output lives at input[offset..], so the PEQ and
-        // loudness cascade must process that same region, not the buffer start.
-        if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
+        // In-place path: the DSP output lives at input[offset..], so the PEQ,
+        // Dynamic EQ and loudness chain must process that same region, not the
+        // buffer start.
+        const bool peqEnabled = wrapper->parametricEq && wrapper->parametricEq->isEnabled();
+        /* The module is called even when disabled: it needs the block to
+         * finish its click-free fade-out. It fast-paths when fully off. */
+        const bool deqActive = wrapper->dynamicEq && dynamicEq_is_active(wrapper->dynamicEq);
+        const bool loudEnabled = wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled();
+        if (peqEnabled || deqActive || loudEnabled)
         {
             size_t frames = inputLength / 2;
             std::vector<float> tmp(frames * 2);
             for (size_t i = 0; i < frames * 2; ++i)
                 tmp[i] = (float)(input[offset + i]) / 32768.0f;
-            wrapper->parametricEq->processInterleaved(tmp.data(), frames);
-            if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
+            if (peqEnabled)
+                wrapper->parametricEq->processInterleaved(tmp.data(), frames);
+            if (deqActive)
+                dynamicEq_process_interleaved(wrapper->dynamicEq, tmp.data(), frames);
+            if (loudEnabled)
                 wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
-            for (size_t i = 0; i < frames * 2; ++i)
-            {
-                float v = tmp[i] * 32768.0f;
-                if (v > 32767.0f) v = 32767.0f;
-                if (v < -32768.0f) v = -32768.0f;
-                input[offset + i] = (short)v;
-            }
-        }
-        else if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
-        {
-            size_t frames = inputLength / 2;
-            std::vector<float> tmp(frames * 2);
-            for (size_t i = 0; i < frames * 2; ++i)
-                tmp[i] = (float)(input[offset + i]) / 32768.0f;
-            wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
             for (size_t i = 0; i < frames * 2; ++i)
             {
                 float v = tmp[i] * 32768.0f;
@@ -306,32 +306,24 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
     // что при offset > 0 приводило к обработке мусора и пропуску начала.
     dsp->processInt16Multiplexd(dsp, input + offset, output, inputLength / 2);
 
-    // Apply time-domain parametric EQ on int16 path via float conversion
-    if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
+    // Apply the time-domain chain (PEQ, Dynamic EQ, loudness) on the int16
+    // path via a float conversion.
+    const bool peqEnabled = wrapper->parametricEq && wrapper->parametricEq->isEnabled();
+    /* Called while disabled too, so the fade-out can finish. */
+    const bool deqActive = wrapper->dynamicEq && dynamicEq_is_active(wrapper->dynamicEq);
+    const bool loudEnabled = wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled();
+    if (peqEnabled || deqActive || loudEnabled)
     {
         size_t frames = inputLength / 2;
-        // Convert to float, process, convert back
         std::vector<float> tmp(frames * 2);
         for (size_t i = 0; i < frames * 2; ++i)
             tmp[i] = (float)(output[i]) / 32768.0f;
-        wrapper->parametricEq->processInterleaved(tmp.data(), frames);
-        if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
+        if (peqEnabled)
+            wrapper->parametricEq->processInterleaved(tmp.data(), frames);
+        if (deqActive)
+            dynamicEq_process_interleaved(wrapper->dynamicEq, tmp.data(), frames);
+        if (loudEnabled)
             wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
-        for (size_t i = 0; i < frames * 2; ++i)
-        {
-            float v = tmp[i] * 32768.0f;
-            if (v > 32767.0f) v = 32767.0f;
-            if (v < -32768.0f) v = -32768.0f;
-            output[i] = (short)v;
-        }
-    }
-    else if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
-    {
-        size_t frames = inputLength / 2;
-        std::vector<float> tmp(frames * 2);
-        for (size_t i = 0; i < frames * 2; ++i)
-            tmp[i] = (float)(output[i]) / 32768.0f;
-        wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
         for (size_t i = 0; i < frames * 2; ++i)
         {
             float v = tmp[i] * 32768.0f;
@@ -447,10 +439,13 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
             return;
         dsp->processFloatMultiplexd(dsp, input + offset, input + offset, inputLength / 2);
 
-        // In-place path: the DSP output lives at input[offset..], so the PEQ and
-        // loudness cascade must process that same region, not the buffer start.
+        // In-place path: the DSP output lives at input[offset..], so the PEQ,
+        // Dynamic EQ and loudness chain must process that same region.
         if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
             wrapper->parametricEq->processInterleaved(input + offset, inputLength / 2);
+
+        if (wrapper->dynamicEq)
+            dynamicEq_process_interleaved(wrapper->dynamicEq, input + offset, inputLength / 2);
 
         if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
             wrapper->loudnessCorrection->processInterleaved(input + offset, inputLength / 2);
@@ -473,13 +468,18 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
     // что при offset > 0 приводило к обработке мусора и пропуску начала.
     dsp->processFloatMultiplexd(dsp, input + offset, output, inputLength / 2);
 
-    // Apply time-domain parametric EQ cascade after main DSP chain
+    // Apply the time-domain chain after the main DSP chain: PEQ first, then
+    // Dynamic EQ, then loudness (which must see the corrected signal).
     if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
     {
         wrapper->parametricEq->processInterleaved(output, inputLength / 2);
     }
 
-    // Apply loudness correction after parametric EQ
+    if (wrapper->dynamicEq)
+    {
+        dynamicEq_process_interleaved(wrapper->dynamicEq, output, inputLength / 2);
+    }
+
     if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
     {
         wrapper->loudnessCorrection->processInterleaved(output, inputLength / 2);
@@ -1088,6 +1088,48 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setParametricEq
 
     LOGD("JamesDspWrapper::setParametricEq: configured %d bands, preamp=%.1f dB, sr=%.0f",
          count, preampDb, sampleRate);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setDynamicEq(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble sampleRate, jfloatArray configArr,
+    jfloat mix, jint msMode)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->dynamicEq == nullptr)
+        return false;
+
+    jsize length = configArr != nullptr ? env->GetArrayLength(configArr) : 0;
+    if (length % DYNEQ_VALUES_PER_BAND != 0)
+    {
+        LOGE("JamesDspWrapper::setDynamicEq: config length %d is not a multiple of %d",
+             length, DYNEQ_VALUES_PER_BAND);
+        return false;
+    }
+
+    jsize count = length / DYNEQ_VALUES_PER_BAND;
+    if (count > DYNEQ_MAX_BANDS)
+        count = DYNEQ_MAX_BANDS;
+
+    if (!enable || count == 0 || sampleRate <= 0.0)
+    {
+        dynamicEq_set_enabled(wrapper->dynamicEq, false);
+        return true;
+    }
+
+    auto* config = env->GetFloatArrayElements(configArr, nullptr);
+    if (config == nullptr)
+        return false;
+
+    dynamicEq_configure(wrapper->dynamicEq, sampleRate, config, (int)count);
+    dynamicEq_set_mix_ms(wrapper->dynamicEq, (double)mix, (int)msMode);
+    dynamicEq_set_enabled(wrapper->dynamicEq, true);
+
+    env->ReleaseFloatArrayElements(configArr, config, JNI_ABORT);
+
+    LOGD("JamesDspWrapper::setDynamicEq: configured %d bands, mix=%.0f%%, ms=%d, sr=%.0f",
+         count, mix, msMode, sampleRate);
     return true;
 }
 

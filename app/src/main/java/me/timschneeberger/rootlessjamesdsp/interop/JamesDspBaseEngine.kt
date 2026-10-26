@@ -10,6 +10,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.interop.structure.EelVmVariable
+import me.timschneeberger.rootlessjamesdsp.model.DynamicEqBand
+import me.timschneeberger.rootlessjamesdsp.model.DynamicEqBandList
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBandList
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import me.timschneeberger.rootlessjamesdsp.model.ProcessorMessage
@@ -92,6 +94,12 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val peqEnabled = cache.get(R.string.key_peq_enable, false)
             val peqBandsStr = cache.get(R.string.key_peq_bands, Constants.DEFAULT_PEQ)
             val peqPreamp = cache.get(R.string.key_peq_preamp, 0f)
+
+            cache.select(Constants.PREF_DYNAMICEQ)
+            val dynEqEnabled = cache.get(R.string.key_dynamiceq_enable, false)
+            val dynEqBandsStr = cache.get(R.string.key_dynamiceq_bands, Constants.DEFAULT_DYNAMICEQ)
+            val dynEqMix = cache.get(R.string.key_dynamiceq_mix, 100f)
+            val dynEqMsMode = cache.get(R.string.key_dynamiceq_msmode, "0").toInt()
 
             // Squig Live plugin PEQ (independent namespace; merged with main PEQ)
             cache.select(Constants.PREF_SQUIG)
@@ -254,6 +262,17 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                                 (if (squigEnabled) squigPreamp else 0f)
                             setGraphicEqCombined(geqEnabled, geqBands, peqEnabled || squigEnabled, combinedBandsStr, combinedPreamp)
                         }
+                    }
+                    Constants.PREF_DYNAMICEQ -> {
+                        val bands = DynamicEqBandList()
+                        bands.deserialize(dynEqBandsStr)
+                        setDynamicEq(
+                            dynEqEnabled && bands.isNotEmpty(),
+                            sampleRate.toDouble(),
+                            bands.toList(),
+                            dynEqMix,
+                            dynEqMsMode
+                        )
                     }
                     Constants.PREF_REVERB -> setReverb(reverbEnabled, reverbPreset)
                     Constants.PREF_STEREOWIDE -> setStereoEnhancement(swEnabled, swMode)
@@ -676,6 +695,16 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         sampleRate: Double,
         preampDb: Double,
         bands: List<me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand>
+    ): Boolean
+
+    // Dynamic EQ: per-band frequency-dependent dynamics.
+    // mix is dry/wet in percent (0..100); msMode is 0 = stereo, 1 = mid, 2 = side.
+    abstract fun setDynamicEq(
+        enable: Boolean,
+        sampleRate: Double,
+        bands: List<DynamicEqBand>,
+        mix: Float,
+        msMode: Int
     ): Boolean
 
     // Loudness correction (Fletcher-Munson compensation, local engine only)

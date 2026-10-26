@@ -98,6 +98,10 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
                     R.xml.dsp_parametriceq_preferences
                 ))
             .replace(
+                R.id.card_dynamiceq, PreferenceGroupFragment.newInstance(Constants.PREF_DYNAMICEQ,
+                    R.xml.dsp_dynamiceq_preferences
+                ))
+            .replace(
                 R.id.card_squig, PreferenceGroupFragment.newInstance(Constants.PREF_SQUIG,
                     R.xml.dsp_squig_preferences
                 ))
@@ -187,6 +191,7 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
         // В Direct Mode доступны только EQ-карточки (GEQ + PEQ через AndroidEq/DynamicsProcessing);
         // Multi EQ — нативный плагин JamesDSP, требует capture loop — скрываем
         binding.cardEq.isVisible = !directMode
+        binding.cardDynamiceq.isVisible = !directMode
         // Остальные плагины тоже требуют capture loop — скрываем
         binding.cardCompressor.isVisible = !directMode
         binding.cardBass.isVisible = !directMode

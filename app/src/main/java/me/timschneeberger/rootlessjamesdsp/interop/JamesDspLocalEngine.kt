@@ -247,6 +247,32 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         )
     }
 
+    override fun setDynamicEq(
+        enable: Boolean,
+        sampleRate: Double,
+        bands: List<me.timschneeberger.rootlessjamesdsp.model.DynamicEqBand>,
+        mix: Float,
+        msMode: Int
+    ): Boolean {
+        // Sidechain coefficients depend on sample rate; a zero rate would
+        // produce invalid coefficients. Re-applied when the rate is known.
+        if (enable && bands.isNotEmpty() && sampleRate <= 0.0) {
+            Timber.w("setDynamicEq: skipping, sample rate not yet known ($sampleRate)")
+            return false
+        }
+
+        val bandList = me.timschneeberger.rootlessjamesdsp.model.DynamicEqBandList()
+        bandList.addAll(bands)
+        return JamesDspWrapper.setDynamicEq(
+            handle,
+            enable && bands.isNotEmpty(),
+            sampleRate,
+            bandList.toNativeConfig(),
+            mix,
+            msMode
+        )
+    }
+
     // Feature support
     override fun supportsEelVmAccess(): Boolean { return true }
     override fun supportsCustomCrossfeed(): Boolean { return true }

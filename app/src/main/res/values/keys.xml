@@ -121,6 +121,11 @@
     <string name="key_peq_bands" translatable="false">peq_bands</string>
     <string name="key_peq_preamp" translatable="false">peq_preamp</string>
 
+    <string name="key_dynamiceq_enable" translatable="false">dynamiceq_enable</string>
+    <string name="key_dynamiceq_bands" translatable="false">dynamiceq_bands</string>
+    <string name="key_dynamiceq_mix" translatable="false">dynamiceq_mix</string>
+    <string name="key_dynamiceq_msmode" translatable="false">dynamiceq_msmode</string>
+
     <string name="key_reverb_enable" translatable="false">reverb_enable</string>
     <string name="key_reverb_preset" translatable="false">reverb_preset</string>
 

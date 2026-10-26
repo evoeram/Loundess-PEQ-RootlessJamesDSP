@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_marginTop="4dp"
+    android:animateLayoutChanges="true">
+
+    <HorizontalScrollView
+        android:id="@+id/horizontalScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbarDefaultDelayBeforeFade="0"
+        app:layout_constraintBottom_toTopOf="@id/edit_card"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <com.google.android.material.chip.ChipGroup
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
+            app:singleLine="true">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/add"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/dyneq_add_band"
+                app:chipIcon="@drawable/ic_baseline_add_24dp" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/reset"
+                style="@style/Widget.Material3.Chip.Assist.Elevated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/dyneq_reset"
+                app:chipIcon="@drawable/ic_twotone_delete_forever_24dp" />
+        </com.google.android.material.chip.ChipGroup>
+    </HorizontalScrollView>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/edit_card"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        app:layout_constrainedHeight="true"
+        app:layout_constraintBottom_toTopOf="@id/preview_card"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHeight_default="spread"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/horizontalScrollView"
+        app:layout_constraintVertical_weight="0">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/edit_card_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:ellipsize="end"
+                    android:gravity="center_vertical"
+                    android:maxLines="1"
+                    android:text="@string/dyneq_band_list"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <LinearLayout
+                    android:id="@+id/band_detail_context_buttons"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:visibility="visible">
+
+                    <Button
+                        android:id="@+id/cancel"
+                        style="?attr/materialIconButtonFilledTonalStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/peq_cancel"
+                        android:text="@string/peq_cancel_spaced"
+                        android:tooltipText="@string/peq_cancel"
+                        app:icon="@drawable/ic_close_24dp" />
+
+                    <Button
+                        android:id="@+id/confirm"
+                        style="?attr/materialIconButtonFilledStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/peq_done"
+                        android:text="@string/peq_done_spaced"
+                        android:tooltipText="@string/peq_done"
+                        app:icon="@drawable/ic_twotone_check_24dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <View
+                android:id="@+id/divider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?android:attr/listDivider" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <LinearLayout
+                    android:id="@+id/empty_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:alpha="0.8"
+                        android:gravity="center"
+                        android:text="@string/dyneq_no_bands_defined"
+                        android:textAppearance="?attr/textAppearanceTitleMedium"
+                        app:drawableTint="?attr/colorOnBackground"
+                        app:drawableTopCompat="@drawable/ic_twotone_nodes_24dp" />
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/band_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scrollbars="vertical"
+                    android:visibility="gone" />
+
+                <androidx.core.widget.NestedScrollView
+                    android:id="@+id/band_edit"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    tools:ignore="SpeakableTextPresentCheck">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginHorizontal="16dp"
+                        android:layout_marginTop="16dp"
+                        android:orientation="vertical">
+
+                        <me.timschneeberger.rootlessjamesdsp.view.NumberInputBox
+                            android:id="@+id/freqInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            app:floatPrecision="1"
+                            app:helperText="@string/dyneq_frequency_range"
+                            app:helperTextEnabled="true"
+                            app:hintText="@string/dyneq_frequency"
+                            app:step="10"
+                            app:suffixText="Hz"
+                            app:value="1000" />
+
+                        <me.timschneeberger.rootlessjamesdsp.view.NumberInputBox
+                            android:id="@+id/qInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            app:floatPrecision="2"
+                            app:helperText="@string/dyneq_q_range"
+                            app:helperTextEnabled="true"
+                            app:hintText="@string/dyneq_q_factor"
+                            app:step="0.1"
+                            app:value="1" />
+
+                        <me.timschneeberger.rootlessjamesdsp.view.NumberInputBox
+                            android:id="@+id/thresholdInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            app:floatPrecision="1"
+                            app:helperText="@string/dyneq_threshold_range"
+                            app:helperTextEnabled="true"
+                            app:hintText="@string/dyneq_threshold"
+                            app:step="0.5"
+                            app:suffixText="dB"
+                            app:value="-20" />
+
+                        <me.timschneeberger.rootlessjamesdsp.view.NumberInputBox
+                            android:id="@+id/ratioInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            app:floatPrecision="2"
+                            app:helperText="@string/dyneq_ratio_range"
+                            app:helperTextEnabled="true"
+                            app:hintText="@string/dyneq_ratio"
+                            app:step="0.1"
+                            app:value="3" />
+
+                        <me.timschneeberger.rootlessjamesdsp.view.NumberInputBox
+                            android:id="@+id/attackInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            app:floatPrecision="0"
+                            app:helperText="@string/dyneq_attack_range"
+                            app:helperTextEnabled="true"
+                            app:hintText="@string/dyneq_attack"
+                            app:step="1"
+                            app:suffixText="ms"
+                            app:value="10" />
+
+                        <me.timschneeberger.rootlessjamesdsp.view.NumberInputBox
+                            android:id="@+id/releaseInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            app:floatPrecision="0"
+                            app:helperText="@string/dyneq_release_range"
+                            app:helperTextEnabled="true"
+                            app:hintText="@string/dyneq_release"
+                            app:step="10"
+                            app:suffixText="ms"
+                            app:value="100" />
+
+                        <me.timschneeberger.rootlessjamesdsp.view.NumberInputBox
+                            android:id="@+id/rangeInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            app:floatPrecision="1"
+                            app:helperText="@string/dyneq_range_range"
+                            app:helperTextEnabled="true"
+                            app:hintText="@string/dyneq_range"
+                            app:step="0.5"
+                            app:suffixText="dB"
+                            app:value="-6" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:layout_marginBottom="4dp"
+                            android:text="@string/dyneq_mode"
+                            android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+                        <Spinner
+                            android:id="@+id/mode_spinner"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="16dp" />
+                    </LinearLayout>
+                </androidx.core.widget.NestedScrollView>
+            </FrameLayout>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/preview_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/edit_card">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:animateLayoutChanges="true"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/preview_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="12dp"
+                android:text="@string/dyneq_preview"
+                android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+            <me.timschneeberger.rootlessjamesdsp.view.ParametricEqSurface
+                android:id="@+id/equalizer_surface"
+                android:layout_width="match_parent"
+                android:layout_height="240dp"
+                android:layout_marginHorizontal="4dp"
+                android:layout_marginBottom="8dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+</androidx.constraintlayout.widget.ConstraintLayout>

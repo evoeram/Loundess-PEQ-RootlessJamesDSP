@@ -61,6 +61,18 @@ object JamesDspWrapper {
         channelMode: IntArray
     ): Boolean
 
+    // Dynamic EQ (frequency-dependent dynamics, biquad sidechain per band)
+    // config: [frequency, q, thresholdDb, ratio, attackMs, releaseMs, rangeDb, mode] * N
+    // mode: 0 = compressor, 1 = expander; msMode: 0 = stereo, 1 = mid, 2 = side
+    external fun setDynamicEq(
+        self: JamesDspHandle,
+        enable: Boolean,
+        sampleRate: Double,
+        config: FloatArray,
+        mix: Float,
+        msMode: Int
+    ): Boolean
+
     // Loudness correction (Fletcher-Munson compensation, ported from EqualizerAPO)
     // mode: 0 = classic (Fletcher-Munson two-shelf), 1 = ISO 226:2023 (29-band)
     external fun setLoudnessCorrection(
