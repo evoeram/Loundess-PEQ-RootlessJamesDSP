@@ -10,6 +10,7 @@
 #include <Effects/field_surround.h>
 #include <Effects/viper_agc.h>
 #include <Effects/cure.h>
+#include <Effects/tape.h>
 
 // Forward declaration (opaque pointer for C interop)
 class ParametricEqProcessor;
@@ -33,6 +34,7 @@ typedef struct
     field_surround_t* fieldSurround;
     viper_agc_t* viperAgc;
     cure_t* cure;
+    tape_t* tape;
 } JamesDspWrapper;
 
 /* C interop function */

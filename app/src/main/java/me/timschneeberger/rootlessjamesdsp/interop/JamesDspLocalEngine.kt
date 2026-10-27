@@ -421,6 +421,29 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         return JamesDspWrapper.setCure(handle, enable, sampleRate, level)
     }
 
+    override fun setTape(
+        enable: Boolean,
+        sampleRate: Double,
+        wowPct: Double,
+        flutterPct: Double,
+        saturationPct: Double,
+        biasPct: Double,
+        headBumpDb: Double,
+        mixPct: Double
+    ): Boolean {
+        // Modulation depths, base offset and fade length depend on the sample
+        // rate; re-applied when the rate becomes known.
+        if (enable && sampleRate <= 0.0) {
+            Timber.w("setTape: skipping, sample rate not yet known ($sampleRate)")
+            return false
+        }
+        if (handle == 0L) return false
+        return JamesDspWrapper.setTape(
+            handle, enable, sampleRate, wowPct, flutterPct,
+            saturationPct, biasPct, headBumpDb, mixPct
+        )
+    }
+
     // ---- Auto system volume tracking ----
 
     private var volumeReceiverRegistered = false

@@ -555,6 +555,30 @@ class JamesDspRemoteEngine(
         return configResult && enableResult
     }
 
+    override fun setTape(
+        enable: Boolean,
+        sampleRate: Double,
+        wowPct: Double,
+        flutterPct: Double,
+        saturationPct: Double,
+        biasPct: Double,
+        headBumpDb: Double,
+        mixPct: Double
+    ): Boolean {
+        // 6 floats: wowPct, flutterPct, saturationPct, biasPct, headBumpDb, mixPct
+        val data = floatArrayOf(
+            wowPct.toFloat(),
+            flutterPct.toFloat(),
+            saturationPct.toFloat(),
+            biasPct.toFloat(),
+            headBumpDb.toFloat(),
+            mixPct.toFloat()
+        )
+        val configResult = effect.setParameterFloatArray(1315, data) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1226, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
+    }
+
     // ---- Auto system volume tracking (root/remote engine) ----
 
     private var volumeReceiverRegistered = false

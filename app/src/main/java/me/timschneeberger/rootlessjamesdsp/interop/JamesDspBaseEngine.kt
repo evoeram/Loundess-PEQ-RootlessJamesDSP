@@ -230,6 +230,15 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val cureEnabled = cache.get(R.string.key_cure_enable, false)
             val cureLevel = cache.get(R.string.key_cure_level, "0").toInt()
 
+            cache.select(Constants.PREF_TAPE)
+            val tapeEnabled = cache.get(R.string.key_tape_enable, false)
+            val tapeWow = cache.get(R.string.key_tape_wow, 25f).toDouble()
+            val tapeFlutter = cache.get(R.string.key_tape_flutter, 30f).toDouble()
+            val tapeSaturation = cache.get(R.string.key_tape_saturation, 35f).toDouble()
+            val tapeBias = cache.get(R.string.key_tape_bias, -20f).toDouble()
+            val tapeHeadBump = cache.get(R.string.key_tape_headbump, 30f) / 10.0
+            val tapeMix = cache.get(R.string.key_tape_mix, 100f).toDouble()
+
             cache.select(Constants.PREF_CONVOLVER)
             val convolverEnabled = cache.get(R.string.key_convolver_enable, false)
             val convolverFile = cache.get(R.string.key_convolver_file, "")
@@ -418,6 +427,13 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                     }
                     Constants.PREF_CURE -> {
                         setCure(cureEnabled, sampleRate.toDouble(), cureLevel)
+                    }
+                    Constants.PREF_TAPE -> {
+                        setTape(
+                            tapeEnabled, sampleRate.toDouble(),
+                            tapeWow, tapeFlutter, tapeSaturation,
+                            tapeBias, tapeHeadBump, tapeMix
+                        )
                     }
                     Constants.PREF_CONVOLVER -> {
                         val mappedFile = ConvolverSampleRateFiles.resolve(
@@ -854,6 +870,19 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         enable: Boolean,
         sampleRate: Double,
         level: Int
+    ): Boolean = false
+
+    // Vintage tape: wow, flutter, saturation, bias, head bump.
+    // bias: -100..100 (negative = brighter), headBump: 0..9 dB.
+    open fun setTape(
+        enable: Boolean,
+        sampleRate: Double,
+        wowPct: Double,
+        flutterPct: Double,
+        saturationPct: Double,
+        biasPct: Double,
+        headBumpDb: Double,
+        mixPct: Double
     ): Boolean = false
 
     // Enable/disable automatic system media volume tracking for loudness correction.

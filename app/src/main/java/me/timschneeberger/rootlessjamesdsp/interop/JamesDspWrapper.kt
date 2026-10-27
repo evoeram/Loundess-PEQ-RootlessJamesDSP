@@ -168,6 +168,20 @@ object JamesDspWrapper {
         level: Int
     ): Boolean
 
+    // Vintage tape: wow, flutter, saturation, bias, head bump.
+    // bias: -100..100 (negative = brighter), headBump: 0..9 dB.
+    external fun setTape(
+        self: JamesDspHandle,
+        enable: Boolean,
+        sampleRate: Double,
+        wowPct: Double,
+        flutterPct: Double,
+        saturationPct: Double,
+        biasPct: Double,
+        headBumpDb: Double,
+        mixPct: Double
+    ): Boolean
+
     // EEL VM utilities
     external fun enumerateEelVariables(self: JamesDspHandle): ArrayList<EelVmVariable>
     external fun manipulateEelVariable(self: JamesDspHandle, name: String, value: Float): Boolean

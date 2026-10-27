@@ -309,6 +309,16 @@
     <string name="cure_level_1">Medium</string>
     <string name="cure_level_2">High</string>
 
+    <string name="tape_enable">Tape</string>
+    <string name="tape_summary">Vintage tape machine colour: slow wow and faster flutter pitch drift, gentle saturation, a bias control that runs from bright and distorted to dull, and a low head bump</string>
+    <string name="tape_wow">Wow</string>
+    <string name="tape_flutter">Flutter</string>
+    <string name="tape_saturation">Saturation</string>
+    <string name="tape_bias">Bias</string>
+    <string name="tape_bias_summary">Negative: brighter, more distortion. Positive: duller. Zero: flat</string>
+    <string name="tape_headbump">Head bump</string>
+    <string name="tape_mix">Mix</string>
+
     <string name="geq_enable">Arbitrary response equalizer</string>
     <string name="geq_nodes">Magnitude response</string>
 

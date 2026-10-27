@@ -135,6 +135,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             R.xml.dsp_fieldsurround_preferences -> setupExtrasLabels()
             R.xml.dsp_agc_preferences -> setupExtrasLabels()
             R.xml.dsp_cure_preferences -> setupExtrasLabels()
+            R.xml.dsp_tape_preferences -> setupTapeLabels()
             R.xml.dsp_compander_preferences -> {
                 findPreference<MaterialSeekbarPreference>(getString(R.string.key_compander_granularity))?.valueLabelOverride =
                     fun(it: Float): String {
@@ -659,6 +660,22 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             fun(it: Float): String { return "%.0f %%".format(it) }
         findPreference<MaterialSeekbarPreference>(getString(R.string.key_agc_maxboost))?.valueLabelOverride =
             fun(it: Float): String { return "%.1f dB".format(it / 10f) }
+    }
+
+    /** Tape: head bump is stored x10 (0.1 dB steps); the rest are plain %. */
+    private fun setupTapeLabels() {
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_tape_wow))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f %%".format(it) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_tape_flutter))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f %%".format(it) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_tape_saturation))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f %%".format(it) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_tape_bias))?.valueLabelOverride =
+            fun(it: Float): String { return "%+.0f %%".format(it) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_tape_headbump))?.valueLabelOverride =
+            fun(it: Float): String { return "%.1f dB".format(it / 10f) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_tape_mix))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f %%".format(it) }
     }
 
     /**

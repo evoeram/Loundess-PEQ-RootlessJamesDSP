@@ -176,6 +176,10 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
                 R.id.card_cure, PreferenceGroupFragment.newInstance(Constants.PREF_CURE,
                     R.xml.dsp_cure_preferences
                 ))
+            .replace(
+                R.id.card_tape, PreferenceGroupFragment.newInstance(Constants.PREF_TAPE,
+                    R.xml.dsp_tape_preferences
+                ))
             .commit()
 
         // Load initial preferences
@@ -231,6 +235,7 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
         binding.cardFieldsurround.isVisible = !directMode
         binding.cardAgc.isVisible = !directMode
         binding.cardCure.isVisible = !directMode
+        binding.cardTape.isVisible = !directMode
         // Output control (limiter) тоже не работает без capture loop
         binding.cardOutputControl.isVisible = !directMode
         // Measurement (MEOW) бесполезен без capture loop

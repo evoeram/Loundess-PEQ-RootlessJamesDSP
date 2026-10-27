@@ -106,6 +106,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_alloc(JNIEnv *e
     viper_agc_init(self->viperAgc);
     self->cure = new cure_t();
     cure_init(self->cure);
+    self->tape = new tape_t();
+    tape_init(self->tape);
 
     jclass callbackClass = env->GetObjectClass(callback);
     if (callbackClass == nullptr)
@@ -203,6 +205,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_free(JNIEnv *en
 
     delete wrapper->cure;
     wrapper->cure = nullptr;
+
+    delete wrapper->tape;
+    wrapper->tape = nullptr;
 
     JamesDSPGlobalMemoryDeallocation();
 
@@ -326,7 +331,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
         const bool loudEnabled = wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled();
         const bool lufsEnabled = wrapper->lufsNormalizer && wrapper->lufsNormalizer->enabled;
         const bool extrasOn = extrasActive(wrapper);
-        if (peqEnabled || deqActive || loudEnabled || lufsEnabled || extrasOn)
+        /* Tape is called while enabled and while draining its fade-out. */
+        const bool tapeOn = wrapper->tape && tape_is_active(wrapper->tape);
+        if (peqEnabled || deqActive || loudEnabled || lufsEnabled || extrasOn || tapeOn)
         {
             size_t frames = inputLength / 2;
             std::vector<float> tmp(frames * 2);
@@ -338,6 +345,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
                 dynamicEq_process_interleaved(wrapper->dynamicEq, tmp.data(), frames);
             if (extrasOn)
                 extrasProcess(wrapper, tmp.data(), frames);
+            if (tapeOn)
+                tape_process_interleaved(wrapper->tape, tmp.data(), frames);
             if (loudEnabled)
                 wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
             if (lufsEnabled)
@@ -376,7 +385,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
     const bool loudEnabled = wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled();
     const bool lufsEnabled = wrapper->lufsNormalizer && wrapper->lufsNormalizer->enabled;
     const bool extrasOn = extrasActive(wrapper);
-    if (peqEnabled || deqActive || loudEnabled || lufsEnabled || extrasOn)
+    /* Tape is called while enabled and while draining its fade-out. */
+    const bool tapeOn = wrapper->tape && tape_is_active(wrapper->tape);
+    if (peqEnabled || deqActive || loudEnabled || lufsEnabled || extrasOn || tapeOn)
     {
         size_t frames = inputLength / 2;
         std::vector<float> tmp(frames * 2);
@@ -388,6 +399,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
             dynamicEq_process_interleaved(wrapper->dynamicEq, tmp.data(), frames);
         if (extrasOn)
             extrasProcess(wrapper, tmp.data(), frames);
+        if (tapeOn)
+            tape_process_interleaved(wrapper->tape, tmp.data(), frames);
         if (loudEnabled)
             wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
         if (lufsEnabled)
@@ -518,6 +531,10 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
         if (extrasActive(wrapper))
             extrasProcess(wrapper, input + offset, inputLength / 2);
 
+        /* Tape is called while enabled and while draining its fade-out. */
+        if (wrapper->tape && tape_is_active(wrapper->tape))
+            tape_process_interleaved(wrapper->tape, input + offset, inputLength / 2);
+
         if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
             wrapper->loudnessCorrection->processInterleaved(input + offset, inputLength / 2);
 
@@ -558,6 +575,12 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
     if (extrasActive(wrapper))
     {
         extrasProcess(wrapper, output, inputLength / 2);
+    }
+
+    /* Tape is called while enabled and while draining its fade-out. */
+    if (wrapper->tape && tape_is_active(wrapper->tape))
+    {
+        tape_process_interleaved(wrapper->tape, output, inputLength / 2);
     }
 
     if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
@@ -1468,6 +1491,41 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setCure(JNIEnv 
     cure_set_enabled(wrapper->cure, true);
 
     LOGD("JamesDspWrapper::setCure: level=%d, sr=%.0f", (int)level, sampleRate);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setTape(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble sampleRate, jdouble wowPct, jdouble flutterPct,
+    jdouble saturationPct, jdouble biasPct, jdouble headBumpDb, jdouble mixPct)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->tape == nullptr)
+        return false;
+
+    if (!enable)
+    {
+        // The fade-out is drained by processInt16/processFloat: the module
+        // stays active until the wet signal has faded to nothing.
+        tape_set_enabled(wrapper->tape, false);
+        return true;
+    }
+
+    // Depths, base offset and fade length depend on the sample rate;
+    // re-applied when the rate becomes known.
+    if (sampleRate <= 0.0)
+    {
+        LOGW("JamesDspWrapper::setTape: skipping, sample rate not yet known (%.0f)", sampleRate);
+        return false;
+    }
+
+    tape_configure(wrapper->tape, sampleRate,
+                   (float)wowPct, (float)flutterPct, (float)saturationPct,
+                   (float)biasPct, (float)headBumpDb, (float)mixPct);
+    tape_set_enabled(wrapper->tape, true);
+
+    LOGD("JamesDspWrapper::setTape: wow=%.0f%%, flutter=%.0f%%, sat=%.0f%%, bias=%.0f, bump=%.1f dB, mix=%.0f%%, sr=%.0f",
+         wowPct, flutterPct, saturationPct, biasPct, headBumpDb, mixPct, sampleRate);
     return true;
 }
 
