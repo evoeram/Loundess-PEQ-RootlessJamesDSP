@@ -22,6 +22,8 @@
     <string name="action_retry">Retry</string>
     <string name="action_fix">Fix issue</string>
     <string name="action_stop">Stop</string>
+    <string name="action_start">Start</string>
+    <string name="notification_disabled_hint">Tap Start to enable audio processing</string>
     <string name="notification_processing">Active apps: %1$s</string>
     <string name="notification_idle">Audio processing idle</string>
     <string name="notification_processing_title">Audio processing active</string>

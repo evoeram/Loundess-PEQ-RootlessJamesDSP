@@ -3,6 +3,8 @@ package me.timschneeberger.rootlessjamesdsp.session.rootless
 import android.content.Context
 import android.content.Intent
 import android.media.audiofx.DynamicsProcessing
+import android.os.Process.myUid
+import android.os.SystemClock
 import me.timschneeberger.rootlessjamesdsp.androideq.AndroidEq
 import me.timschneeberger.rootlessjamesdsp.model.AudioSessionDumpEntry
 import me.timschneeberger.rootlessjamesdsp.model.IEffectSession
@@ -77,9 +79,75 @@ class RootlessSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         }
     }
 
+    // Быстрый mute по AudioPlaybackCallback: dumpsys отдаёт пересозданную
+    // сессию плеера с задержкой до ~0.5с, а трек уже играет — при агрессивном
+    // автопреампе это SPL-удар.
+    // Когда плеер исчезает из конфигов, его трек (и сессия, и наш mute-эффект)
+    // уже уничтожен — framework не доставляет controlLost, а hasControl() на
+    // мёртвом эффекте врёт. Сразу вешаем свежий эффект: на мёртвой сессии он
+    // существует в подвешенном состоянии и автоматически применяется к
+    // следующему треку плеера (sid сохраняется)
+    private val knownConfigBySid = hashMapOf<Int, Pair<Int, Int>>() // sid -> uid to usage
+
+    override val preAttachOnSessionDeath = true
+
+    // entries: (sid, uid, usage) — снимок активных плееров из AudioPlaybackCallback
+    fun syncFromPlaybackConfigs(entries: List<Triple<Int, Int, Int>>) {
+        if (isDisposing) return
+
+        val currentSids = hashSetOf<Int>()
+        for ((sid, uid, usage) in entries) {
+            // Свой трек в конфигах — это якорь на sid плеера (или выход DSP):
+            // не затираем известные данные плеера своим uid
+            if (uid == myUid()) continue
+            currentSids.add(sid)
+            knownConfigBySid[sid] = uid to usage
+            tryAttachFromPlaybackConfig(sid, uid, usage)
+        }
+
+        for (sid in sessionList.keys.toList()) {
+            if (sid in currentSids || sid in preAttachedSids) continue
+            // Якорь держит цепочку сессии живой: сносить и пересоздавать
+            // эффект не нужно
+            if (isAnchored(sid)) continue
+            val (uid, usage) = knownConfigBySid[sid] ?: continue
+            removeSession(sid)
+            if (tryAttachFromPlaybackConfig(sid, uid, usage))
+                Timber.i("[SPL] fast-path: player gone (sid=$sid); pre-attached fresh mute")
+        }
+    }
+
+    private fun tryAttachFromPlaybackConfig(sid: Int, uid: Int, usage: Int): Boolean {
+        if (isDisposing || sid <= 0 || uid <= 0 || uid == myUid()) return false
+        if (isUidExcluded(uid)) return false
+        if (sessionList.containsKey(sid)) return false
+
+        val name = context.packageManager.getNameForUid(uid)
+        if (name != null && excludedPackages.contains(name)) return false
+
+        val lastFail = failedAttachAt[sid]
+        if (lastFail != null && SystemClock.elapsedRealtime() - lastFail < FAILED_ATTACH_RETRY_MS) return false
+
+        val data = AudioSessionDumpEntry(
+            uid,
+            name ?: uid.toString(),
+            AudioSessionDumpEntry.usageString(usage),
+            "CONTENT_TYPE_UNKNOWN"
+        )
+        if (!shouldAcceptSessionDump(sid, data)) return false
+
+        Timber.i("[SPL] fast-path: attach sid=$sid; $name")
+        addSession(sid, uid, name ?: uid.toString())
+        fastAttachedAt[sid] = SystemClock.elapsedRealtime()
+        return sessionList.containsKey(sid)
+    }
+
     init {
         factory.sessionLossListener = { sid, packageName ->
             sendFxCloseBroadcast(packageName, sid)
+            // Эффект мёртв: убираем запись сразу, чтобы fast-path пересоздал
+            // эффект, не дожидаясь dumpsys
+            removeSession(sid)
             sessionLossListener?.onSessionLost(sid)
         }
     }

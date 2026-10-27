@@ -1,6 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.session.dump.utils
 
 import android.content.Context
+import android.os.SystemClock
 import timber.log.Timber
 
 /**
@@ -14,11 +15,22 @@ object AudioFlingerServiceDumpUtils {
         }
     }
 
-    fun dump(context: Context): List<Dataset>? {
-        val dump = DumpUtils.dumpAll(context, TARGET_SERVICE)
-        dump ?: return null
+    // dumpsys media.audio_flinger будит сервис и держит его лок: частые вызовы
+    // из refs-опроса и заполнения дампов тормозят создание эффектов (attach
+    // вздувается с ~60 до ~250 мс). Короткий кэш схлопывает штурм
+    @Volatile
+    private var cachedAt = 0L
+    @Volatile
+    private var cached: List<Dataset>? = null
 
-        return process(dump)
+    fun dump(context: Context): List<Dataset>? {
+        val now = SystemClock.elapsedRealtime()
+        if (now - cachedAt < CACHE_TTL_MS) return cached
+
+        val dump = DumpUtils.dumpAll(context, TARGET_SERVICE)
+        cached = dump?.let { process(it) }
+        cachedAt = SystemClock.elapsedRealtime()
+        return cached
     }
 
     private fun process(dump: String): List<Dataset>? {
@@ -126,4 +138,5 @@ object AudioFlingerServiceDumpUtils {
     }
 
     const val TARGET_SERVICE = "media.audio_flinger"
+    private const val CACHE_TTL_MS = 200L
 }

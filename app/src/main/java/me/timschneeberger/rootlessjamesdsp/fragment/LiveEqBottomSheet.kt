@@ -149,6 +149,8 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
             isUpdatingInputs = true
             binding.freqInput.setText(newFreq.roundToInt().toString())
             isUpdatingInputs = false
+            // Пик каскадной АЧХ зависит и от частоты полосы, а не только от gain
+            if (autoPreampEnabled) applyAutoPreamp()
             onLiveUpdate?.invoke(bands)
             onCorrectedUpdate?.invoke(bands, preampDb)
             binding.liveEqSurface.setBands(bands, preampDb)
@@ -180,6 +182,8 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
             isUpdatingInputs = true
             binding.qInput.setText(df.format(newQ))
             isUpdatingInputs = false
+            // Узкий Q усиливает пик каскада — preamp зависит и от него
+            if (autoPreampEnabled) applyAutoPreamp()
             onLiveUpdate?.invoke(bands)
             onCorrectedUpdate?.invoke(bands, preampDb)
             binding.liveEqSurface.setBands(bands, preampDb)
@@ -236,6 +240,7 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
                     binding.freqSlider.value = freqToSlider(hz)
                     isUpdatingSliders = false
                     refreshChipLabel(selectedIndex)
+                    if (autoPreampEnabled) applyAutoPreamp()
                     onLiveUpdate?.invoke(bands)
                     onCorrectedUpdate?.invoke(bands, preampDb)
                     binding.liveEqSurface.setBands(bands, preampDb)
@@ -275,6 +280,7 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
                     isUpdatingSliders = true
                     binding.qSlider.value = qToSlider(qVal)
                     isUpdatingSliders = false
+                    if (autoPreampEnabled) applyAutoPreamp()
                     onLiveUpdate?.invoke(bands)
                     onCorrectedUpdate?.invoke(bands, preampDb)
                     binding.liveEqSurface.setBands(bands, preampDb)
@@ -660,7 +666,6 @@ class LiveEqBottomSheet : BottomSheetDialogFragment() {
             )
             if (maxPeak > 0.0) -maxPeak else 0.0
         }
-        if (newPreamp == preampDb) return
         preampDb = newPreamp
         Timber.d("LiveEQ autoPreamp computed: $preampDb dB (from real cascaded response peak)")
         // Обновляем слайдер (без триггера слушателя)

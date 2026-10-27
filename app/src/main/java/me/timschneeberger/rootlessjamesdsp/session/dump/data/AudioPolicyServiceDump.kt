@@ -1,9 +1,11 @@
 package me.timschneeberger.rootlessjamesdsp.session.dump.data
 
 import me.timschneeberger.rootlessjamesdsp.model.AudioSessionDumpEntry
+import me.timschneeberger.rootlessjamesdsp.session.dump.utils.AudioFlingerServiceDumpUtils
 
 data class AudioPolicyServiceDump(override val sessions: HashMap<Int /* sid */, AudioSessionDumpEntry>,
-                                  override val capturePermissionLog: HashMap<String /* package */, Boolean /* captureAllowed */>) :
+                                  override val capturePermissionLog: HashMap<String /* package */, Boolean /* captureAllowed */>,
+                                  override var audioFlingerPlayerSids: List<AudioFlingerServiceDumpUtils.Dataset>? = null) :
     ISessionInfoDump, ISessionPolicyInfoDump
 {
     override fun toString(): String {

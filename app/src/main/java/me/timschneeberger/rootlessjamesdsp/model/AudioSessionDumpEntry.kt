@@ -1,5 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.model
 
+import android.media.AudioAttributes
+
 data class AudioSessionDumpEntry(val uid: Int, val packageName: String, val usage: String, val content: String)
 {
     override fun toString(): String {
@@ -21,6 +23,14 @@ data class AudioSessionDumpEntry(val uid: Int, val packageName: String, val usag
         {
             val u = usage.uppercase().trim()
             return u.contains(USAGE_UNKNOWN) || u.contains(USAGE_MEDIA) || u.contains(USAGE_GAME)
+        }
+
+        // Формат как в dumpsys audio, чтобы переиспользовать isUsageRecordable
+        fun usageString(usage: Int): String = when (usage) {
+            AudioAttributes.USAGE_MEDIA -> USAGE_MEDIA
+            AudioAttributes.USAGE_GAME -> USAGE_GAME
+            AudioAttributes.USAGE_UNKNOWN -> USAGE_UNKNOWN
+            else -> "USAGE_UNSUPPORTED"
         }
     }
 }

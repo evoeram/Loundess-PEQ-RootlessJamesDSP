@@ -4,6 +4,7 @@ import android.content.*
 import me.timschneeberger.rootlessjamesdsp.session.dump.DumpManager
 import me.timschneeberger.rootlessjamesdsp.session.dump.data.ISessionInfoDump
 import me.timschneeberger.rootlessjamesdsp.session.dump.data.ISessionPolicyInfoDump
+import me.timschneeberger.rootlessjamesdsp.session.dump.utils.AudioFlingerServiceDumpUtils
 import me.timschneeberger.rootlessjamesdsp.session.shared.BaseSessionManager
 
 
@@ -30,6 +31,10 @@ class RootlessSessionManager(context: Context) : BaseSessionManager(context)
         }
 
         sessionDump?.let { sessionDatabase.update(it) }
+    }
+
+    override fun handleSessionRefs(rows: List<AudioFlingerServiceDumpUtils.Dataset>) {
+        sessionDatabase.preAttachDeadSessions(rows)
     }
 
     override fun onDumpMethodChange(method: DumpManager.Method) {

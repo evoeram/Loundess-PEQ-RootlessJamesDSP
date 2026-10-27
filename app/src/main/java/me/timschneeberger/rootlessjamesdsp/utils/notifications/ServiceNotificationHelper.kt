@@ -18,6 +18,7 @@ import me.timschneeberger.rootlessjamesdsp.activity.AppCompatibilityActivity
 import me.timschneeberger.rootlessjamesdsp.activity.EngineLauncherActivity
 import me.timschneeberger.rootlessjamesdsp.activity.MainActivity
 import me.timschneeberger.rootlessjamesdsp.model.IEffectSession
+import me.timschneeberger.rootlessjamesdsp.receiver.PowerStateReceiver
 import me.timschneeberger.rootlessjamesdsp.service.RootlessAudioProcessorService
 import me.timschneeberger.rootlessjamesdsp.utils.SdkCheck
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.getAppName
@@ -141,8 +142,100 @@ object ServiceNotificationHelper: KoinComponent {
         .apply {
             if(isRootless())
                 addAction(createStopAction(context))
+            else
+                addAction(createRootPowerAction(context))
         }
         .build()
+
+    fun pushDisabledNotification(context: Context) {
+        context.getSystemService<NotificationManager>()
+            ?.notify(Notifications.ID_SERVICE_STATUS, createDisabledNotification(context))
+    }
+
+    // Постоянное «выключенное» уведомление: висит всегда (по запросу пользователя),
+    // дублирует включение DSP из приложения через EngineLauncherActivity
+    private fun createDisabledNotification(context: Context) =
+        NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_STATUS)
+            .setShowWhen(false)
+            .setOnlyAlertOnce(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setContentTitle(context.getString(R.string.notification_processing_disabled_title))
+            .setContentText(context.getString(R.string.notification_disabled_hint))
+            .setSmallIcon(R.drawable.ic_tune_vertical_variant_24dp)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    context,
+                    0,
+                    Intent(context, MainActivity::class.java).apply {
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                    or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                    or Intent.FLAG_ACTIVITY_NEW_TASK
+                        )
+                    },
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            )
+            .setOngoing(true)
+            .addAction(
+                NotificationCompat.Action(
+                    IconCompat.createWithResource(context, R.drawable.ic_baseline_play_arrow_24dp),
+                    context.getString(R.string.action_start),
+                    createStartPendingIntent(context)
+                )
+            )
+            .build()
+
+    private fun isDirectMode() =
+        preferences.get<String>(R.string.key_processing_mode).toIntOrNull() == 2
+
+    // Кнопка Start повторяет запуск из MainActivity: в Direct mode сервис стартует
+    // напрямую без consent-запроса, в capture mode нужен запрос разрешения.
+    // Прозрачный лончер ставим в задачу приложения (только NEW_TASK): после consent
+    // возвращается MainActivity. MULTIPLE_TASK создавал отдельную задачу — после
+    // её закрытия система возвращалась на рабочий стол, приложение «сворачивалось»
+    private fun createStartPendingIntent(context: Context): PendingIntent {
+        if (isDirectMode()) {
+            return PendingIntent.getForegroundService(
+                context,
+                0,
+                Intent(context, RootlessAudioProcessorService::class.java).apply {
+                    action = RootlessAudioProcessorService.ACTION_START
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+        return PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, EngineLauncherActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    // Root: сервис живёт постоянно, тумблер питания шлётся через PowerStateReceiver;
+    // сервис сам переиздаёт уведомление по key_powered_on
+    private fun createRootPowerAction(context: Context): NotificationCompat.Action {
+        val isOn = preferences.get<Boolean>(R.string.key_powered_on)
+        val intent = Intent(context, PowerStateReceiver::class.java).apply {
+            putExtra(PowerStateReceiver.EXTRA_ENABLED, !isOn)
+        }
+        return NotificationCompat.Action(
+            IconCompat.createWithResource(
+                context,
+                if (isOn) R.drawable.ic_close_24dp else R.drawable.ic_baseline_play_arrow_24dp
+            ),
+            context.getString(if (isOn) R.string.action_stop else R.string.action_start),
+            PendingIntent.getBroadcast(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        )
+    }
 
     fun pushSessionLossNotification(context: Context, mediaProjectionStartIntent: Intent?) =
         NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_SESSION_LOSS)
@@ -201,11 +294,13 @@ object ServiceNotificationHelper: KoinComponent {
         return NotificationCompat.Action(
             IconCompat.createWithResource(context, iconRes),
             context.getString(textRes),
+            // UPDATE_CURRENT, а не ONE_SHOT: уведомление переиздаётся при сменах сессий,
+            // одноразовый PendingIntent давал «холостые» нажатия stop-кнопки
             PendingIntent.getService(
                 context,
                 0,
                 intent,
-                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         )
     }

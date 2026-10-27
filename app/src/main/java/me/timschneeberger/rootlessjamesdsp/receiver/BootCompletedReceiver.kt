@@ -25,8 +25,11 @@ class BootCompletedReceiver : BroadcastReceiver(), KoinComponent {
             return
 
         if(isRootless()) {
-            if (!preferences.get<Boolean>(R.string.key_autostart_prompt_at_boot))
+            if (!preferences.get<Boolean>(R.string.key_autostart_prompt_at_boot)) {
+                // Уведомление состояния висит всегда, даже когда автостарт отключён
+                ServiceNotificationHelper.pushDisabledNotification(context)
                 return
+            }
 
             if(Settings.canDrawOverlays(context) && context.hasProjectMediaAppOp()) {
                 Timber.i("Preconditions for a silent auto-start met")

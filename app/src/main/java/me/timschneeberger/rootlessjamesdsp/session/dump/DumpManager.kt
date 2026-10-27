@@ -10,6 +10,7 @@ import me.timschneeberger.rootlessjamesdsp.session.dump.data.ISessionPolicyInfoD
 import me.timschneeberger.rootlessjamesdsp.session.dump.provider.AudioFlingerServiceDumpProvider
 import me.timschneeberger.rootlessjamesdsp.session.dump.provider.AudioPolicyServiceDumpProvider
 import me.timschneeberger.rootlessjamesdsp.session.dump.provider.AudioServiceDumpProvider
+import me.timschneeberger.rootlessjamesdsp.session.dump.utils.AudioFlingerServiceDumpUtils
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -63,7 +64,7 @@ class DumpManager constructor(val context: Context): KoinComponent {
 
         if(!allowFallback || (dump != null && dump.sessions.isNotEmpty()))
         {
-            return dump
+            return fillAudioFlingerPlayerSids(dump)
         }
 
         availableDumpMethods.forEach {
@@ -75,12 +76,33 @@ class DumpManager constructor(val context: Context): KoinComponent {
                 }
                 if(dump != null && dump!!.sessions.isNotEmpty())
                 {
-                    return dump
+                    return fillAudioFlingerPlayerSids(dump)
                 }
         }
 
         Timber.e("Failed to find session info using any method")
         return null
+    }
+
+    /**
+     * Провайдеры кроме AudioService не отдают данные audioflinger; досыпаем
+     * Global session refs отдельным дампом, чтобы детекция смерти сессии
+     * работала на любом методе. Строки не фильтруем: наши якоря — признак
+     * живой цепочки, а чужие pid отделяются по месту использования
+     */
+    private fun fillAudioFlingerPlayerSids(dump: ISessionInfoDump?): ISessionInfoDump? {
+        if (dump == null || dump.audioFlingerPlayerSids != null)
+            return dump
+
+        return try {
+            dump.audioFlingerPlayerSids = AudioFlingerServiceDumpUtils.dump(context)
+            dump
+        }
+        catch (ex: Exception) {
+            Timber.e("Failed to collect audioflinger session refs")
+            Timber.e(ex)
+            dump
+        }
     }
 
     fun dumpCaptureAllowlistLog(): ISessionPolicyInfoDump? {

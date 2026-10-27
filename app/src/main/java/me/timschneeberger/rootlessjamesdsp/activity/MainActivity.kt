@@ -25,7 +25,12 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
+import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
 import androidx.preference.DialogPreference.TargetFragment
 import androidx.preference.Preference
@@ -58,6 +63,7 @@ import me.timschneeberger.rootlessjamesdsp.service.RootlessAudioProcessorService
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.Result
 import me.timschneeberger.rootlessjamesdsp.utils.SdkCheck
+import me.timschneeberger.rootlessjamesdsp.utils.notifications.ServiceNotificationHelper
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.AssetManagerExtensions.installPrivateAssets
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.broadcastPresetLoadEvent
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.check
@@ -166,13 +172,29 @@ class MainActivity : BaseActivity() {
         }
 
         // Setup views
+        // Edge-to-edge: при targetSdk 35 (Android 15) система игнорирует fitsSystemWindows,
+        // и BottomAppBar уезжает под nav bar при 3-кнопочной навигации
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
+
+        val barBaseHeight = binding.bar.layoutParams.height
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            binding.bar.updatePadding(bottom = insets.bottom)
+            binding.bar.updateLayoutParams { height = barBaseHeight + insets.bottom }
+            windowInsets
+        }
 
         actionBar?.setDisplayHomeAsUpEnabled(true)
         actionBar?.setHomeButtonEnabled(true)
         actionBar?.setDisplayShowTitleEnabled(true)
         binding.appBarLayout.statusBarForeground = MaterialShapeDrawable.createWithElevationOverlay(this)
+
+        // Постоянное уведомление состояния: если сервис не запущен, в шторке должно
+        // висеть «выключенное» уведомление с кнопкой запуска (после boot/убийства процесса)
+        if(isRootless() && BaseAudioProcessorService.activeServices <= 0)
+            ServiceNotificationHelper.pushDisabledNotification(this)
 
         if(firstBoot) {
             // Set timer for translation notice (+30m)
@@ -458,21 +480,6 @@ class MainActivity : BaseActivity() {
 
         processorService = null
         processorServiceBound = false
-
-        // Fix Pluto memory leak: Pluto's FragmentLifecycleListener holds a strong
-        // reference to this destroyed activity. Clear it via reflection.
-        (application as? MainApplication)?.plutoLifecycleCallback?.let { callback ->
-            try {
-                val flcField = callback.javaClass.getDeclaredField("fragmentLifecycleCallbacks")
-                flcField.isAccessible = true
-                val flc = flcField.get(callback)
-                val actField = flc?.javaClass?.getDeclaredField("activity")
-                actField?.isAccessible = true
-                actField?.set(flc, null)
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to clear Pluto activity reference")
-            }
-        }
 
         prefsVar.set(R.string.key_is_activity_active, false)
         super.onDestroy()

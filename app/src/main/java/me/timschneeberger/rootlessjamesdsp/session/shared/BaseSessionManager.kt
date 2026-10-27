@@ -24,11 +24,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.model.preference.SessionUpdateMode
 import me.timschneeberger.rootlessjamesdsp.service.NotificationListenerService
 import me.timschneeberger.rootlessjamesdsp.session.dump.DumpManager
 import me.timschneeberger.rootlessjamesdsp.session.dump.data.ISessionInfoDump
+import me.timschneeberger.rootlessjamesdsp.session.dump.utils.AudioFlingerServiceDumpUtils
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.unregisterLocalReceiver
@@ -36,6 +38,7 @@ import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import timber.log.Timber
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 abstract class BaseSessionManager(protected val context: Context) : DumpManager.OnDumpMethodChangeListener,
@@ -61,6 +64,61 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
     private val pollingScope = CoroutineScope(Dispatchers.Main)
     private var continuousPollingJob: Job? = null
 
+    // Событие, пришедшее во время текущего дампа, нельзя терять: пока вешается
+    // mute-эффект на старый список, новая сессия (новый трек плеера) играет
+    // без mute на полной громкости — при агрессивном автопреампе это SPL-удар.
+    // Флаг коалесцирует пропущенные опросы и доигрывает их после текущего дампа
+    private val pendingDump = AtomicBoolean(false)
+
+    // Окно смерти сессии (release старого трека -> create нового) укладывается
+    // в тишину между треками и длится меньше интервала обычного опроса. Пока
+    // capture молчит, опрашиваем refs audioflinger чаще: смерть ловится в
+    // момент, когда ещё можно pre-attach mute до первого сэмпла нового трека
+    @Volatile
+    private var captureGapActive = false
+    private var captureGapPollJob: Job? = null
+    private val refsCheckInFlight = AtomicBoolean(false)
+
+    private fun refsDeathCheckOnce() {
+        if (!refsCheckInFlight.compareAndSet(false, true)) return
+        pollingScope.launch {
+            try {
+                val rows = withContext(Dispatchers.Default) {
+                    AudioFlingerServiceDumpUtils.dump(context)
+                } ?: return@launch
+                handleSessionRefs(rows)
+            }
+            catch (ex: Exception) {
+                Timber.e("refs death check failed")
+                Timber.e(ex)
+            }
+            finally {
+                refsCheckInFlight.set(false)
+            }
+        }
+    }
+
+    fun onCaptureSilenceChanged(active: Boolean) {
+        captureGapActive = active
+        if (active && captureGapPollJob == null) {
+            captureGapPollJob = pollingScope.launch {
+                try {
+                    var elapsed = 0L
+                    while (captureGapActive && elapsed < 8_000L) {
+                        refsDeathCheckOnce()
+                        delay(400)
+                        elapsed += 400
+                    }
+                }
+                finally {
+                    captureGapPollJob = null
+                }
+            }
+        }
+    }
+
+    protected open fun handleSessionRefs(rows: List<AudioFlingerServiceDumpUtils.Dataset>) {}
+
     // Callbacks
     private var audioPlaybackCallback: AudioManager.AudioPlaybackCallback? = null
 
@@ -78,6 +136,7 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
             override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
                 super.onPlaybackConfigChanged(configs)
 
+                Timber.i("[SPL] onPlaybackConfigChanged: ${configs?.size ?: -1} players")
                 Timber.d("Playback config changed")
                 pollOnce(false)
             }
@@ -177,11 +236,22 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
     {
         if(pollingMutex.isLocked && !blocking)
         {
+            Timber.i("[SPL] poll: busy, event coalesced")
+            pendingDump.set(true)
             return
         }
 
         pollingMutex.withLock {
-            handleSessionDump(dumpManager.dumpSessions())
+            do {
+                pendingDump.set(false)
+                // Разбор dumpsys (два binder-дампа + regex по всему тексту) — тяжёлый,
+                // не задерживаем на нём Main; создание эффектов (handleSessionDump)
+                // остаётся на Looper-потоке
+                val t0 = android.os.SystemClock.elapsedRealtime()
+                val dump = withContext(Dispatchers.Default) { dumpManager.dumpSessions() }
+                Timber.i("[SPL] poll: dump ${android.os.SystemClock.elapsedRealtime() - t0}ms, sessions=${dump?.sessions?.size ?: -1}")
+                handleSessionDump(dump)
+            } while(pendingDump.getAndSet(false))
         }
     }
 

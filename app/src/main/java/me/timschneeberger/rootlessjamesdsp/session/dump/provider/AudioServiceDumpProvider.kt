@@ -42,6 +42,10 @@ class AudioServiceDumpProvider : ISessionDumpProvider {
             sidPidLookupMap[it.pid] = it.sid
         }
 
+        // Живые сессии по ссылкам в audioflinger (полные строки, с нашими
+        // якорями: они признак живой цепочки; чужие pid отделяются по месту)
+        val audioFlingerPlayerSids = globalSessionRefs
+
         val sessions = hashMapOf<Int, AudioSessionDumpEntry>()
 
         var matches = playbackConfRegex31.findAll(dump)
@@ -103,7 +107,7 @@ class AudioServiceDumpProvider : ISessionDumpProvider {
         }
 
         Timber.d("Dump processed")
-        return AudioServiceDump(sessions)
+        return AudioServiceDump(sessions, audioFlingerPlayerSids)
     }
 
     override fun dumpString(context: Context): String {

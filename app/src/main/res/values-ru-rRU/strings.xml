@@ -22,6 +22,8 @@
     <string name="notification_idle">Ожидание аудиосессии</string>
     <string name="notification_processing_title">Обработка аудио включена</string>
     <string name="notification_processing_disabled_title">Обработка аудио отключена</string>
+    <string name="action_start">Запустить</string>
+    <string name="notification_disabled_hint">Нажмите «Запустить», чтобы включить обработку аудио</string>
     <string name="notification_processing_legacy">Нажмите, чтобы открыть менеджер JamesDSP</string>
     <!-- Permission request notifications -->
     <string name="notification_request_permission_title">Для запуска JamesDSP необходимо действие пользователя</string>

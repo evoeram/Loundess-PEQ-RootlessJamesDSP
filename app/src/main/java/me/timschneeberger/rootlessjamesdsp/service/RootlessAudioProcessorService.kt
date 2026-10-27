@@ -93,6 +93,31 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
             if (!isRunning) return
 
+            // [SPL] Быстрый mute: событие приходит в момент создания/гибели
+            // трека плеера — раньше, чем пересозданную сессию отдаст dumpsys
+            // (~0.5с). Вешаем mute прямо из конфига, минуя опрос
+            val fastEntries = ArrayList<Triple<Int, Int, Int>>()
+            configs?.forEach { config ->
+                try {
+                    val hidden = Refine.unsafeCast<AudioPlaybackConfigurationHidden>(config)
+                    val sid = hidden.sessionId
+                    val uid = hidden.clientUid
+                    if (sid > 0 && uid > 0) {
+                        fastEntries.add(
+                            Triple(
+                                sid,
+                                uid,
+                                config.audioAttributes?.usage ?: AudioAttributes.USAGE_UNKNOWN,
+                            )
+                        )
+                    }
+                }
+                catch (ex: Exception) {
+                    // Hidden API недоступен — сессию подхватит dump-путь
+                }
+            }
+            sessionManager.sessionDatabase.syncFromPlaybackConfigs(fastEntries)
+
             if (isUsbOutputConnected() && followUsbHardwareRate()) {
                 applicationScope.launch(Dispatchers.IO) {
                     val sourceRate = ActivePlaybackSampleRateDetector.detect(
@@ -112,7 +137,15 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             val generation = ++sampleRateDetectionGeneration
             val callbackRate = detectActiveContentSampleRate(configs)
             if (callbackRate > 0) {
-                applyActiveContentSampleRate(callbackRate)
+                // Рейтинг контента скачет при каждом старте/паузе трека (в миксе
+                // плееры с разными 44.1/48 кГц, новые плееры отдают ставку 0).
+                // Рестарт пайплайна на каждый флип создавал окна без mute →
+                // SPL-удар. Применяем только устоявшийся рейтинг: новое событие
+                // сдвигает задержку и отменяет предыдущую заявку
+                mainHandler.postDelayed({
+                    if (generation == sampleRateDetectionGeneration && isRunning)
+                        applyActiveContentSampleRate(callbackRate)
+                }, CONTENT_RATE_SETTLE_DELAY_MS)
                 return
             }
 
@@ -121,11 +154,11 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     this@RootlessAudioProcessorService,
                     Process.myUid(),
                 )
-                mainHandler.post {
+                mainHandler.postDelayed({
                     if (generation == sampleRateDetectionGeneration && isRunning) {
                         applyActiveContentSampleRate(dumpRate)
                     }
-                }
+                }, CONTENT_RATE_SETTLE_DELAY_MS)
             }
         }
     }
@@ -306,6 +339,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             }
             ACTION_STOP -> {
                 Timber.d("Stopping service")
+                // Без сброса ProfileManager считает DSP включённым и показывает overlay
+                // «Ask on connection», а повторный старт сервиса молча возобновляет обработку
+                preferences.set(R.string.key_powered_on, false)
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -356,6 +392,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     override fun onDestroy() {
         isServiceDisposing = true
 
+        // Сервис уничтожен — DSP больше не обрабатывает звук
+        preferences.set(R.string.key_powered_on, false)
+
         // Stop recording and release engine
         stopRecording()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -395,7 +434,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         sessionManager.destroy()
 
         preferences.unregisterOnSharedPreferenceChangeListener(preferencesListener)
-        notificationManager.cancel(Notifications.ID_SERVICE_STATUS)
+        // Уведомление состояния висит всегда: после остановки остаётся постоянное
+        // «выключенное» уведомление с кнопкой запуска DSP
+        ServiceNotificationHelper.pushDisabledNotification(this)
 
         stopSelf()
         super.onDestroy()
@@ -758,6 +799,40 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     .allocateDirect(readSamples * Int.SIZE_BYTES)
                     .order(ByteOrder.nativeOrder())
 
+                // [SPL] Диагностика удара при переключении трека: capture снимает сигнал
+                // до mute-эффекта, поэтому onset = момент физического старта трека.
+                // Сравнение с логом "[SPL] attach" даёт окно немыленного звука
+                var consecutiveSilentBlocks = 0
+                var gapStartAt = 0L
+
+                // Тишина в capture = трек рвётся: сейчас открывается окно
+                // смерти сессии (release -> create), которое короче обычного
+                // интервала опроса. Сообщаем sessionManager'у — он учащает
+                // refs-опрос audioflinger, пока capture молчит
+                var captureGapNotified = false
+                fun notifyCaptureGap(active: Boolean) {
+                    if (captureGapNotified == active) return
+                    captureGapNotified = active
+                    applicationScope.launch {
+                        sessionManager.onCaptureSilenceChanged(active)
+                    }
+                }
+
+                fun isSilentBlock(buf: FloatArray, n: Int): Boolean {
+                    for (i in 0 until n) {
+                        val v = buf[i]
+                        if (v > 5e-4f || v < -5e-4f) return false
+                    }
+                    return true
+                }
+                fun isSilentBlockShort(buf: ShortArray, n: Int): Boolean {
+                    for (i in 0 until n) {
+                        val v = buf[i].toInt()
+                        if (v > 16 || v < -16) return false
+                    }
+                    return true
+                }
+
                 while (!isProcessorDisposing) {
                     if(recreateRecorderRequested) {
                         recreateRecorderRequested = false
@@ -817,6 +892,19 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                         val samples = recorder.read(shortBuffer, 0, shortBuffer.size, AudioRecord.READ_BLOCKING)
                         if (samples > 0) {
                             tracer.onRead(recorder, shortBuffer, samples)
+                            if (isSilentBlockShort(shortBuffer, samples)) {
+                                if (consecutiveSilentBlocks == 0)
+                                    gapStartAt = android.os.SystemClock.elapsedRealtime()
+                                consecutiveSilentBlocks++
+                                if (consecutiveSilentBlocks >= 5)
+                                    notifyCaptureGap(true)
+                            }
+                            else {
+                                if (consecutiveSilentBlocks >= 5)
+                                    Timber.i("[SPL] audio onset after ${android.os.SystemClock.elapsedRealtime() - gapStartAt}ms silence")
+                                consecutiveSilentBlocks = 0
+                                notifyCaptureGap(false)
+                            }
                             // Обработка всегда выполняется — DSP state должен быть непрерывным.
                             // In-place: тот же буфер подаётся на вход и выход — нативный движок
                             // видит один и тот же массив и обрабатывает без промежуточной копии
@@ -843,6 +931,19 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                         val samples = recorder.read(floatBuffer, 0, floatBuffer.size, AudioRecord.READ_BLOCKING)
                         if (samples > 0) {
                             tracer.onRead(recorder, floatBuffer, samples)
+                            if (isSilentBlock(floatBuffer, samples)) {
+                                if (consecutiveSilentBlocks == 0)
+                                    gapStartAt = android.os.SystemClock.elapsedRealtime()
+                                consecutiveSilentBlocks++
+                                if (consecutiveSilentBlocks >= 5)
+                                    notifyCaptureGap(true)
+                            }
+                            else {
+                                if (consecutiveSilentBlocks >= 5)
+                                    Timber.i("[SPL] audio onset after ${android.os.SystemClock.elapsedRealtime() - gapStartAt}ms silence")
+                                consecutiveSilentBlocks = 0
+                                notifyCaptureGap(false)
+                            }
                             // Обработка всегда выполняется — DSP state должен быть непрерывным.
                             // In-place: тот же буфер подаётся на вход и выход — нативный движок
                             // видит один и тот же массив и обрабатывает без промежуточной копии
@@ -912,8 +1013,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         isProcessorDisposing = false
         recreateRecorderRequested = false
 
-        // Очищаем сессии перед рестартом
-        sessionManager.sessionDatabase.clearSessions()
+        // Сессии НЕ очищаем: mute-эффекты живут в сессиях плееров и не зависят
+        // от нашего recorder. Очистка снимала mute с играющих приложений на всё
+        // время рестарта (~0.5-0.8с) — при агрессивном автопреампе это SPL-удар
 
         startRecording()
     }
@@ -1266,7 +1368,18 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         ).coerceAtLeast(0)
         val recordBufferSize = maxOf(bufferSizeBytes, minimumBufferSize)
 
-        val configBuilder = AudioPlaybackCaptureConfiguration.Builder(mediaProjection!!)
+        // Переход DIRECT → capture-режим без повторной авторизации: projection нет,
+        // и тихий NPE здесь ронял сервис без объяснений. Останавливаемся штатно
+        // и просим перезапуск с главного экрана (там повторно запрашивается permission)
+        val projection = mediaProjection
+        if (projection == null) {
+            Timber.e("buildAudioRecord: no active MediaProjection. Restart the service from the main screen to re-request capture permission")
+            sendLocalBroadcast(Intent(Constants.ACTION_DISCARD_AUTHORIZATION))
+            toast(getString(R.string.capture_permission_revoked_toast))
+            throw IllegalStateException("MediaProjection is not active")
+        }
+
+        val configBuilder = AudioPlaybackCaptureConfiguration.Builder(projection)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
             .addMatchingUsage(AudioAttributes.USAGE_GAME)
             .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
@@ -1378,6 +1491,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         )
         private const val USB_ROUTE_SETTLE_DELAY_MS = 750L
         private const val USB_HARDWARE_RATE_SETTLE_DELAY_MS = 500L
+        private const val CONTENT_RATE_SETTLE_DELAY_MS = 700L
 
         const val SESSION_LOSS_MAX_RETRIES = 1
 

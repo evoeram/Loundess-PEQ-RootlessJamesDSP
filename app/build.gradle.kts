@@ -61,6 +61,7 @@ android {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-${getCommitCount()}"
             manifestPlaceholders["crashlyticsCollectionEnabled"] = "false"
+            signingConfig = signingConfigs.getByName("release")
         }
         getByName("release") {
             manifestPlaceholders += mapOf("crashlyticsCollectionEnabled" to "true")

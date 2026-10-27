@@ -13,6 +13,7 @@ import me.timschneeberger.rootlessjamesdsp.delegates.ThemingDelegateImpl
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
 import org.koin.android.ext.android.inject
 import org.koin.core.component.KoinComponent
+import timber.log.Timber
 
 abstract class BaseActivity :
     AppCompatActivity(),
@@ -38,7 +39,27 @@ abstract class BaseActivity :
 
     override fun onDestroy() {
         prefsApp.unregisterOnSharedPreferenceChangeListener(this)
+        clearPlutoActivityReference()
         super.onDestroy()
+    }
+
+    // Pluto (debug-инструмент) держит в AppLifecycleListener.fragmentLifecycleCallbacks
+    // ссылку на последнюю созданную активность и не отпускает её после destroy —
+    // LeakCanary показывает утечку. Чистим для каждой закрываемой активити.
+    private fun clearPlutoActivityReference() {
+        (application as? MainApplication)?.plutoLifecycleCallback?.let { callback ->
+            try {
+                val flcField = callback.javaClass.getDeclaredField("fragmentLifecycleCallbacks")
+                flcField.isAccessible = true
+                val flc = flcField.get(callback)
+                val actField = flc?.javaClass?.getDeclaredField("activity")
+                actField?.isAccessible = true
+                if (actField?.get(flc) === this)
+                    actField.set(flc, null)
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to clear Pluto activity reference")
+            }
+        }
     }
 
     override fun onResume() {

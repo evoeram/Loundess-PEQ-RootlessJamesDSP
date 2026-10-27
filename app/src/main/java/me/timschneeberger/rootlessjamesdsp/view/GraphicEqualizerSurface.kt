@@ -122,17 +122,26 @@ class GraphicEqualizerSurface(context: Context?, attrs: AttributeSet?) : View(co
         freqResponse.rewind()
         freqResponseBg.rewind()
 
-        freqResponse.moveTo(0f, projectY(mGains.firstOrNull()?.toFloat() ?: 0f) * mHeight)
-
-        var x: Float
+        // Кривая отклика: PCHIP-интерполяция узлов в log-частотном домене,
+        // сэмплированная на плотной лог-сетке (гладкие колокола между бандами,
+        // как в параметрике). Хорды по узлам давали почти вертикальный сегмент
+        // при большом перепаде gains соседних бандов.
         var y = projectY(0f) * mHeight
-        for ((index, freq) in mFreqs.withIndex()) {
-            val gain = mGains[index]
-            x = projectX(freq) * mWidth
-            y = projectY(gain.toFloat()) * mHeight
-            if(x >= 0) {
-                freqResponse.lineTo(x, y)
+        if (mFreqs.isNotEmpty()) {
+            val (logFreqs, gains) = mergedNodeLogFreqs()
+            val tangents = pchipTangents(logFreqs, gains)
+            for (i in displayFreq.indices) {
+                val x = precomputeCurveXAxis[i] * mWidth
+                y = projectY(pchipEval(logFreqs, gains, tangents, displayFreq[i]).toFloat()) * mHeight
+                if (i == 0)
+                    freqResponse.moveTo(x, y)
+                else
+                    freqResponse.lineTo(x, y)
             }
+        }
+        else {
+            y = projectY(0f) * mHeight
+            freqResponse.moveTo(0f, y)
         }
 
         freqResponse.lineTo(mWidth, y)
@@ -141,9 +150,9 @@ class GraphicEqualizerSurface(context: Context?, attrs: AttributeSet?) : View(co
         lastGainTextBounds.set(0f,0f,0f,0f)
 
         for (i in mGains.indices) {
-            x = projectX(mFreqs[i]) * mWidth
-            y = projectY(mGains[i].toFloat()) * mHeight
-            canvas.drawLine(x, mHeight, x, y, mGridLines)
+            val x = projectX(mFreqs[i]) * mWidth
+            val nodeY = projectY(mGains[i].toFloat()) * mHeight
+            canvas.drawLine(x, mHeight, x, nodeY, mGridLines)
 
             if (mGains.size > 1 /* only if more than 1 nodes defined */ &&
                 x > projectX(25.0) * mWidth /* only >25Hz */ &&
@@ -167,8 +176,7 @@ class GraphicEqualizerSurface(context: Context?, attrs: AttributeSet?) : View(co
         if (mGains.size <= 1) {
             val gain = mGains.firstOrNull() ?: 0.0
             for (scale in FreqScale) {
-                x = projectX(scale) * mWidth
-                // UNUSED: y = projectY(gain.toFloat()) * mHeight
+                val x = projectX(scale) * mWidth
 
                 val freqText = scale.prettyNumberFormat()
                 val gainText = String.format(Locale.ROOT, "%.1f", gain)
@@ -199,6 +207,97 @@ class GraphicEqualizerSurface(context: Context?, attrs: AttributeSet?) : View(co
         }
         canvas.drawPath(freqResponseBg, mFrequencyResponseBg)
         canvas.drawPath(freqResponse, mFrequencyResponseHighlight)
+    }
+
+    /** Узлы в log-частотном домене; дубликаты частот усредняются по gain */
+    private fun mergedNodeLogFreqs(): Pair<DoubleArray, DoubleArray> {
+        val logFreqs = ArrayList<Double>(mFreqs.size)
+        val gains = ArrayList<Double>(mFreqs.size)
+        for (i in mFreqs.indices) {
+            val lf = ln(mFreqs[i])
+            if (logFreqs.isNotEmpty() && lf - logFreqs.last() < 1e-9)
+                gains[gains.size - 1] = (gains.last() + mGains[i]) / 2.0
+            else {
+                logFreqs.add(lf)
+                gains.add(mGains[i])
+            }
+        }
+        return logFreqs.toDoubleArray() to gains.toDoubleArray()
+    }
+
+    /**
+     * Монотонные касательные PCHIP (Fritsch–Carlson): гладкая кривая без
+     * выбросов ниже/выше соседних узлов, в отличие от кубического сплайна.
+     */
+    private fun pchipTangents(logFreqs: DoubleArray, gains: DoubleArray): DoubleArray {
+        val n = logFreqs.size
+        val m = DoubleArray(n)
+        if (n < 2)
+            return m
+        if (n == 2) {
+            val slope = if (logFreqs[1] - logFreqs[0] > 1e-12)
+                (gains[1] - gains[0]) / (logFreqs[1] - logFreqs[0])
+            else 0.0
+            m[0] = slope
+            m[1] = slope
+            return m
+        }
+
+        val h = DoubleArray(n - 1)
+        val delta = DoubleArray(n - 1)
+        for (i in 0 until n - 1) {
+            h[i] = logFreqs[i + 1] - logFreqs[i]
+            delta[i] = if (h[i] > 1e-12) (gains[i + 1] - gains[i]) / h[i] else 0.0
+        }
+        for (i in 1 until n - 1) {
+            m[i] = if (delta[i - 1] * delta[i] <= 0.0) 0.0
+            else {
+                val w1 = 2.0 * h[i] + h[i - 1]
+                val w2 = h[i] + 2.0 * h[i - 1]
+                (w1 + w2) / (w1 / delta[i - 1] + w2 / delta[i])
+            }
+        }
+        // Крайние касательные с гарантией монотонности на краях
+        m[0] = ((2.0 * h[0] + h[1]) * delta[0] - h[0] * delta[1]) / (h[0] + h[1])
+        if (m[0] * delta[0] <= 0.0)
+            m[0] = 0.0
+        else if (delta[0] * delta[1] <= 0.0 && abs(m[0]) > abs(3.0 * delta[0]))
+            m[0] = 3.0 * delta[0]
+        m[n - 1] = ((2.0 * h[n - 2] + h[n - 3]) * delta[n - 2] - h[n - 2] * delta[n - 3]) / (h[n - 2] + h[n - 3])
+        if (m[n - 1] * delta[n - 2] <= 0.0)
+            m[n - 1] = 0.0
+        else if (delta[n - 2] * delta[n - 3] <= 0.0 && abs(m[n - 1]) > abs(3.0 * delta[n - 2]))
+            m[n - 1] = 3.0 * delta[n - 2]
+        return m
+    }
+
+    /** Значение PCHIP-интерполянта в точке log-f; за краями — константа */
+    private fun pchipEval(
+        logFreqs: DoubleArray, gains: DoubleArray, m: DoubleArray, x: Double
+    ): Double {
+        val n = logFreqs.size
+        if (n == 1)
+            return gains[0]
+        if (x <= logFreqs[0])
+            return gains[0]
+        if (x >= logFreqs[n - 1])
+            return gains[n - 1]
+        var lo = 0
+        var hi = n - 1
+        while (hi - lo > 1) {
+            val mid = (lo + hi) / 2
+            if (logFreqs[mid] <= x) lo = mid else hi = mid
+        }
+        val h = logFreqs[hi] - logFreqs[lo]
+        if (h <= 1e-12)
+            return gains[lo]
+        val t = (x - logFreqs[lo]) / h
+        val t2 = t * t
+        val t3 = t2 * t
+        return (2.0 * t3 - 3.0 * t2 + 1.0) * gains[lo] +
+                (t3 - 2.0 * t2 + t) * h * m[lo] +
+                (-2.0 * t3 + 3.0 * t2) * gains[hi] +
+                (t3 - t2) * h * m[hi]
     }
 
     private fun getLinearGradient(
