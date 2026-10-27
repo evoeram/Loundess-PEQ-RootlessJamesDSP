@@ -197,7 +197,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             // LUFS normalizer (BS.1770 targeting); stored in the loudness
             // namespace because it lives on the loudness settings screen.
             val lufsEnabled = cache.get(R.string.key_lufs_enable, false)
-            val lufsTarget = cache.get(R.string.key_lufs_target, -140) / 10.0
+            val lufsTarget = cache.get(R.string.key_lufs_target, -140f) / 10.0
             val lufsMaxGain = cache.get(R.string.key_lufs_max_gain, 6f).toDouble()
             val lufsMode = cache.get(R.string.key_lufs_mode, "1").toInt()
 
