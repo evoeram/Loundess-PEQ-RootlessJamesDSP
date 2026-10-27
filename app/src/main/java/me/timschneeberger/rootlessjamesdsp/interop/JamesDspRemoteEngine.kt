@@ -480,6 +480,81 @@ class JamesDspRemoteEngine(
         return configResult && enableResult
     }
 
+    // ViPER extras via AudioEffect parameter API (jamesdsp.c). The root
+    // effect applies with the real AudioFlinger rate (jdsp.fs), so the
+    // config payloads carry no sample rate.
+    override fun setFetCompressor(
+        enable: Boolean,
+        sampleRate: Double,
+        thresholdDb: Double,
+        ratio: Double,
+        attackMs: Double,
+        releaseMs: Double,
+        makeupDb: Double
+    ): Boolean {
+        // 5 floats: thresholdDb, ratio, attackMs, releaseMs, makeupDb
+        val data = floatArrayOf(
+            thresholdDb.toFloat(),
+            ratio.toFloat(),
+            attackMs.toFloat(),
+            releaseMs.toFloat(),
+            makeupDb.toFloat()
+        )
+        val configResult = effect.setParameterFloatArray(1310, data) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1221, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
+    }
+
+    override fun setViperClarity(
+        enable: Boolean,
+        sampleRate: Double,
+        mode: Int,
+        gainDb: Double
+    ): Boolean {
+        // 2 floats: mode, gainDb
+        val data = floatArrayOf(mode.toFloat(), gainDb.toFloat())
+        val configResult = effect.setParameterFloatArray(1311, data) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1222, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
+    }
+
+    override fun setFieldSurround(
+        enable: Boolean,
+        strengthPct: Double,
+        midImagePct: Double
+    ): Boolean {
+        // 2 floats: strengthPct, midImagePct
+        val data = floatArrayOf(strengthPct.toFloat(), midImagePct.toFloat())
+        val configResult = effect.setParameterFloatArray(1312, data) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1223, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
+    }
+
+    override fun setViperAgc(
+        enable: Boolean,
+        sampleRate: Double,
+        targetPct: Double,
+        maxBoostDb: Double
+    ): Boolean {
+        // 2 floats: targetPct, maxBoostDb
+        val data = floatArrayOf(targetPct.toFloat(), maxBoostDb.toFloat())
+        val configResult = effect.setParameterFloatArray(1313, data) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1224, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
+    }
+
+    override fun setCure(
+        enable: Boolean,
+        sampleRate: Double,
+        level: Int
+    ): Boolean {
+        // Sent as 2 floats for a uniform payload shape; only [0] = level is read.
+        val data = floatArrayOf(level.toFloat(), 0f)
+        val configResult = effect.setParameterFloatArray(1314, data) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1225, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
+    }
+
     // ---- Auto system volume tracking (root/remote engine) ----
 
     private var volumeReceiverRegistered = false

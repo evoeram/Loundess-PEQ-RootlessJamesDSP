@@ -440,7 +440,11 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     private val broadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_DYNAMICEQ, Constants.PREF_LOUDNESS))
+                // Fs-зависимые ViPER extras (attack/release компрессора, полка
+                // Clarity, постоянные времени AGC, LPF Cure) пересчитываются в C
+                // только в root-режиме (jamesdsp.c при смене fs); rootless-обёртка
+                // хранит коэффициенты, поэтому на смену fs их нужно пересинхронизировать.
+                ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_DYNAMICEQ, Constants.PREF_LOUDNESS, Constants.PREF_FETCOMP, Constants.PREF_CLARITY, Constants.PREF_AGC, Constants.PREF_CURE))
                 ACTION_PREFERENCES_UPDATED -> engine.syncWithPreferences()
                 Constants.ACTION_SQUIG_PEQ_CHANGED -> engine.syncWithPreferences(arrayOf(Constants.PREF_SQUIG, Constants.PREF_PEQ))
                 ACTION_SERVICE_RELOAD_LIVEPROG -> engine.syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))

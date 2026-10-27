@@ -96,6 +96,16 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_alloc(JNIEnv *e
     dynamicEq_init(self->dynamicEq);
     self->lufsNormalizer = new lufs_normalizer_t();
     lufs_normalizer_init(self->lufsNormalizer);
+    self->fetCompressor = new fet_compressor_t();
+    fet_compressor_init(self->fetCompressor);
+    self->viperClarity = new viper_clarity_t();
+    viper_clarity_init(self->viperClarity);
+    self->fieldSurround = new field_surround_t();
+    field_surround_init(self->fieldSurround);
+    self->viperAgc = new viper_agc_t();
+    viper_agc_init(self->viperAgc);
+    self->cure = new cure_t();
+    cure_init(self->cure);
 
     jclass callbackClass = env->GetObjectClass(callback);
     if (callbackClass == nullptr)
@@ -179,6 +189,21 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_free(JNIEnv *en
     delete wrapper->lufsNormalizer;
     wrapper->lufsNormalizer = nullptr;
 
+    delete wrapper->fetCompressor;
+    wrapper->fetCompressor = nullptr;
+
+    delete wrapper->viperClarity;
+    wrapper->viperClarity = nullptr;
+
+    delete wrapper->fieldSurround;
+    wrapper->fieldSurround = nullptr;
+
+    delete wrapper->viperAgc;
+    wrapper->viperAgc = nullptr;
+
+    delete wrapper->cure;
+    wrapper->cure = nullptr;
+
     JamesDSPGlobalMemoryDeallocation();
 
     env->DeleteGlobalRef(wrapper->callbackInterface);
@@ -241,6 +266,32 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_isHandleValid(J
     return true;
 }
 
+/* ViPER extras post-chain in the ViPER4Android relative order (FET comp ->
+ * Cure -> Field Surround -> Clarity -> AGC), before loudness/LUFS. Each
+ * stage bypasses itself when disabled. */
+static bool extrasActive(const JamesDspWrapper* wrapper)
+{
+    return (wrapper->fetCompressor && wrapper->fetCompressor->enabled) ||
+           (wrapper->cure && wrapper->cure->enabled) ||
+           (wrapper->fieldSurround && wrapper->fieldSurround->enabled) ||
+           (wrapper->viperClarity && wrapper->viperClarity->enabled) ||
+           (wrapper->viperAgc && wrapper->viperAgc->enabled);
+}
+
+static void extrasProcess(const JamesDspWrapper* wrapper, float* data, size_t frames)
+{
+    if (wrapper->fetCompressor && wrapper->fetCompressor->enabled)
+        fet_compressor_process_interleaved(wrapper->fetCompressor, data, frames);
+    if (wrapper->cure && wrapper->cure->enabled)
+        cure_process_interleaved(wrapper->cure, data, frames);
+    if (wrapper->fieldSurround && wrapper->fieldSurround->enabled)
+        field_surround_process_interleaved(wrapper->fieldSurround, data, frames);
+    if (wrapper->viperClarity && wrapper->viperClarity->enabled)
+        viper_clarity_process_interleaved(wrapper->viperClarity, data, frames);
+    if (wrapper->viperAgc && wrapper->viperAgc->enabled)
+        viper_agc_process_interleaved(wrapper->viperAgc, data, frames);
+}
+
 extern "C"
 JNIEXPORT void JNICALL
 Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JNIEnv *env, jobject obj, jlong self, jshortArray inputObj, jshortArray outputObj, jint offset, jint size)
@@ -274,7 +325,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
         const bool deqActive = wrapper->dynamicEq && dynamicEq_is_active(wrapper->dynamicEq);
         const bool loudEnabled = wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled();
         const bool lufsEnabled = wrapper->lufsNormalizer && wrapper->lufsNormalizer->enabled;
-        if (peqEnabled || deqActive || loudEnabled || lufsEnabled)
+        const bool extrasOn = extrasActive(wrapper);
+        if (peqEnabled || deqActive || loudEnabled || lufsEnabled || extrasOn)
         {
             size_t frames = inputLength / 2;
             std::vector<float> tmp(frames * 2);
@@ -284,6 +336,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
                 wrapper->parametricEq->processInterleaved(tmp.data(), frames);
             if (deqActive)
                 dynamicEq_process_interleaved(wrapper->dynamicEq, tmp.data(), frames);
+            if (extrasOn)
+                extrasProcess(wrapper, tmp.data(), frames);
             if (loudEnabled)
                 wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
             if (lufsEnabled)
@@ -321,7 +375,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
     const bool deqActive = wrapper->dynamicEq && dynamicEq_is_active(wrapper->dynamicEq);
     const bool loudEnabled = wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled();
     const bool lufsEnabled = wrapper->lufsNormalizer && wrapper->lufsNormalizer->enabled;
-    if (peqEnabled || deqActive || loudEnabled || lufsEnabled)
+    const bool extrasOn = extrasActive(wrapper);
+    if (peqEnabled || deqActive || loudEnabled || lufsEnabled || extrasOn)
     {
         size_t frames = inputLength / 2;
         std::vector<float> tmp(frames * 2);
@@ -331,6 +386,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
             wrapper->parametricEq->processInterleaved(tmp.data(), frames);
         if (deqActive)
             dynamicEq_process_interleaved(wrapper->dynamicEq, tmp.data(), frames);
+        if (extrasOn)
+            extrasProcess(wrapper, tmp.data(), frames);
         if (loudEnabled)
             wrapper->loudnessCorrection->processInterleaved(tmp.data(), frames);
         if (lufsEnabled)
@@ -458,6 +515,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
         if (wrapper->dynamicEq)
             dynamicEq_process_interleaved(wrapper->dynamicEq, input + offset, inputLength / 2);
 
+        if (extrasActive(wrapper))
+            extrasProcess(wrapper, input + offset, inputLength / 2);
+
         if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
             wrapper->loudnessCorrection->processInterleaved(input + offset, inputLength / 2);
 
@@ -493,6 +553,11 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
     if (wrapper->dynamicEq)
     {
         dynamicEq_process_interleaved(wrapper->dynamicEq, output, inputLength / 2);
+    }
+
+    if (extrasActive(wrapper))
+    {
+        extrasProcess(wrapper, output, inputLength / 2);
     }
 
     if (wrapper->loudnessCorrection && wrapper->loudnessCorrection->isEnabled())
@@ -1270,6 +1335,139 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setLufsNormaliz
 
     LOGD("JamesDspWrapper::setLufsNormalizer: target=%.1f LUFS, maxGain=%.1f dB, mode=%d, sr=%.0f",
          targetLufs, maxGainDb, (int)mode, sampleRate);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setFetCompressor(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble sampleRate, jdouble thresholdDb,
+    jdouble ratio, jdouble attackMs, jdouble releaseMs, jdouble makeupDb)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->fetCompressor == nullptr)
+        return false;
+
+    if (!enable)
+    {
+        fet_compressor_set_enabled(wrapper->fetCompressor, false);
+        return true;
+    }
+
+    // Attack/release coefficients depend on the sample rate; re-applied when
+    // the rate becomes known.
+    if (sampleRate <= 0.0)
+    {
+        LOGW("JamesDspWrapper::setFetCompressor: skipping, sample rate not yet known (%.0f)", sampleRate);
+        return false;
+    }
+
+    fet_compressor_configure(wrapper->fetCompressor, sampleRate,
+                             thresholdDb, ratio, attackMs, releaseMs, makeupDb);
+    fet_compressor_set_enabled(wrapper->fetCompressor, true);
+
+    LOGD("JamesDspWrapper::setFetCompressor: thr=%.1f dB, ratio=%.1f, att=%.1f ms, rel=%.1f ms, makeup=%.1f dB, sr=%.0f",
+         thresholdDb, ratio, attackMs, releaseMs, makeupDb, sampleRate);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setViperClarity(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble sampleRate, jint mode, jdouble gainDb)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->viperClarity == nullptr)
+        return false;
+
+    if (!enable)
+    {
+        viper_clarity_set_enabled(wrapper->viperClarity, false);
+        return true;
+    }
+
+    if (sampleRate <= 0.0)
+    {
+        LOGW("JamesDspWrapper::setViperClarity: skipping, sample rate not yet known (%.0f)", sampleRate);
+        return false;
+    }
+
+    viper_clarity_configure(wrapper->viperClarity, sampleRate, mode, gainDb);
+    viper_clarity_set_enabled(wrapper->viperClarity, true);
+
+    LOGD("JamesDspWrapper::setViperClarity: mode=%d, gain=%.1f dB, sr=%.0f",
+         (int)mode, gainDb, sampleRate);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setFieldSurround(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble strengthPct, jdouble midImagePct)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->fieldSurround == nullptr)
+        return false;
+
+    // No sample-rate-dependent state: configure always applies.
+    field_surround_configure(wrapper->fieldSurround, strengthPct, midImagePct);
+    field_surround_set_enabled(wrapper->fieldSurround, enable ? true : false);
+
+    LOGD("JamesDspWrapper::setFieldSurround: strength=%.0f%%, mid=%.0f%%",
+         strengthPct, midImagePct);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setViperAgc(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble sampleRate, jdouble targetPct,
+    jdouble maxBoostDb)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->viperAgc == nullptr)
+        return false;
+
+    if (!enable)
+    {
+        viper_agc_set_enabled(wrapper->viperAgc, false);
+        return true;
+    }
+
+    if (sampleRate <= 0.0)
+    {
+        LOGW("JamesDspWrapper::setViperAgc: skipping, sample rate not yet known (%.0f)", sampleRate);
+        return false;
+    }
+
+    viper_agc_configure(wrapper->viperAgc, sampleRate, targetPct, maxBoostDb);
+    viper_agc_set_enabled(wrapper->viperAgc, true);
+
+    LOGD("JamesDspWrapper::setViperAgc: target=%.0f%%, maxBoost=%.1f dB, sr=%.0f",
+         targetPct, maxBoostDb, sampleRate);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setCure(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jdouble sampleRate, jint level)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->cure == nullptr)
+        return false;
+
+    if (!enable)
+    {
+        cure_set_enabled(wrapper->cure, false);
+        return true;
+    }
+
+    if (sampleRate <= 0.0)
+    {
+        LOGW("JamesDspWrapper::setCure: skipping, sample rate not yet known (%.0f)", sampleRate);
+        return false;
+    }
+
+    cure_configure(wrapper->cure, sampleRate, level);
+    cure_set_enabled(wrapper->cure, true);
+
+    LOGD("JamesDspWrapper::setCure: level=%d, sr=%.0f", (int)level, sampleRate);
     return true;
 }
 

@@ -201,6 +201,35 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val lufsMaxGain = cache.get(R.string.key_lufs_max_gain, 6f).toDouble()
             val lufsMode = cache.get(R.string.key_lufs_mode, "1").toInt()
 
+            // ViPER extras; each effect has its own dsp_* namespace so presets
+            // (whole shared_prefs XML files) carry them individually.
+            cache.select(Constants.PREF_FETCOMP)
+            val fetCompEnabled = cache.get(R.string.key_fetcomp_enable, false)
+            val fetCompThreshold = cache.get(R.string.key_fetcomp_threshold, -180f) / 10.0
+            val fetCompRatio = cache.get(R.string.key_fetcomp_ratio, 40f) / 10.0
+            val fetCompAttack = cache.get(R.string.key_fetcomp_attack, 50f) / 10.0
+            val fetCompRelease = cache.get(R.string.key_fetcomp_release, 1200f) / 10.0
+            val fetCompMakeup = cache.get(R.string.key_fetcomp_makeup, 0f).toDouble()
+
+            cache.select(Constants.PREF_CLARITY)
+            val clarityEnabled = cache.get(R.string.key_clarity_enable, false)
+            val clarityMode = cache.get(R.string.key_clarity_mode, "0").toInt()
+            val clarityGain = cache.get(R.string.key_clarity_gain, 40f) / 10.0
+
+            cache.select(Constants.PREF_FIELDSURROUND)
+            val fieldSurroundEnabled = cache.get(R.string.key_fieldsurround_enable, false)
+            val fieldSurroundStrength = cache.get(R.string.key_fieldsurround_strength, 30f).toDouble()
+            val fieldSurroundMid = cache.get(R.string.key_fieldsurround_mid, 50f).toDouble()
+
+            cache.select(Constants.PREF_AGC)
+            val agcEnabled = cache.get(R.string.key_agc_enable, false)
+            val agcTarget = cache.get(R.string.key_agc_target, 30f).toDouble()
+            val agcMaxBoost = cache.get(R.string.key_agc_maxboost, 120f) / 10.0
+
+            cache.select(Constants.PREF_CURE)
+            val cureEnabled = cache.get(R.string.key_cure_enable, false)
+            val cureLevel = cache.get(R.string.key_cure_level, "0").toInt()
+
             cache.select(Constants.PREF_CONVOLVER)
             val convolverEnabled = cache.get(R.string.key_convolver_enable, false)
             val convolverFile = cache.get(R.string.key_convolver_file, "")
@@ -361,6 +390,34 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                         } else {
                             true
                         }
+                    }
+                    Constants.PREF_FETCOMP -> {
+                        setFetCompressor(
+                            fetCompEnabled, sampleRate.toDouble(),
+                            fetCompThreshold, fetCompRatio,
+                            fetCompAttack, fetCompRelease, fetCompMakeup
+                        )
+                    }
+                    Constants.PREF_CLARITY -> {
+                        setViperClarity(
+                            clarityEnabled, sampleRate.toDouble(),
+                            clarityMode, clarityGain
+                        )
+                    }
+                    Constants.PREF_FIELDSURROUND -> {
+                        setFieldSurround(
+                            fieldSurroundEnabled,
+                            fieldSurroundStrength, fieldSurroundMid
+                        )
+                    }
+                    Constants.PREF_AGC -> {
+                        setViperAgc(
+                            agcEnabled, sampleRate.toDouble(),
+                            agcTarget, agcMaxBoost
+                        )
+                    }
+                    Constants.PREF_CURE -> {
+                        setCure(cureEnabled, sampleRate.toDouble(), cureLevel)
                     }
                     Constants.PREF_CONVOLVER -> {
                         val mappedFile = ConvolverSampleRateFiles.resolve(
@@ -754,6 +811,49 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         targetLufs: Double,
         maxGainDb: Double,
         mode: Int
+    ): Boolean = false
+
+    // ViPER extras (ported from RootlessViPER4Android).
+    // FET compressor: peak-sensing log-domain gain computer.
+    open fun setFetCompressor(
+        enable: Boolean,
+        sampleRate: Double,
+        thresholdDb: Double,
+        ratio: Double,
+        attackMs: Double,
+        releaseMs: Double,
+        makeupDb: Double
+    ): Boolean = false
+
+    // ViPER Clarity: transient sharpening + 4.5 kHz high shelf.
+    // mode: 0 = natural, 1 = natural + shelf, 2 = shelf.
+    open fun setViperClarity(
+        enable: Boolean,
+        sampleRate: Double,
+        mode: Int,
+        gainDb: Double
+    ): Boolean = false
+
+    // Field Surround: mid/side reshaping.
+    open fun setFieldSurround(
+        enable: Boolean,
+        strengthPct: Double,
+        midImagePct: Double
+    ): Boolean = false
+
+    // AGC: slow envelope follower driving an even slower gain glide.
+    open fun setViperAgc(
+        enable: Boolean,
+        sampleRate: Double,
+        targetPct: Double,
+        maxBoostDb: Double
+    ): Boolean = false
+
+    // Cure: auditory-protection crossfeed. level: 0 / 1 / 2.
+    open fun setCure(
+        enable: Boolean,
+        sampleRate: Double,
+        level: Int
     ): Boolean = false
 
     // Enable/disable automatic system media volume tracking for loudness correction.

@@ -350,6 +350,77 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         )
     }
 
+    override fun setFetCompressor(
+        enable: Boolean,
+        sampleRate: Double,
+        thresholdDb: Double,
+        ratio: Double,
+        attackMs: Double,
+        releaseMs: Double,
+        makeupDb: Double
+    ): Boolean {
+        // Attack/release coefficients depend on the sample rate; re-applied
+        // when the rate becomes known.
+        if (enable && sampleRate <= 0.0) {
+            Timber.w("setFetCompressor: skipping, sample rate not yet known ($sampleRate)")
+            return false
+        }
+        if (handle == 0L) return false
+        return JamesDspWrapper.setFetCompressor(
+            handle, enable, sampleRate, thresholdDb, ratio, attackMs, releaseMs, makeupDb
+        )
+    }
+
+    override fun setViperClarity(
+        enable: Boolean,
+        sampleRate: Double,
+        mode: Int,
+        gainDb: Double
+    ): Boolean {
+        if (enable && sampleRate <= 0.0) {
+            Timber.w("setViperClarity: skipping, sample rate not yet known ($sampleRate)")
+            return false
+        }
+        if (handle == 0L) return false
+        return JamesDspWrapper.setViperClarity(handle, enable, sampleRate, mode, gainDb)
+    }
+
+    override fun setFieldSurround(
+        enable: Boolean,
+        strengthPct: Double,
+        midImagePct: Double
+    ): Boolean {
+        if (handle == 0L) return false
+        return JamesDspWrapper.setFieldSurround(handle, enable, strengthPct, midImagePct)
+    }
+
+    override fun setViperAgc(
+        enable: Boolean,
+        sampleRate: Double,
+        targetPct: Double,
+        maxBoostDb: Double
+    ): Boolean {
+        if (enable && sampleRate <= 0.0) {
+            Timber.w("setViperAgc: skipping, sample rate not yet known ($sampleRate)")
+            return false
+        }
+        if (handle == 0L) return false
+        return JamesDspWrapper.setViperAgc(handle, enable, sampleRate, targetPct, maxBoostDb)
+    }
+
+    override fun setCure(
+        enable: Boolean,
+        sampleRate: Double,
+        level: Int
+    ): Boolean {
+        if (enable && sampleRate <= 0.0) {
+            Timber.w("setCure: skipping, sample rate not yet known ($sampleRate)")
+            return false
+        }
+        if (handle == 0L) return false
+        return JamesDspWrapper.setCure(handle, enable, sampleRate, level)
+    }
+
     // ---- Auto system volume tracking ----
 
     private var volumeReceiverRegistered = false

@@ -130,6 +130,11 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
                 setupLoudnessTuningLabels()
                 setupLufsLabels()
             }
+            R.xml.dsp_fetcomp_preferences -> setupExtrasLabels()
+            R.xml.dsp_clarity_preferences -> setupExtrasLabels()
+            R.xml.dsp_fieldsurround_preferences -> setupExtrasLabels()
+            R.xml.dsp_agc_preferences -> setupExtrasLabels()
+            R.xml.dsp_cure_preferences -> setupExtrasLabels()
             R.xml.dsp_compander_preferences -> {
                 findPreference<MaterialSeekbarPreference>(getString(R.string.key_compander_granularity))?.valueLabelOverride =
                     fun(it: Float): String {
@@ -627,6 +632,33 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
     private fun setupLufsLabels() {
         findPreference<MaterialSeekbarPreference>(getString(R.string.key_lufs_target))?.valueLabelOverride =
             fun(it: Float): String { return "%.1f LUFS".format(it / 10f) }
+    }
+
+    /**
+     * ViPER extras: stored ×10 where finer than 1 step is needed
+     * (threshold dB, ratio, attack/release ms, gain dB, max boost dB).
+     */
+    private fun setupExtrasLabels() {
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_fetcomp_threshold))?.valueLabelOverride =
+            fun(it: Float): String { return "%.1f dB".format(it / 10f) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_fetcomp_ratio))?.valueLabelOverride =
+            fun(it: Float): String { return "%.1f : 1".format(it / 10f) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_fetcomp_attack))?.valueLabelOverride =
+            fun(it: Float): String { return "%.1f ms".format(it / 10f) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_fetcomp_release))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f ms".format(it / 10f) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_fetcomp_makeup))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f dB".format(it) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_clarity_gain))?.valueLabelOverride =
+            fun(it: Float): String { return "%.1f dB".format(it / 10f) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_fieldsurround_strength))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f %%".format(it) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_fieldsurround_mid))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f %%".format(it) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_agc_target))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f %%".format(it) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_agc_maxboost))?.valueLabelOverride =
+            fun(it: Float): String { return "%.1f dB".format(it / 10f) }
     }
 
     /**

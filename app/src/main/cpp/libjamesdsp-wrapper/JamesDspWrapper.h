@@ -5,6 +5,11 @@
 
 #include <Effects/dynamicEq.h>
 #include <Effects/lufs_normalizer.h>
+#include <Effects/fet_compressor.h>
+#include <Effects/viper_clarity.h>
+#include <Effects/field_surround.h>
+#include <Effects/viper_agc.h>
+#include <Effects/cure.h>
 
 // Forward declaration (opaque pointer for C interop)
 class ParametricEqProcessor;
@@ -23,6 +28,11 @@ typedef struct
     LoudnessCorrectionProcessor* loudnessCorrection;
     dynamicEq_t* dynamicEq;
     lufs_normalizer_t* lufsNormalizer;
+    fet_compressor_t* fetCompressor;
+    viper_clarity_t* viperClarity;
+    field_surround_t* fieldSurround;
+    viper_agc_t* viperAgc;
+    cure_t* cure;
 } JamesDspWrapper;
 
 /* C interop function */

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+        android:disableDependentsState="false"
+        android:key="@string/key_clarity_enable"
+        android:title="@string/clarity_enable"
+        android:summary="@string/clarity_summary"
+        android:icon="@drawable/ic_twotone_auto_fix_high_24"
+        app:iconSpaceReserved="false">
+        <ListPreference
+            android:key="@string/key_clarity_mode"
+            android:title="@string/clarity_mode"
+            android:defaultValue="0"
+            android:entries="@array/clarity_modes"
+            android:entryValues="@array/clarity_modes_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false"/>
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_clarity_gain"
+            android:title="@string/clarity_gain"
+            android:defaultValue="40"
+            app:minValue="0"
+            app:maxValue="140"
+            app:seekBarIncrement="5"
+            app:unit=""
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false"/>
+    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
+
+</PreferenceScreen>

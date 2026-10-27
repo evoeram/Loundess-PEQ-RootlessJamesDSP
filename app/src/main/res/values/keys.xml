@@ -218,6 +218,29 @@
     <string name="key_lufs_max_gain" translatable="false">lufs_max_gain</string>
     <string name="key_lufs_mode" translatable="false">lufs_mode</string>
 
+    <!-- ViPER extras (ported from RootlessViPER4Android; one dsp_* namespace each) -->
+    <string name="key_fetcomp_enable" translatable="false">fetcomp_enable</string>
+    <string name="key_fetcomp_threshold" translatable="false">fetcomp_threshold</string>
+    <string name="key_fetcomp_ratio" translatable="false">fetcomp_ratio</string>
+    <string name="key_fetcomp_attack" translatable="false">fetcomp_attack</string>
+    <string name="key_fetcomp_release" translatable="false">fetcomp_release</string>
+    <string name="key_fetcomp_makeup" translatable="false">fetcomp_makeup</string>
+
+    <string name="key_clarity_enable" translatable="false">clarity_enable</string>
+    <string name="key_clarity_mode" translatable="false">clarity_mode</string>
+    <string name="key_clarity_gain" translatable="false">clarity_gain</string>
+
+    <string name="key_fieldsurround_enable" translatable="false">fieldsurround_enable</string>
+    <string name="key_fieldsurround_strength" translatable="false">fieldsurround_strength</string>
+    <string name="key_fieldsurround_mid" translatable="false">fieldsurround_mid</string>
+
+    <string name="key_agc_enable" translatable="false">agc_enable</string>
+    <string name="key_agc_target" translatable="false">agc_target</string>
+    <string name="key_agc_maxboost" translatable="false">agc_maxboost</string>
+
+    <string name="key_cure_enable" translatable="false">cure_enable</string>
+    <string name="key_cure_level" translatable="false">cure_level</string>
+
     <string name="key_output_control_enable" translatable="false">output_control_enable</string>
     <string name="key_limiter_threshold" translatable="false">limiter_threshold</string>
     <string name="key_limiter_release" translatable="false">limiter_release</string>

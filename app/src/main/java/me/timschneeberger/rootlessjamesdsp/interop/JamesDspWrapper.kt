@@ -121,6 +121,53 @@ object JamesDspWrapper {
         mode: Int
     ): Boolean
 
+    // FET compressor (peak-sensing, log-domain gain computer).
+    external fun setFetCompressor(
+        self: JamesDspHandle,
+        enable: Boolean,
+        sampleRate: Double,
+        thresholdDb: Double,
+        ratio: Double,
+        attackMs: Double,
+        releaseMs: Double,
+        makeupDb: Double
+    ): Boolean
+
+    // ViPER Clarity. mode: 0 = natural (sharpening), 1 = natural + shelf,
+    // 2 = shelf only; gain 0..14 dB.
+    external fun setViperClarity(
+        self: JamesDspHandle,
+        enable: Boolean,
+        sampleRate: Double,
+        mode: Int,
+        gainDb: Double
+    ): Boolean
+
+    // Field Surround (mid/side reshaping); no sample-rate-dependent state.
+    external fun setFieldSurround(
+        self: JamesDspHandle,
+        enable: Boolean,
+        strengthPct: Double,
+        midImagePct: Double
+    ): Boolean
+
+    // AGC (slow envelope follower driving an even slower gain glide).
+    external fun setViperAgc(
+        self: JamesDspHandle,
+        enable: Boolean,
+        sampleRate: Double,
+        targetPct: Double,
+        maxBoostDb: Double
+    ): Boolean
+
+    // Cure (auditory-protection crossfeed). level: 0 / 1 / 2.
+    external fun setCure(
+        self: JamesDspHandle,
+        enable: Boolean,
+        sampleRate: Double,
+        level: Int
+    ): Boolean
+
     // EEL VM utilities
     external fun enumerateEelVariables(self: JamesDspHandle): ArrayList<EelVmVariable>
     external fun manipulateEelVariable(self: JamesDspHandle, name: String, value: Float): Boolean

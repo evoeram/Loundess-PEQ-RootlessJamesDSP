@@ -215,6 +215,28 @@
         <item>2</item>
     </string-array>
 
+    <string-array name="clarity_modes" translatable="false">
+        <item>@string/clarity_mode_natural</item>
+        <item>@string/clarity_mode_both</item>
+        <item>@string/clarity_mode_shelf</item>
+    </string-array>
+    <string-array name="clarity_modes_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+
+    <string-array name="cure_levels" translatable="false">
+        <item>@string/cure_level_0</item>
+        <item>@string/cure_level_1</item>
+        <item>@string/cure_level_2</item>
+    </string-array>
+    <string-array name="cure_levels_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+
     <string-array name="dyneq_modes" translatable="false">
         <item>@string/dyneq_mode_compressor</item>
         <item>@string/dyneq_mode_expander</item>

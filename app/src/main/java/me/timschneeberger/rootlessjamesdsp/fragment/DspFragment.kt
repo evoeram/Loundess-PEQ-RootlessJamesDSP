@@ -156,6 +156,26 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
                 R.id.card_loudness, PreferenceGroupFragment.newInstance(Constants.PREF_LOUDNESS,
                     R.xml.dsp_loudness_preferences
                 ))
+            .replace(
+                R.id.card_fetcomp, PreferenceGroupFragment.newInstance(Constants.PREF_FETCOMP,
+                    R.xml.dsp_fetcomp_preferences
+                ))
+            .replace(
+                R.id.card_clarity, PreferenceGroupFragment.newInstance(Constants.PREF_CLARITY,
+                    R.xml.dsp_clarity_preferences
+                ))
+            .replace(
+                R.id.card_fieldsurround, PreferenceGroupFragment.newInstance(Constants.PREF_FIELDSURROUND,
+                    R.xml.dsp_fieldsurround_preferences
+                ))
+            .replace(
+                R.id.card_agc, PreferenceGroupFragment.newInstance(Constants.PREF_AGC,
+                    R.xml.dsp_agc_preferences
+                ))
+            .replace(
+                R.id.card_cure, PreferenceGroupFragment.newInstance(Constants.PREF_CURE,
+                    R.xml.dsp_cure_preferences
+                ))
             .commit()
 
         // Load initial preferences
@@ -206,6 +226,11 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
         binding.cardCrossfeed.isVisible = !directMode
         binding.cardReverb.isVisible = !directMode
         binding.cardLoudness.isVisible = !directMode
+        binding.cardFetcomp.isVisible = !directMode
+        binding.cardClarity.isVisible = !directMode
+        binding.cardFieldsurround.isVisible = !directMode
+        binding.cardAgc.isVisible = !directMode
+        binding.cardCure.isVisible = !directMode
         // Output control (limiter) тоже не работает без capture loop
         binding.cardOutputControl.isVisible = !directMode
         // Measurement (MEOW) бесполезен без capture loop

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+        android:disableDependentsState="false"
+        android:key="@string/key_fieldsurround_enable"
+        android:title="@string/fieldsurround_enable"
+        android:summary="@string/fieldsurround_summary"
+        android:icon="@drawable/ic_baseline_image_filter_tilt_shift_24dp"
+        app:iconSpaceReserved="false">
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_fieldsurround_strength"
+            android:title="@string/fieldsurround_strength"
+            android:defaultValue="30"
+            app:minValue="0"
+            app:maxValue="100"
+            app:seekBarIncrement="1"
+            app:unit="%"
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false"/>
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_fieldsurround_mid"
+            android:title="@string/fieldsurround_mid"
+            android:defaultValue="50"
+            app:minValue="0"
+            app:maxValue="100"
+            app:seekBarIncrement="1"
+            app:unit="%"
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false"/>
+    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
+
+</PreferenceScreen>
