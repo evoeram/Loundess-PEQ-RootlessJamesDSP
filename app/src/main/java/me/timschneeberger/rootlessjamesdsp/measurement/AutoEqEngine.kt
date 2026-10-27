@@ -52,6 +52,21 @@ class AutoEqEngine(
         // Nelder-Mead joint optimization
         val useNelderMead: Boolean = true,       // Совместная оптимизация после greedy placement
         val nelderMeadIterations: Int = 300,     // Итераций Nelder-Mead на каждый шаг
+        // Joint optimizer selection (libMultivariateOpt DE/CHIO port)
+        val optimizer: Optimizer = Optimizer.NELDER_MEAD, // Алгоритм совместной оптимизации
+        val optimizerSeed: Long = 1337L,         // Базовый seed multi-start (детерминизм)
+        val multiStartRuns: Int = 3,             // Число рестартов DE/CHIO
+        val optimizerEvalBudgetMultiplier: Double = 0.4, // Бюджет стадии 2 (мульти-старт) относительно Nelder-Mead
+        val deGroupSize: Int = 5,                // DE: K (популяция = K*N)
+        val deSampleSize: Int = 3,               // DE: N (пробных векторов за эпоху)
+        val deProbiBound: Double = 0.99,         // DE: вероятность проекции на границу
+        val chioPopulationSize: Int = 15,        // CHIO: размер популяции
+        val chioMaxSolSurviveEpoch: Int = 100,   // CHIO: предел возраста до регенерации
+        val chioC0: Int = 6,                     // CHIO: исходное число заражённых
+        val chioSpreadingRate: Double = 0.05,    // CHIO: вероятность мутации координаты
+        val optimizerSpreadLogFc: Double = 0.10, // Разброс init-популяции: ln(fc)
+        val optimizerSpreadQ: Double = 0.5,      // Разброс init-популяции: Q
+        val optimizerSpreadGain: Double = 1.5,   // Разброс init-популяции: gain, дБ
         // Treble averaging (AutoEq `_optimizer_loss`)
         val trebleAveragingEnabled: Boolean = true, // Выше порога loss учитывает только среднее области
         val trebleAverageAboveHz: Double = 10000.0, // Порог ВЧ-усреднения, Гц
@@ -59,6 +74,16 @@ class AutoEqEngine(
         val sharpnessPenaltyEnabled: Boolean = true,  // Штраф за наклон круче ~18 дБ/окт
         val sharpnessPenaltyWeight: Double = 1.0      // Вес штрафа в функции потерь
     )
+
+    /** Алгоритм совместной оптимизации параметров полос. */
+    enum class Optimizer {
+        /** Nelder-Mead Simplex (историческое поведение, детерминированный). */
+        NELDER_MEAD,
+        /** Bounded Differential Evolution с Bezier-мутацией, multi-start. */
+        DE,
+        /** Bounded CHIO (Coronavirus Herd Immunity Optimizer), multi-start. */
+        CHIO
+    }
 
     /** Результат Auto-EQ. */
     data class Result(
@@ -233,15 +258,27 @@ class AutoEqEngine(
                 ))
             }
 
-            // Nelder-Mead joint optimization после каждого добавленного фильтра
+            // Joint optimization после каждого добавленного фильтра.
+            // Траектория greedy всегда идентична Nelder-Mead; мульти-старт
+            // DE/CHIO выполняется один раз финальной полировкой (ниже),
+            // иначе принятое уточнение меняет residual, greedy кладёт другие
+            // полосы и гарантия «не хуже Nelder-Mead» теряется.
             if (config.useNelderMead && bands.isNotEmpty()) {
                 jointlyOptimizeBands(
                     bands, evalFreqs, measuredAtEval, targetAtEval, inRange,
-                    trebleRange, trebleMeanTarget, config
+                    trebleRange, trebleMeanTarget, config, iteration, refine = false
                 )
             }
 
             iteration++
+        }
+
+        // Финальная полировка multi-start DE/CHIO вокруг результата Nelder-Mead
+        if (config.optimizer != Optimizer.NELDER_MEAD && bands.isNotEmpty()) {
+            jointlyOptimizeBands(
+                bands, evalFreqs, measuredAtEval, targetAtEval, inRange,
+                trebleRange, trebleMeanTarget, config, iteration, refine = true
+            )
         }
 
         // overallMaxBoost — жёсткий предел суммарного буста каскада.
@@ -419,12 +456,17 @@ class AutoEqEngine(
     }
 
     /**
-     * Совместная оптимизация параметров всех полос через Nelder-Mead Simplex.
+     * Совместная оптимизация параметров всех полос.
      *
      * Оптимизирует Fc, Q и Gain каждой полосы для минимизации
      * среднеквадратичной ошибки между (measured + filter) и target.
      *
      * Параметры хранятся в log-масштабе частоты для лучшей сходимости.
+     * [callIndex] — номер шага greedy-фазы; входит в производные seed'ы
+     * multi-start, делая всю траекторию детерминированной.
+     * [refine] — финальная полировка multi-start DE/CHIO; при false
+     * (joint-оптимизация в greedy-фазе) всегда используется Nelder-Mead,
+     * чтобы траектория greedy совпадала с эталонной побитово.
      */
     private fun jointlyOptimizeBands(
         bands: MutableList<ParametricEqBand>,
@@ -434,7 +476,9 @@ class AutoEqEngine(
         inRange: BooleanArray,
         trebleRange: IntRange?,
         trebleMeanTarget: Double,
-        config: Config
+        config: Config,
+        callIndex: Int,
+        refine: Boolean
     ) {
         val nBands = bands.size
         if (nBands == 0) return
@@ -456,13 +500,19 @@ class AutoEqEngine(
 
         val residual = DoubleArray(evalFreqs.size)
 
-        // Целевая функция
+        // Целевая функция. Q и gain приводятся к финальному виду теми же
+        // coerceIn, что и запись результатов: оптимизаторы (DE/CHIO) могут
+        // вернуть значение вне границ, и loss должен соответствовать точке,
+        // которая будет реально записана. Nelder-Mead всегда внутри границ,
+        // для него приведение — no-op (golden не меняется).
         val fn: (DoubleArray) -> Double = { params ->
             val tempBands = (0 until nBands).map { i ->
                 ParametricEqBand(
                     frequency = Math.exp(params[i * 3]).coerceIn(1.0, sampleRate * 0.49),
-                    gain = params[i * 3 + 2],
-                    q = params[i * 3 + 1],
+                    gain = params[i * 3 + 2].coerceIn(
+                        -config.individualMaxBoost, config.individualMaxBoost
+                    ),
+                    q = params[i * 3 + 1].coerceIn(config.minQ, config.maxQLow),
                     filterType = bands[i].filterType,
                     channel = ParametricEqChannel.LEFT_RIGHT
                 )
@@ -511,7 +561,60 @@ class AutoEqEngine(
             mse + penalty
         }
 
-        val optimized = nelderMead(initial, bounds, fn, config.nelderMeadIterations)
+        // Пост-метрика итогового отклонения для кандидата параметров:
+        // (maxDev, RMSE) в конвенции finalMaxDeviation (ВЧ-усреднение,
+        // маска inRange, без preamp, с учётом масштабирования общего буста).
+        // Нужна, потому что fn (MSE + штрафы) может предпочесть точку
+        // с меньшим средним, но большим пиковым отклонением — и наоборот.
+        // Параметры приводятся к финальному виду теми же coerceIn, что и
+        // запись результатов (оптимизатор может вернуть значение вне границ)
+        // — иначе гейт оценит не ту точку, которая будет реально записана.
+        fun postDeviationMetric(params: DoubleArray): Pair<Double, Double> {
+            val candidate = (0 until nBands).map { i ->
+                ParametricEqBand(
+                    frequency = Math.exp(params[i * 3]).coerceIn(1.0, sampleRate * 0.49),
+                    gain = params[i * 3 + 2].coerceIn(
+                        -config.individualMaxBoost, config.individualMaxBoost
+                    ),
+                    q = params[i * 3 + 1].coerceIn(config.minQ, config.maxQLow),
+                    filterType = bands[i].filterType,
+                    channel = bands[i].channel
+                )
+            }
+            val totalBoost = candidate.sumOf { if (it.gain > 0.0) it.gain else 0.0 }
+            val scaled = if (totalBoost > config.overallMaxBoost) {
+                val scale = config.overallMaxBoost / totalBoost
+                candidate.map {
+                    if (it.gain > 0.0) ParametricEqBand(
+                        it.frequency, it.gain * scale, it.q, it.filterType, it.channel
+                    ) else it
+                }
+            } else candidate
+            val response = calculator.compute(scaled).leftResponseDb
+            for (i in evalFreqs.indices) residual[i] = measuredAtEval[i] + response[i]
+            val trebleMeanResidual = trebleRange?.let { meanOver(it, residual) } ?: 0.0
+            var dev = 0.0
+            var sq = 0.0
+            var count = 0
+            for (i in evalFreqs.indices) {
+                if (!inRange[i]) continue
+                val err = if (trebleRange != null && i >= trebleRange.first)
+                    trebleMeanResidual - trebleMeanTarget
+                else residual[i] - targetAtEval[i]
+                val absErr = abs(err)
+                if (absErr > dev) dev = absErr
+                sq += err * err
+                count++
+            }
+            val rmse = sqrt(sq / count.coerceAtLeast(1))
+            return dev to rmse
+        }
+
+        val optimized = if (!refine || config.optimizer == Optimizer.NELDER_MEAD) {
+            nelderMead(initial, bounds, fn, config.nelderMeadIterations)
+        } else {
+            multiStartBoundedOptimize(initial, bounds, fn, ::postDeviationMetric, callIndex, config)
+        }
 
         // Запись результатов обратно
         for (i in 0 until nBands) {
@@ -620,6 +723,124 @@ class AutoEqEngine(
     }
 
     /**
+     * Гибридный запуск ограниченного DE/CHIO: полировка multi-start вокруг
+     * результата Nelder-Mead. Повторяет официальный паттерн libMultivariateOpt
+     * «SGD + DE» / «SGD + CHIO» (IIROptimizer.c), где чистый метаэвристик
+     * требует слишком много итераций для уточнения: стадия 1 — локальный
+     * проход Nelder-Mead от текущего решения, стадия 2 — multi-start DE/CHIO.
+     *
+     * Первый член начальной популяции каждого рестарта — точный результат
+     * стадии 1, остальные — возмущения с настроенным разбросом; оба
+     * оптимизатора обновляются только на улучшение, поэтому результат
+     * не может быть хуже seed по целевой функции. Поскольку целевая функция
+     * (MSE + штрафы) не совпадает один в один с пост-метрикой max deviation,
+     * результат принимается только если не ухудшил [postMetric] относительно
+     * входного состояния ([initial]) — иначе выполняется откат на него.
+     * Стадия 1 тоже может сместиться в другую яму с лучшим MSE, но худшим
+     * max deviation, поэтому гейт привязан именно к входу, а не к seed.
+     * Общий бюджет вызовов целевой функции стадии 2 делится между рестартами
+     * и детерминированно ограничивает время (оценка числа evals Nelder-Mead
+     * на итерацию — reflection + расширение/сжатие).
+     */
+    private fun multiStartBoundedOptimize(
+        initial: DoubleArray,
+        bounds: List<Pair<Double, Double>>,
+        fn: (DoubleArray) -> Double,
+        postMetric: (DoubleArray) -> Pair<Double, Double>,
+        callIndex: Int,
+        config: Config
+    ): DoubleArray {
+        // Стадия 1: локальный seed, как в «SGD + DE» эталона
+        val seed = nelderMead(initial, bounds, fn, config.nelderMeadIterations)
+        val runs = config.multiStartRuns
+        if (runs <= 0) return seed
+
+        val dim = initial.size
+        val lower = DoubleArray(dim) { bounds[it].first }
+        val upper = DoubleArray(dim) { bounds[it].second }
+
+        val evalBudget = (config.optimizerEvalBudgetMultiplier *
+            config.nelderMeadIterations * NM_EVALS_PER_ITER_ESTIMATE).toInt()
+            .coerceAtLeast(runs * 64)
+        val evalsPerRun = evalBudget / runs
+
+        val rng = Pcg32x2Random(
+            deriveSeed(config.optimizerSeed, callIndex.toLong()),
+            deriveSeed(config.optimizerSeed, callIndex.toLong() + 0x5DEECE66)
+        )
+
+        var bestF = Double.MAX_VALUE
+        var bestX = seed
+        repeat(runs) {
+            val result = if (config.optimizer == Optimizer.DE) {
+                val pop = perturbedPopulation(
+                    seed, lower, upper,
+                    config.deGroupSize * config.deSampleSize, config, rng
+                )
+                differentialEvolution(
+                    fn, pop, config.deGroupSize, config.deSampleSize,
+                    config.deProbiBound, dim, lower, upper, Int.MAX_VALUE, rng, evalsPerRun
+                )
+            } else {
+                val pop = perturbedPopulation(
+                    seed, lower, upper, config.chioPopulationSize, config, rng
+                )
+                chio(
+                    fn, pop, config.chioPopulationSize, config.chioMaxSolSurviveEpoch,
+                    config.chioC0, config.chioSpreadingRate,
+                    dim, lower, upper, Int.MAX_VALUE, rng, evalsPerRun
+                )
+            }
+            if (result.f < bestF) {
+                bestF = result.f
+                bestX = result.x
+            }
+        }
+        val baseMetric = postMetric(initial)
+        val bestMetric = postMetric(bestX)
+        return if (bestMetric.first <= baseMetric.first + 1e-9 &&
+            bestMetric.second <= baseMetric.second + 1e-9
+        ) bestX else initial
+    }
+
+    /**
+     * Начальная популяция multi-start: строка 0 — точное текущее решение,
+     * остальные — равномерные возмущения в пределах настроенного разброса
+     * (ln fc / Q / gain), спроецированные на границы.
+     */
+    private fun perturbedPopulation(
+        initial: DoubleArray,
+        lower: DoubleArray,
+        upper: DoubleArray,
+        rows: Int,
+        config: Config,
+        rng: Pcg32x2Random
+    ): DoubleArray {
+        val pop = DoubleArray(rows * initial.size)
+        System.arraycopy(initial, 0, pop, 0, initial.size)
+        for (r in 1 until rows) {
+            for (j in initial.indices) {
+                val spread = when (j % 3) {
+                    0 -> config.optimizerSpreadLogFc
+                    1 -> config.optimizerSpreadQ
+                    else -> config.optimizerSpreadGain
+                }
+                val v = initial[j] + (rng.cRand() * 2.0 - 1.0) * spread
+                pop[r * initial.size + j] = v.coerceIn(lower[j], upper[j])
+            }
+        }
+        return pop
+    }
+
+    /** SplitMix64-смешивание базового seed и salt для производных потоков PCG32x2. */
+    private fun deriveSeed(base: Long, salt: Long): ULong {
+        var z = base.toULong() + salt.toULong() * 0x9E3779B97F4A7C15uL
+        z = (z xor (z shr 30)) * 0xBF58476D1CE4E5B9uL
+        z = (z xor (z shr 27)) * 0x94D049BB133111EBuL
+        return z xor (z shr 31)
+    }
+
+    /**
      * Диапазон индексов ВЧ-усреднения (AutoEq `_optimizer_loss`): непрерывная
      * область inRange с частотой не ниже порога. Область считается по всему
      * evaluation-диапазону, как у AutoEq, где среднее берётся от 10 кГц до
@@ -699,5 +920,8 @@ class AutoEqEngine(
 
         /** Ниже этого коэффициента штраф пренебрежим — АЧХ полосы не считается. */
         const val SHARPNESS_MIN_COEFFICIENT = 1e-4
+
+        /** Оценка числа fn evals Nelder-Mead на итерацию для бюджета DE/CHIO. */
+        const val NM_EVALS_PER_ITER_ESTIMATE = 2.5
     }
 }

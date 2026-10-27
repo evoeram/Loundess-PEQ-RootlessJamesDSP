@@ -4,6 +4,7 @@ import me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqChannel
 import me.timschneeberger.rootlessjamesdsp.model.ParametricEqFilterType
 import me.timschneeberger.rootlessjamesdsp.utils.ParametricEqResponseCalculator
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -638,6 +639,224 @@ class AutoEqEngineTest {
         assertTrue(
             "MSE 20 Hz-10 kHz must not grow ($mseOn vs $mseOff)",
             mseOn <= mseOff + 0.01
+        )
+    }
+
+    // ---- Bounded DE / CHIO optimizers (libMultivariateOpt port) ----
+
+    private fun optimizerConfig(optimizer: AutoEqEngine.Optimizer) =
+        legacyConfig(false).copy(optimizer = optimizer)
+
+    /** Rippled quadratic: известный глобальный минимум + локальные ямы. */
+    private fun rippledQuadratic(dim: Int): Pair<(DoubleArray) -> Double, DoubleArray> {
+        val center = DoubleArray(dim) { -0.5 + it * 0.5 }
+        val fn: (DoubleArray) -> Double = { x ->
+            var s = 0.0
+            for (i in x.indices) {
+                val d = x[i] - center[i]
+                s += d * d + 0.3 * kotlin.math.sin(3.0 * x[i]) * kotlin.math.sin(3.0 * x[i])
+            }
+            s
+        }
+        return fn to center
+    }
+
+    private fun boundedOptimizerCommonChecks(
+        run: (Pcg32x2Random) -> BoundedOptimizerResult
+    ) {
+        val dim = 6
+        val lower = DoubleArray(dim) { -1.0 }
+        val upper = DoubleArray(dim) { 3.0 }
+        val (fn, center) = rippledQuadratic(dim)
+        val start = DoubleArray(dim) { center[it] + 0.3 }
+
+        val r1 = run(Pcg32x2Random(7uL, 7uL + 0x5DEECE66uL))
+        val r2 = run(Pcg32x2Random(7uL, 7uL + 0x5DEECE66uL))
+        val r3 = run(Pcg32x2Random(9uL, 9uL + 0x5DEECE66uL))
+
+        // Детерминированность при фиксированном seed
+        assertArrayEquals(r1.x, r2.x, 0.0)
+        assertEquals(r1.f, r2.f, 0.0)
+        assertEquals(r1.evals, r2.evals)
+        // Другой seed — другой поток случайных чисел
+        val differs = r1.x.indices.any { r1.x[it] != r3.x[it] } || r1.f != r3.f
+        assertTrue("Different seeds must explore differently", differs)
+
+        // Границы соблюдаются
+        for (v in r1.x) {
+            assertTrue("Optimizer output $v below lower bound", v >= -1.0)
+            assertTrue("Optimizer output $v above upper bound", v <= 3.0)
+        }
+        // Результат не хуже стартовой точки
+        assertTrue(
+            "Optimizer must not be worse than start (${r1.f} > ${fn(start)})",
+            r1.f <= fn(start) + 1e-9
+        )
+    }
+
+    @Test
+    fun `bounded de is deterministic respects bounds and improves on start`() {
+        val dim = 6
+        val lower = DoubleArray(dim) { -1.0 }
+        val upper = DoubleArray(dim) { 3.0 }
+        val (fn, center) = rippledQuadratic(dim)
+        boundedOptimizerCommonChecks { rng ->
+            val pop = DoubleArray(15 * dim)
+            System.arraycopy(center.map { it + 0.3 }.toDoubleArray(), 0, pop, 0, dim)
+            for (r in 1 until 15)
+                for (j in 0 until dim)
+                    pop[r * dim + j] = center[j] + 0.3 + (rng.cRand() * 2.0 - 1.0) * 0.5
+            differentialEvolution(
+                fn, pop, 5, 3, 0.99, dim, lower, upper, 200, rng
+            )
+        }
+    }
+
+    @Test
+    fun `bounded chio is deterministic respects bounds and improves on start`() {
+        val dim = 6
+        val lower = DoubleArray(dim) { -1.0 }
+        val upper = DoubleArray(dim) { 3.0 }
+        val (fn, center) = rippledQuadratic(dim)
+        boundedOptimizerCommonChecks { rng ->
+            val pop = DoubleArray(15 * dim)
+            System.arraycopy(center.map { it + 0.3 }.toDoubleArray(), 0, pop, 0, dim)
+            for (r in 1 until 15)
+                for (j in 0 until dim)
+                    pop[r * dim + j] = center[j] + 0.3 + (rng.cRand() * 2.0 - 1.0) * 0.5
+            chio(
+                fn, pop, 15, 100, 6, 0.05, dim, lower, upper, 200, rng
+            )
+        }
+    }
+
+    @Test
+    fun `de optimizer is deterministic for a fixed seed`() {
+        val (freqs, spl) = legacyFixture()
+        val r1 = engine.run(freqs, spl, TargetCurve.flat(), optimizerConfig(AutoEqEngine.Optimizer.DE))
+        val r2 = engine.run(freqs, spl, TargetCurve.flat(), optimizerConfig(AutoEqEngine.Optimizer.DE))
+        assertEquals(r1.bands, r2.bands)
+        assertEquals(r1.preampDb, r2.preampDb, 0.0)
+        assertEquals(r1.finalMaxDeviation, r2.finalMaxDeviation, 0.0)
+    }
+
+    @Test
+    fun `chio optimizer is deterministic for a fixed seed`() {
+        val (freqs, spl) = legacyFixture()
+        val r1 = engine.run(freqs, spl, TargetCurve.flat(), optimizerConfig(AutoEqEngine.Optimizer.CHIO))
+        val r2 = engine.run(freqs, spl, TargetCurve.flat(), optimizerConfig(AutoEqEngine.Optimizer.CHIO))
+        assertEquals(r1.bands, r2.bands)
+        assertEquals(r1.preampDb, r2.preampDb, 0.0)
+        assertEquals(r1.finalMaxDeviation, r2.finalMaxDeviation, 0.0)
+    }
+
+    @Test
+    fun `default optimizer selection is nelder mead and matches explicit value`() {
+        val (freqs, spl) = legacyFixture()
+        val def = engine.run(freqs, spl, TargetCurve.flat(), legacyConfig(false))
+        val explicit = engine.run(
+            freqs, spl, TargetCurve.flat(),
+            legacyConfig(false).copy(optimizer = AutoEqEngine.Optimizer.NELDER_MEAD)
+        )
+        assertEquals(AutoEqEngine.Optimizer.NELDER_MEAD, AutoEqEngine.Config().optimizer)
+        assertEquals(def.bands, explicit.bands)
+        assertEquals(def.preampDb, explicit.preampDb, 0.0)
+        assertEquals(def.finalMaxDeviation, explicit.finalMaxDeviation, 0.0)
+    }
+
+    @Test
+    fun `de and chio multi-start are not worse than nelder mead on legacy fixture`() {
+        val (freqs, spl) = legacyFixture()
+        val target = TargetCurve.flat()
+        val nm = engine.run(freqs, spl, target, legacyConfig(false))
+        val de = engine.run(freqs, spl, target, optimizerConfig(AutoEqEngine.Optimizer.DE))
+        val chio = engine.run(freqs, spl, target, optimizerConfig(AutoEqEngine.Optimizer.CHIO))
+
+        assertTrue(
+            "DE deviation ${de.finalMaxDeviation} must be within 0.05 dB of NM ${nm.finalMaxDeviation}",
+            de.finalMaxDeviation <= nm.finalMaxDeviation + 0.05
+        )
+        assertTrue(
+            "CHIO deviation ${chio.finalMaxDeviation} must be within 0.05 dB of NM ${nm.finalMaxDeviation}",
+            chio.finalMaxDeviation <= nm.finalMaxDeviation + 0.05
+        )
+    }
+
+    @Test
+    fun `de and chio band parameters stay within config limits`() {
+        val freqs = logSpacedFreqs(512)
+        val spl = DoubleArray(freqs.size) { i ->
+            val lf = kotlin.math.log10(freqs[i])
+            var s = 0.0
+            for (peakF in doubleArrayOf(80.0, 700.0, 2500.0, 9000.0)) {
+                val d = lf - kotlin.math.log10(peakF)
+                s += 7.0 * kotlin.math.exp(-(d * d) / 0.008)
+            }
+            s
+        }
+        val config = AutoEqEngine.Config(maxBands = 8, flatnessTarget = 0.1)
+        val target = TargetCurve.flat()
+        for (optimizer in listOf(
+            AutoEqEngine.Optimizer.NELDER_MEAD,
+            AutoEqEngine.Optimizer.DE,
+            AutoEqEngine.Optimizer.CHIO
+        )) {
+            val result = engine.run(freqs, spl, target, config.copy(optimizer = optimizer))
+            assertTrue("Optimizer $optimizer must produce bands", result.bands.isNotEmpty())
+            for (band in result.bands) {
+                assertTrue(
+                    "$optimizer fc out of range: ${band.frequency}",
+                    band.frequency >= 1.0 && band.frequency <= sampleRate * 0.49
+                )
+                assertTrue(
+                    "$optimizer |gain| out of range: ${band.gain}",
+                    abs(band.gain) <= config.individualMaxBoost
+                )
+                assertTrue("$optimizer q below min: ${band.q}", band.q >= config.minQ)
+                val maxQ = if (band.frequency < config.qCrossoverFreq) config.maxQLow else config.maxQHigh
+                assertTrue("$optimizer q above max: ${band.q}", band.q <= maxQ)
+            }
+        }
+    }
+
+    private fun medianOf3(block: () -> Double): Double {
+        val samples = (1..3).map { block() }.sorted()
+        return samples[1]
+    }
+
+    @Test
+    fun `de and chio multi-start stay within time budget of nelder mead`() {
+        val (freqs, spl) = legacyFixture()
+        val target = TargetCurve.flat()
+
+        // Прогрев JVM: классы и JIT до замера
+        engine.run(freqs, spl, target, legacyConfig(false))
+        engine.run(freqs, spl, target, optimizerConfig(AutoEqEngine.Optimizer.DE))
+        engine.run(freqs, spl, target, optimizerConfig(AutoEqEngine.Optimizer.CHIO))
+
+        val nmMs = medianOf3 {
+            val t0 = System.nanoTime()
+            engine.run(freqs, spl, target, legacyConfig(false))
+            (System.nanoTime() - t0) / 1e6
+        }
+        val deMs = medianOf3 {
+            val t0 = System.nanoTime()
+            engine.run(freqs, spl, target, optimizerConfig(AutoEqEngine.Optimizer.DE))
+            (System.nanoTime() - t0) / 1e6
+        }
+        val chioMs = medianOf3 {
+            val t0 = System.nanoTime()
+            engine.run(freqs, spl, target, optimizerConfig(AutoEqEngine.Optimizer.CHIO))
+            (System.nanoTime() - t0) / 1e6
+        }
+
+        assertTrue(
+            "DE ${deMs.toInt()}ms must be within 2x NM ${nmMs.toInt()}ms (+150ms floor)",
+            deMs <= nmMs * 2.0 + 150.0
+        )
+        assertTrue(
+            "CHIO ${chioMs.toInt()}ms must be within 2x NM ${nmMs.toInt()}ms (+150ms floor)",
+            chioMs <= nmMs * 2.0 + 150.0
         )
     }
 }
