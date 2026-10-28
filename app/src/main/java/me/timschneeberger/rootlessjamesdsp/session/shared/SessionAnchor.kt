@@ -9,7 +9,12 @@ import timber.log.Timber
  * Тихий трек-якорь на sid сессии плеера. Пока на сессии существует хотя бы
  * один трек, AudioFlinger не уничтожает EffectChain — mute-эффект переживает
  * release/пересоздание трека плеера и накрывает новый трек с первого сэмпла.
- * Убирает само окно смерти сессии вместо гонки за ним через dumpsys
+ * Убирает само окно смерти сессии вместо гонки за ним через dumpsys.
+ *
+ * Трек навсегда остаётся в PAUSED: цепочку удерживает сам факт существования
+ * трека (mTrackCnt + ссылка сессии в mAudioSessionRefs), PLAYING не нужен.
+ * Паузированный якорь позволяет выходному тракту уходить в standby, пока
+ * плеер молчит, — без удержания системного wakelock
  */
 class SessionAnchor private constructor(private val track: AudioTrack) {
 
@@ -26,16 +31,16 @@ class SessionAnchor private constructor(private val track: AudioTrack) {
 
     companion object {
         private const val SAMPLE_RATE = 48000
-        private const val LOOP_FRAMES = 4096
+        private const val SILENCE_FRAMES = 4096
 
         fun create(sid: Int): SessionAnchor? {
             if (sid <= 0)
                 return null
 
             return try {
-                // PCM16 stereo, нули; статический буфер закольцован, чтобы
-                // трек оставался в PLAYING бесконечно и не требовал потока-писателя
-                val silence = ByteArray(LOOP_FRAMES * 4)
+                // PCM16 stereo, нули. Записываем данные, чтобы static-трек
+                // дошёл до STATE_INITIALIZED; играть его не будем никогда
+                val silence = ByteArray(SILENCE_FRAMES * 4)
                 val track = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
@@ -65,9 +70,10 @@ class SessionAnchor private constructor(private val track: AudioTrack) {
 
                 track.write(silence, 0, silence.size, AudioTrack.WRITE_BLOCKING)
                 track.setVolume(0f)
-                track.setLoopPoints(0, LOOP_FRAMES, -1)
-                track.play()
-                Timber.i("[SPL] anchor created on sid=$sid")
+                // Без play(): pause() на записанном static-треке легален и
+                // оставляет его в PAUSED — цепочку сессии он держит и так
+                track.pause()
+                Timber.i("[SPL] anchor created (paused) on sid=$sid")
                 SessionAnchor(track)
             }
             catch (ex: Exception) {
