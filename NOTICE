@@ -225,6 +225,7 @@ Engine safety fixes
 Files:
   app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/dbb.c
   app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/vdc.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/crossfeed.c
   app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/jdspController.c
 
 The decimator phase reset (pos >= factor wrap and phase/buffer reset on
@@ -244,6 +245,13 @@ single-segment kind and clamps the benchmark-table index to the last entry
 for block sizes above 32768, ported from the same repository. Without it an
 uninitialized selection type or a table index of one past the end could be
 used for a 65536-frame block.
+
+The crossfeed rebuild condition requires either long convolver (instead of
+both, which rebuilt all four convolvers on every enable) and the process
+path reads the crossfeed mode once per block (instead of per sample, which
+could index bs2b[] - two entries - with values 2 to 5 and write filter
+state over the following DDC and convolver fields), ported from the same
+repository.
 
 Engine file provenance (U-5)
 ----------------------------
