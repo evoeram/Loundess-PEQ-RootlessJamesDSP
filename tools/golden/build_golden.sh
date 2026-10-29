@@ -115,16 +115,26 @@ peq_loudness.c
 # Same options as the on-device CMake build (app/src/main/cpp/CMakeLists.txt,
 # jamesdsp_effect target). No JAMESDSP_REFERENCE_IMPL: keeps convolver
 # partition selection deterministic (static default benchmark tables).
+# GOLDEN_ASAN=1 adds -fsanitize=address (push the ASAN runtime next to the
+# binary and run with LD_LIBRARY_PATH set; see run_golden.sh).
 FULL_LIST=""
 for s in $SRCS; do FULL_LIST="$FULL_LIST $ENG/$s"; done
+
+SANITIZE=""
+if [ -n "$GOLDEN_ASAN" ]; then SANITIZE="-fsanitize=address"; fi
 
 mkdir -p "$REPO/tools/golden/build"
 "$CC" -O2 -std=gnu11 \
 	-ffunction-sections -fdata-sections \
 	-Wno-incompatible-pointer-types -Wno-implicit-int -Wno-implicit-function-declaration \
-	-DDEBUG \
+	-DDEBUG $SANITIZE \
 	-I"$ENG" -I"$ENG/jdsp" \
 	"$REPO/tools/golden/golden_main.c" $FULL_LIST \
 	-lm -llog \
 	-o "$REPO/tools/golden/build/golden_arm64"
+if [ -n "$GOLDEN_ASAN" ]; then
+	CLANG_LIB_DIR="$(dirname "$CC")/../lib/clang"
+	RT="$(ls "$CLANG_LIB_DIR"/*/lib/linux/libclang_rt.asan-aarch64-android.so 2>/dev/null | head -1)"
+	test -n "$RT" && cp "$RT" "$REPO/tools/golden/build/" && echo "copied ASAN runtime"
+fi
 echo "OK: tools/golden/build/golden_arm64"

@@ -275,6 +275,26 @@ RootlessViPER4Android, https://github.com/alienware377/RootlessViPER4Android
 (which applies it at four of the sites; this repository applies it at all of
 them).
 
+Engine locking contract
+-----------------------
+Files:
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/jdspController.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/multimodalEQ.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/arbEqConv.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/crossfeed.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jamesdsp.c
+
+The locking arrangement is ported from RootlessViPER4Android,
+https://github.com/alienware377/RootlessViPER4Android (GNU General Public
+License v3.0): the process dispatch holds the engine mutex while running
+the compander, both equalizers, the convolver, the DDC, Liveprog and the
+crossfeed convolvers, whose state the settings thread frees and rebuilds;
+the corresponding settings entry points (mEQ axis update, both EQ
+parsers/refreshes, crossfeed mode change, crossfeed enable, compander
+parameter set) run under the same mutex; and the sample-rate switch flags
+the self-locking refreshes instead of calling them with the lock held,
+which deadlocked on the non-recursive mutex.
+
 This port remains under the GNU General Public License v3.0, like the rest of
 this repository.
 
