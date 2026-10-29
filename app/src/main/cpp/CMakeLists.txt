@@ -70,6 +70,13 @@ target_include_directories(jamesdsp_effect PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/
         ${CMAKE_CURRENT_SOURCE_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/)
 target_link_libraries(jamesdsp_effect ${log-lib})
+
+# bionic registers a loaded library under its soname, not under the path it
+# was opened from. The module deploys this library as libjamesdsp.so and the
+# audio effect host resolves it by that name, so the soname has to say so;
+# CMake would otherwise derive it from the target name (libjamesdsp_effect.so).
+set_target_properties(jamesdsp_effect PROPERTIES NO_SONAME TRUE)
+target_link_options(jamesdsp_effect PRIVATE -Wl,-soname,libjamesdsp.so)
 # Output as libjamesdsp_effect.so to avoid conflict with core jamesdsp target.
 # Rename to libjamesdsp.so when deploying to Magisk module.
 
