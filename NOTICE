@@ -220,5 +220,20 @@ ViPER520.
 This port remains under the GNU General Public License v3.0, like the rest of
 this repository.
 
+Engine safety fixes
+-------------------
+Files:
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/dbb.c
+
+The decimator phase reset (pos >= factor wrap and phase/buffer reset on
+sample-rate change) is ported from RootlessViPER4Android,
+https://github.com/alienware377/RootlessViPER4Android, which is itself
+distributed under the GNU General Public License v3.0. Without it a
+48 kHz -> 44.1 kHz transition left the write position permanently past the
+new factor and ran off the end of originalBuf (heap out-of-bounds).
+
+This port remains under the GNU General Public License v3.0, like the rest of
+this repository.
+
 This notice is shipped inside the Magisk module zip as NOTICE, next to the
 generated sepolicy.rule.
