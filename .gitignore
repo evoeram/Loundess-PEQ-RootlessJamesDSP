@@ -30,3 +30,6 @@ build_debug.log
 
 # Magisk module build staging
 /magisk-module/build/
+
+# golden harness build artifacts
+tools/golden/build/

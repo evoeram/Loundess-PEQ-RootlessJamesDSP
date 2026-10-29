@@ -224,6 +224,7 @@ Engine safety fixes
 -------------------
 Files:
   app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/dbb.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/vdc.c
 
 The decimator phase reset (pos >= factor wrap and phase/buffer reset on
 sample-rate change) is ported from RootlessViPER4Android,
@@ -231,6 +232,11 @@ https://github.com/alienware377/RootlessViPER4Android, which is itself
 distributed under the GNU General Public License v3.0. Without it a
 48 kHz -> 44.1 kHz transition left the write position permanently past the
 new factor and ran off the end of originalBuf (heap out-of-bounds).
+
+The bounded DDC parser (per-section limits, exact sosCount*5 numbers per
+section, strict rejection of malformed strings) is ported from the same
+repository. Without it a number count that was not a multiple of five
+(a trailing comma) wrote past the DirectForm2 arrays.
 
 This port remains under the GNU General Public License v3.0, like the rest of
 this repository.
