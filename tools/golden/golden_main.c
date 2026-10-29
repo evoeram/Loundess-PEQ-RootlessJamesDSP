@@ -7,8 +7,8 @@
  * (`cmp`) must produce identical hashes unless a change is intentional.
  *
  * Usage: golden <crossfeedMode> <out.wav> [ddcFile]
- *   crossfeedMode: 1 = BS2B path, 3 = convolver path
- *   ddcFile: optional .vdc string loaded into DDC (Main/CLI/Butterworth.vdc)
+ *   crossfeedMode: 1 = BS2B path, 3 = convolver path; add 10 to disable the
+ *   vacuum tube (11/13) - used to prove the non-tube fixes are bit-neutral
  *
  * Parser-only mode: golden -1 <file.vdc> [more.vdc ...] parses each DDC
  * string with DDCParser (via DDCRefresh on a scratch engine) and prints
@@ -93,20 +93,22 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	int xfMode = atoi(argv[1]);
+	const int enableTube = xfMode < 10;
+	const int xfPath = xfMode % 10;
 	const char *outPath = argv[2];
 	const char *ddcPath = argc > 3 ? argv[3] : 0;
 
 	if (xfMode < 0)
 	{
 		// Parser-only mode: parse each .vdc argument, report PASS/FAIL.
-		if (argc < 4)
+		if (argc < 3)
 		{
 			printf("usage: golden -1 <file.vdc> [more.vdc ...]\n");
 			return 1;
 		}
 		JamesDSPGlobalMemoryAllocation();
 		int fails = 0;
-		for (int a = 3; a < argc; a++)
+		for (int a = 2; a < argc; a++)
 		{
 			FILE *f = fopen(argv[a], "rb");
 			if (!f)
@@ -165,8 +167,11 @@ int main(int argc, char **argv)
 	CompressorSetGain(jdsp, freqDRC, gainsDRC, 1);
 	CompressorEnable(jdsp, 1);
 
-	VacuumTubeSetGain(jdsp, 8.0);
-	VacuumTubeEnable(jdsp);
+	if (enableTube)
+	{
+		VacuumTubeSetGain(jdsp, 8.0);
+		VacuumTubeEnable(jdsp);
+	}
 
 	BassBoostSetParam(jdsp, 5.0f);
 	BassBoostEnable(jdsp);
@@ -200,7 +205,7 @@ int main(int argc, char **argv)
 	}
 	DDCEnable(jdsp, 1);
 
-	CrossfeedChangeMode(jdsp, xfMode);
+	CrossfeedChangeMode(jdsp, xfPath);
 	CrossfeedEnable(jdsp, 1);
 
 	static char arbStr[] = "golden: 20 -2; 100 1.5; 1000 -3; 5000 2.5; 15000 -1.5; 20000 0;";

@@ -33,3 +33,6 @@ build_debug.log
 
 # golden harness build artifacts
 tools/golden/build/
+
+# golden result wavs are artifacts, keep only hashes
+tools/golden/results/**/*.wav
