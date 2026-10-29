@@ -201,5 +201,24 @@ IPC trust boundary and the UI cards are this repository's own work.
 This port remains under the GNU General Public License v3.0, like the rest of
 this repository.
 
+Vacuum tube saturation correction
+---------------------------------
+Files:
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/vacuumTube.c
+
+The drive-stage saturation (asymmetric triode-like soft clipper applied in
+the oversampled domain) and the partial makeup-gain compensation
+(postgain = 1/pregain^0.6) are ported from RootlessViPER4Android,
+https://github.com/alienware377/RootlessViPER4Android, which is itself
+distributed under the GNU General Public License v3.0. Without it the drive
+and the makeup gain cancelled each other exactly and the effect was a
+mathematical no-op.
+
+The original intellectual property of ViPER4Android belongs to Zhuhang and
+ViPER520.
+
+This port remains under the GNU General Public License v3.0, like the rest of
+this repository.
+
 This notice is shipped inside the Magisk module zip as NOTICE, next to the
 generated sepolicy.rule.
