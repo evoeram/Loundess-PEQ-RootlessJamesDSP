@@ -225,6 +225,7 @@ Engine safety fixes
 Files:
   app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/dbb.c
   app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/vdc.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/jdspController.c
 
 The decimator phase reset (pos >= factor wrap and phase/buffer reset on
 sample-rate change) is ported from RootlessViPER4Android,
@@ -237,6 +238,34 @@ The bounded DDC parser (per-section limits, exact sosCount*5 numbers per
 section, strict rejection of malformed strings) is ported from the same
 repository. Without it a number count that was not a multiple of five
 (a trailing comma) wrote past the DirectForm2 arrays.
+
+The convolver partition selector initializes the returned type to the
+single-segment kind and clamps the benchmark-table index to the last entry
+for block sizes above 32768, ported from the same repository. Without it an
+uninitialized selection type or a table index of one past the end could be
+used for a 65536-frame block.
+
+Engine file provenance (U-5)
+----------------------------
+Files:
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/bs2b.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/eel2/numericSys/FFTConvolver.c
+
+Neither file carries a license header. bs2b.c implements the Bauer
+stereophonic-to-binaural DSP by Boris Mikhaylov (libbs2b, dual-licensed
+GPL-2.0-or-later / MIT), C-ported inside JamesDSPLib. FFTConvolver.c
+derives from the FFTConvolver library by Christian Schoenebeck
+(HiFi-LoFi, MIT), rewritten in JamesDSPLib against the EEL2 FFT. Both
+lineages are compatible with this repository's GPL-3.0; this notice
+records the attribution.
+
+Additionally, the unsigned-wrap guard on the convolution segment remainders
+(remaining = i * blockSize >= irLen ? 0 : irLen - i * blockSize, applied at
+all segment-copy sites) and the segment-count consistency check before
+FFTConvolver2x2RefreshImpulseResponse in arbEqConv.c follow the idiom of
+RootlessViPER4Android, https://github.com/alienware377/RootlessViPER4Android
+(which applies it at four of the sites; this repository applies it at all of
+them).
 
 This port remains under the GNU General Public License v3.0, like the rest of
 this repository.
