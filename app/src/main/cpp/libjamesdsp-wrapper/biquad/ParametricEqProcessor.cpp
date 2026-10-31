@@ -64,12 +64,52 @@ void ParametricEqProcessor::configure(double sr, const ParametricEqBandConfig* b
         if (q > 24.0) q = 24.0;
 
         BiQuad::Type bqt = toBiQuadType(cfg.filterType);
+        const bool isCutoff = cfg.filterType == PEQ_LOW_PASS || cfg.filterType == PEQ_HIGH_PASS;
 
-        // Create biquads with Q mode (isBandwidthOrS = false)
-        state.bqL = BiQuad(bqt, cfg.gain, freq, sampleRate, q, false);
-        state.bqR = BiQuad(bqt, cfg.gain, freq, sampleRate, q, false);
+        // Cutoffs expand into a Butterworth cascade: one biquad per 12 dB/octave
+        // of slope, because a single biquad rolls off at 12 dB/octave, which
+        // across the audio band reads as a tilt rather than a corner. The
+        // section Qs are the Butterworth values for the resulting order; the
+        // band's own Q rides on the last section only, so it still adds
+        // resonance at the corner (for a single section the formula returns
+        // the user's Q unchanged). The gain field carries the slope for
+        // cutoffs; bands saved before it existed carry 0 there and come back
+        // at the default. Mirrors BiquadUtils.cascadeFor exactly - if one
+        // changes the other must, or the drawn curve stops being the applied
+        // one. (Port of RootlessViPER4Android 5ea9281, GPL-3.0.)
+        int sections = 1;
+        if (isCutoff)
+        {
+            double slope = cfg.gain < 6.0 ? 48.0 : cfg.gain;
+            int stages = (int)(slope / 12.0 + 0.5);
+            if (stages < 1) stages = 1;
+            if (stages > 8) stages = 8;
+            sections = stages;
+        }
+        constexpr double kPi = 3.14159265358979323846;
+        for (int k = 0; k < sections; k++)
+        {
+            double sectionQ = q;
+            if (isCutoff)
+            {
+                sectionQ = 1.0 / (2.0 * std::cos((2.0 * k + 1.0) * kPi / (4.0 * sections)));
+                if (k == sections - 1)
+                    sectionQ *= q / 0.70710678;
+            }
 
-        next->bands.push_back(std::move(state));
+            BandState state;
+            state.channelMode = cfg.channelMode;
+            state.enabled = true;
+            state.isPreamp = false;
+            state.preampLinear = 1.0;
+
+            // Create biquads with Q mode (isBandwidthOrS = false); cutoffs run
+            // at 0 dB because their slope lives in the number of sections.
+            state.bqL = BiQuad(bqt, isCutoff ? 0.0 : cfg.gain, freq, sampleRate, sectionQ, false);
+            state.bqR = BiQuad(bqt, isCutoff ? 0.0 : cfg.gain, freq, sampleRate, sectionQ, false);
+
+            next->bands.push_back(std::move(state));
+        }
     }
 
     std::atomic_store(&publishedChain, std::shared_ptr<ChainConfig>(std::move(next)));

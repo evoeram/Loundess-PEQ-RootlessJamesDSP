@@ -100,15 +100,42 @@ class ParametricEqResponseCalculator(
      * of that filter, not on the summed cascade).
      */
     fun bandMagnitudeDb(band: ParametricEqBand, freqs: DoubleArray): DoubleArray {
-        val coeffs = computeCoefficients(
-            band.frequency, band.gain, band.q, band.filterType, sampleRate
-        )
         val response = DoubleArray(freqs.size)
         for (i in freqs.indices) {
-            val mag = complexMagnitude(transferFunction(coeffs, freqs[i], sampleRate))
+            var mag = 1.0
+            for ((gain, q) in sectionsFor(band)) {
+                val coeffs = computeCoefficients(band.frequency, gain, q, band.filterType, sampleRate)
+                mag *= complexMagnitude(transferFunction(coeffs, freqs[i], sampleRate))
+            }
             response[i] = if (mag > 0.0) 20.0 * log10(mag) else 0.0
         }
         return response
+    }
+
+    /**
+     * The (gain, Q) biquad sections a band expands into.
+     *
+     * A cutoff is a Butterworth cascade: one section per 12 dB/octave of the
+     * slope carried in the band's gain field (bands saved before the slope
+     * existed carry 0 there and come back at the 48 dB/oct default), with the
+     * band's own Q riding on the last section. This mirrors the native
+     * expansion in ParametricEqProcessor and BiquadUtils.cascadeFor exactly -
+     * if one changes the other must, or the curve on screen stops being the
+     * curve applied.
+     */
+    private fun sectionsFor(band: ParametricEqBand): List<Pair<Double, Double>> {
+        val isCutoff = band.filterType == ParametricEqFilterType.LOW_PASS ||
+                band.filterType == ParametricEqFilterType.HIGH_PASS
+        if (!isCutoff)
+            return listOf(band.gain to band.q)
+
+        val slope = if (band.gain < 6.0) 48.0 else band.gain
+        val stages = (slope / 12.0).roundToInt().coerceIn(1, 8)
+        return (0 until stages).map { k ->
+            var q = 1.0 / (2.0 * cos((2.0 * k + 1.0) * PI / (4.0 * stages)))
+            if (k == stages - 1) q *= band.q / 0.70710678
+            0.0 to q
+        }
     }
 
     /** Filter bands that affect the given channel. */
@@ -139,11 +166,11 @@ class ParametricEqResponseCalculator(
         var totalMagLin = 1.0
 
         for (band in bands) {
-            val coeffs = computeCoefficients(
-                band.frequency, band.gain, band.q, band.filterType, sampleRate
-            )
-            val h = transferFunction(coeffs, freq, sampleRate)
-            totalMagLin *= complexMagnitude(h)
+            for ((gain, q) in sectionsFor(band)) {
+                val coeffs = computeCoefficients(band.frequency, gain, q, band.filterType, sampleRate)
+                val h = transferFunction(coeffs, freq, sampleRate)
+                totalMagLin *= complexMagnitude(h)
+            }
         }
 
         return if (totalMagLin > 0.0) 20.0 * log10(totalMagLin) else 0.0

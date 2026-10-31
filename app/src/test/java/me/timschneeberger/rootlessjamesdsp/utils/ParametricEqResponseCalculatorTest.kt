@@ -350,4 +350,33 @@ class ParametricEqResponseCalculatorTest {
         val lAt5k = responseAt(result.frequencies, result.leftResponseDb, 5000.0)
         assertEquals(0.0, lAt5k, 0.5)
     }
+
+    // ── Cutoff bands draw the Butterworth cascade, not a single biquad ──
+    // (mirror of the native expansion, port of RootlessViPER4Android 5ea9281)
+
+    @Test
+    fun cutoffBand_responseFollowsTheCascadeSlope() {
+        val calc = makeCalculator(numPoints = 4096)
+        val fc = 1000.0
+        val lp = band(fc, gain = 0.0, q = 0.707, type = ParametricEqFilterType.LOW_PASS)
+        val result = calc.compute(listOf(lp))
+
+        // 48 dB/oct: two octaves above the corner the cascade is ~96 dB down,
+        // while a single biquad would only reach ~24 dB
+        val deep = responseAt(result.frequencies, result.leftResponseDb, fc * 4.0)
+        assertEquals(-96.0, deep, 5.0)
+
+        // Right channel sees the same LEFT_RIGHT band through the same cascade
+        val deepR = responseAt(result.frequencies, result.rightResponseDb, fc * 4.0)
+        assertEquals(deep, deepR, 0.01)
+    }
+
+    @Test
+    fun cutoffBand_bandMagnitudeUsesTheCascadeToo() {
+        val calc = makeCalculator()
+        val fc = 1000.0
+        val lp = band(fc, gain = 0.0, q = 0.707, type = ParametricEqFilterType.LOW_PASS)
+        val response = calc.bandMagnitudeDb(lp, doubleArrayOf(fc * 4.0))
+        assertEquals(-96.0, response[0], 5.0)
+    }
 }

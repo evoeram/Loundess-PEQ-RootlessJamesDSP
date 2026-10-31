@@ -7,6 +7,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -191,5 +193,67 @@ class BiquadUtilsTest {
     @Test
     fun `unity fallback renders as flat 0 dB`() {
         assertEquals(0.0, BiquadUtils.magnitudeResponse(BiquadUtils.UNITY, 1000.0, sr), 1e-12)
+    }
+
+    // ---- Butterworth cutoff cascade (port of RootlessViPER4Android 5ea9281, P6.2) ----
+
+    @Test
+    fun `cutoff expands into one section per 12 dB of slope`() {
+        // gain < 6 on a cutoff is the absence of a chosen slope -> 48 dB/oct default
+        assertEquals(4, BiquadUtils.cascadeFor(
+            ParametricEqBand(1000.0, 0.0, 0.707, ParametricEqFilterType.LOW_PASS), sr).size)
+        assertEquals(2, BiquadUtils.cascadeFor(
+            ParametricEqBand(1000.0, 24.0, 0.707, ParametricEqFilterType.HIGH_PASS), sr).size)
+        assertEquals(8, BiquadUtils.cascadeFor(
+            ParametricEqBand(1000.0, 96.0, 0.707, ParametricEqFilterType.LOW_PASS), sr).size)
+    }
+
+    @Test
+    fun `peaking and shelving bands stay single sections`() {
+        val peak = ParametricEqBand(1000.0, 6.0, 2.0, ParametricEqFilterType.PEAKING)
+        val sections = BiquadUtils.cascadeFor(peak, sr)
+        assertEquals(1, sections.size)
+        assertEquals(
+            BiquadUtils.computeCoefficients(1000.0, 6.0, 2.0, ParametricEqFilterType.PEAKING, sr),
+            sections[0]
+        )
+    }
+
+    @Test
+    fun `cutoff sections run at zero gain with butterworth qs, user q on the last`() {
+        val q = 1.2
+        val sections = BiquadUtils.cascadeFor(
+            ParametricEqBand(1000.0, 0.0, q, ParametricEqFilterType.LOW_PASS), sr)
+        val stages = 4
+        assertEquals(stages, sections.size)
+        for ((k, c) in sections.withIndex()) {
+            var expectedQ = 1.0 / (2.0 * cos((2.0 * k + 1.0) * PI / (4.0 * stages)))
+            if (k == stages - 1) expectedQ *= q / 0.70710678
+            assertEquals(
+                BiquadUtils.computeCoefficients(1000.0, 0.0, expectedQ, ParametricEqFilterType.LOW_PASS, sr),
+                c
+            )
+        }
+    }
+
+    @Test
+    fun `cascade rolls off at the requested slope and is -3 dB at the corner`() {
+        val fc = 1000.0
+        val sections = BiquadUtils.cascadeFor(
+            ParametricEqBand(fc, 0.0, 0.707, ParametricEqFilterType.LOW_PASS), sr)
+        fun dbAt(f: Double) = sections.fold(0.0) { acc, c -> acc + BiquadUtils.magnitudeResponse(c, f, sr) }
+
+        // Butterworth: |H| = -3.0103 dB at the corner (RBJ discretization: ~0.1 dB off)
+        assertEquals(-3.0103, dbAt(fc), 0.1)
+
+        // Stopband slope 48 dB/octave, one to two octaves above the corner;
+        // a single biquad would only manage 12
+        assertEquals(48.0, dbAt(fc * 2) - dbAt(fc * 4), 3.0)
+
+        // Two octaves further: an 8-pole rolloff is ~96 dB down at fc*4
+        assertTrue(dbAt(fc * 4) < -90.0)
+
+        // Passband (below the corner) stays flat instead of drooping toward the corner
+        assertTrue(dbAt(fc / 8) > -1.0)
     }
 }

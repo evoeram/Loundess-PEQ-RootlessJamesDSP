@@ -243,6 +243,43 @@ object BiquadUtils {
     fun isStable(coeffs: BiquadCoefficients): Boolean = poleRadius(coeffs) < 1.0
 
     /**
+     * The biquad sections a band expands into.
+     *
+     * A peaking or shelving band is one section. A cutoff is a cascade: one
+     * section per 12 dB/octave of slope, the default being 48 dB/oct (4
+     * sections) and 8 sections the ceiling, because a single biquad only
+     * rolls off at 12 dB/octave and that is a tilt across the whole spectrum
+     * rather than a corner. The section Qs are the
+     * Butterworth values for the resulting order, which is what keeps the
+     * passband flat instead of drooping toward the corner, and the band's own
+     * Q rides on the last section so the dial still adds resonance there.
+     *
+     * A cutoff has no gain, so the band's gain field carries the slope. This
+     * mirrors the native cascade in ParametricEqProcessor exactly - if one
+     * changes the other must, or the curve on screen stops being the curve
+     * applied. (Port of RootlessViPER4Android 5ea9281, which does the same
+     * for its multiband distortion; GPL-3.0.)
+     *
+     * Bands saved before the slope existed carry 0 in the gain field, which is
+     * the absence of the field rather than a slope anyone chose - they come
+     * back at the default.
+     */
+    fun cascadeFor(band: ParametricEqBand, sampleRate: Double = 48000.0): List<BiquadCoefficients> {
+        val isCutoff = band.filterType == ParametricEqFilterType.LOW_PASS ||
+                band.filterType == ParametricEqFilterType.HIGH_PASS
+        if (!isCutoff)
+            return listOf(computeCoefficients(band.frequency, band.gain, band.q, band.filterType, sampleRate))
+
+        val slope = if (band.gain < 6.0) 48.0 else band.gain
+        val stages = (slope / 12.0).roundToInt().coerceIn(1, 8)
+        return (0 until stages).map { k ->
+            var q = 1.0 / (2.0 * cos((2.0 * k + 1.0) * PI / (4.0 * stages)))
+            if (k == stages - 1) q *= band.q / 0.70710678
+            computeCoefficients(band.frequency, 0.0, q, band.filterType, sampleRate)
+        }
+    }
+
+    /**
      * Whether an EQ band is safe to render at [sampleRate].
      *
      * A band is problematic when its parameters are outside the domain of
@@ -335,10 +372,10 @@ object BiquadUtils {
         val logMax = ln(effectiveMaxFreq)
         val result = ArrayList<Pair<Double, Double>>(numPoints)
 
-        // Precompute coefficients for all bands
-        val allCoeffs = filteredBands.map { band ->
-            computeCoefficients(band.frequency, band.gain, band.q, band.filterType, sampleRate)
-        }
+        // Precompute coefficients for all bands. Cutoffs expand into a
+        // Butterworth cascade, so this is a flat list of sections rather
+        // than one entry per band.
+        val allCoeffs = filteredBands.flatMap { band -> cascadeFor(band, sampleRate) }
 
         for (i in 0 until numPoints) {
             val t = i.toDouble() / (numPoints - 1).toDouble()

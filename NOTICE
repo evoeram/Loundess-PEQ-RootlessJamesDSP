@@ -401,3 +401,23 @@ Copyright (c) alienware377 and contributors
 
 This port remains under the GNU General Public License v3.0, like the rest of
 this repository.
+
+Butterworth cutoff cascade
+--------------------------
+Files:
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/utils/BiquadUtils.kt
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/utils/ParametricEqResponseCalculator.kt
+  app/src/main/cpp/libjamesdsp-wrapper/biquad/ParametricEqProcessor.cpp
+
+The expansion of low-pass/high-pass bands into a Butterworth cascade (one
+biquad section per 12 dB/octave of slope, section Q = 1/(2 cos((2k+1)pi/
+(4*stages))), the band's own Q riding on the last section, the slope carried
+in the band's gain field) and its Kotlin mirrors for the response plots
+(cascadeFor, ParametricEqResponseCalculator) are ported from
+RootlessViPER4Android, https://github.com/alienware377/RootlessViPER4Android,
+which is itself distributed under the GNU General Public License v3.0.
+
+Copyright (c) alienware377 and contributors
+
+This port remains under the GNU General Public License v3.0, like the rest of
+this repository.
