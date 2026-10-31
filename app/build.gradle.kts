@@ -1,4 +1,5 @@
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -273,4 +274,77 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+}
+
+/**
+ * Guards the launch allowlist (port of source 33a4810, report K11-adjacent
+ * build hardening).
+ *
+ * MainActivity refuses to start unless the running package and app label are
+ * both listed, base64-encoded, in ContextExtensions.kt. Because the entries
+ * are encoded, a missing one is invisible to grep and the failure only shows
+ * up on a device, as "Cannot launch application. Please re-download the
+ * latest version..." - which reads like a corrupt download rather than a
+ * build fault. The debug buildType appends .debug to the applicationId, so
+ * each version flavour needs its own suffixed entry. This checks all of
+ * them before anything is assembled and fails with the precise base64 string
+ * to add. The plugin flavour bypasses the check at runtime (isPlugin), so
+ * it needs no entries.
+ */
+tasks.register("verifyLaunchAllowlist") {
+    group = "verification"
+    description = "Checks every flavour's package and label are in the launch allowlist"
+
+    doLast {
+        val source = file("src/main/java/me/timschneeberger/rootlessjamesdsp/utils/extensions/ContextExtensions.kt")
+        if (!source.exists()) throw GradleException("Cannot find ContextExtensions.kt to verify the allowlist")
+        val text = source.readText()
+
+        fun decodedSet(name: String): Set<String> {
+            val block = Regex("$name = setOf\\((.*?)\\)\\s*\n", RegexOption.DOT_MATCHES_ALL)
+                .find(text)?.groupValues?.get(1)
+                ?: throw GradleException("Could not locate $name in ContextExtensions.kt")
+            return Regex("\"([A-Za-z0-9+/=]+)\"").findAll(block)
+                .map { String(Base64.getDecoder().decode(it.groupValues[1])) }
+                .toSet()
+        }
+
+        val packages = decodedSet("PKGNAME_REFS")
+        val labels = decodedSet("APPNAME_REFS")
+
+        // applicationId per version flavour (plugin bypasses the check), plus
+        // the .debug suffix the debug buildType carries
+        val expected = listOf(
+            "me.timschneeberger.rootlessjamesdsp" to "RootlessJamesDSP",
+            "james.dsp" to "JamesDSP"
+        )
+        val missing = mutableListOf<String>()
+        expected.forEach { (appId, label) ->
+            listOf(appId, "$appId.debug").forEach { pkg ->
+                if (pkg !in packages) {
+                    val enc = Base64.getEncoder().encodeToString(pkg.toByteArray())
+                    missing += "package '$pkg' -> add \"$enc\" to PKGNAME_REFS"
+                }
+            }
+            if (label !in labels) {
+                val enc = Base64.getEncoder().encodeToString(label.toByteArray())
+                missing += "label '$label' -> add \"$enc\" to APPNAME_REFS"
+            }
+        }
+
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "Launch allowlist is incomplete - the app would install but refuse to " +
+                "start.\n  " + missing.joinToString("\n  ") +
+                "\nEdit ContextExtensions.kt, then build again."
+            )
+        }
+        logger.lifecycle("Launch allowlist OK: ${packages.size} packages, ${labels.size} labels")
+    }
+}
+
+// Run before anything is assembled, so a missing entry fails the build rather
+// than reaching a tester's device.
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn("verifyLaunchAllowlist")
 }
