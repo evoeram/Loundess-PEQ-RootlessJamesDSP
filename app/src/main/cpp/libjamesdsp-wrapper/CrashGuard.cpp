@@ -13,6 +13,8 @@
 #include <ucontext.h>
 
 static char gDir[512] = {0};
+static int gSigs[5] = { SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT };
+static struct sigaction gOld[5];
 
 static void writeAll(int fd, const char* s)
 {
@@ -83,8 +85,19 @@ static void crashHandler(int sig, siginfo_t* si, void* ucRaw)
             close(fd);
         }
     }
-    signal(sig, SIG_DFL);
-    raise(sig);
+    // Give the crash back to the disposition that was in place before us.
+    // In an app that is bionic's debuggerd handler: it forks crash_dump,
+    // which writes the tombstone and fills logcat -b crash, then kills.
+    // Re-executing the faulting instruction gets there with a genuine
+    // hardware fault - a plain raise(sig) would arrive with SI_TKILL and
+    // the kernel would take the ordinary-kill path, so no tombstone and an
+    // empty crash buffer.
+    for (unsigned i = 0; i < sizeof(gSigs) / sizeof(gSigs[0]); i++)
+        if (gSigs[i] == sig)
+        {
+            sigaction(sig, &gOld[i], 0);
+            break;
+        }
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -100,9 +113,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_initCrashGuard(
     memset(&sa, 0, sizeof(sa));
     sa.sa_sigaction = crashHandler;
     sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
-    const int sigs[] = { SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT };
-    for (unsigned i = 0; i < sizeof(sigs) / sizeof(sigs[0]); i++)
-        sigaction(sigs[i], &sa, nullptr);
+    for (unsigned i = 0; i < sizeof(gSigs) / sizeof(gSigs[0]); i++)
+        sigaction(gSigs[i], &sa, &gOld[i]);
 }
 
 // Test hook for the K11 acceptance only: dereferences null so the handler
