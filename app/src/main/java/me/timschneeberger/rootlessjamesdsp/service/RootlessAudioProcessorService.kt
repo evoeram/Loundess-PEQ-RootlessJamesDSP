@@ -486,7 +486,17 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 // пересчитываются в C только в root-режиме (jamesdsp.c при смене
                 // fs); rootless-обёртка хранит коэффициенты, поэтому на смену fs
                 // их нужно пересинхронизировать.
-                ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER, Constants.PREF_PEQ, Constants.PREF_DYNAMICEQ, Constants.PREF_LOUDNESS, Constants.PREF_FETCOMP, Constants.PREF_CLARITY, Constants.PREF_AGC, Constants.PREF_CURE, Constants.PREF_TAPE))
+                // Каждая карточка, а не только этот список: большинство эффектов
+                // выводит задержки/фильтры/постоянные времени из частоты в момент
+                // прихода настроек и не имеет собственного rate-refresh, а sync
+                // пересылает только изменившиеся карточки. clearCache делает
+                // изменёнными все namespace, как при soft reboot (port fd2c634,
+                // report K8). forceRefresh в JamesDspWrapper.setSamplingRate
+                // намеренно остаётся false (K8.2): ветка forceRefresh в
+                // JamesDSPSetSampleRate ничего не знает про peq_loudness/
+                // dynamicEq/fetcomp и прочие JNI-эффекты форка — их пересобирает
+                // только полный resync, который и делает эта строка.
+                ACTION_SAMPLE_RATE_UPDATED -> { engine.clearCache(); engine.syncWithPreferences() }
                 ACTION_PREFERENCES_UPDATED -> engine.syncWithPreferences()
                 Constants.ACTION_SQUIG_PEQ_CHANGED -> engine.syncWithPreferences(arrayOf(Constants.PREF_SQUIG, Constants.PREF_PEQ))
                 ACTION_SERVICE_RELOAD_LIVEPROG -> engine.syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
