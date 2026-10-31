@@ -16,6 +16,7 @@ abstract class BaseSessionDatabase(protected val context: Context) {
     protected var isDisposing = false
     private val changeCallbacks = mutableListOf<OnSessionChangeListener>()
     private var excludedUids = arrayOf<Int>()
+    private var allowedUids: Array<Int>? = null
 
     // Сессии с провалившимся attach (systemui и т.п.): без кэша ретраятся на
     // каждом опросе (~100мс на попытку) и задерживают attach реальных сессий
@@ -80,7 +81,8 @@ abstract class BaseSessionDatabase(protected val context: Context) {
                 SystemClock.elapsedRealtime() - (fastAttachedAt[it.key] ?: 0L) >= FAST_ATTACH_REMOVAL_GRACE_MS
         }
         val addedSessions = dump.sessions.filter {
-            !sessionList.contains(it.key) && !excludedUids.contains(it.value.uid)
+            !sessionList.contains(it.key) && !excludedUids.contains(it.value.uid) &&
+                    (allowedUids?.contains(it.value.uid) ?: true)
         }
 
         Timber.i("[SPL] update: +[${addedSessions.entries.joinToString { "${it.key}:${it.value.packageName}" }}] -[${removedSessions.keys.joinToString()}]")
@@ -205,6 +207,16 @@ abstract class BaseSessionDatabase(protected val context: Context) {
             return
         }
 
+        // Allowlist mode: anything not named is not ours to touch. Sessions
+        // also arrive here from polling, not only from a dump, so the filter
+        // has to sit on this path too (port d69429b, report K12).
+        allowedUids?.let {
+            if(!it.contains(uid)) {
+                Timber.d("Rejected session $sid from uid $uid ($packageName): not on the allowlist")
+                return
+            }
+        }
+
         if(replace) {
             // Remove old sessions from package
             sessionList
@@ -245,6 +257,33 @@ abstract class BaseSessionDatabase(protected val context: Context) {
             sessionList.remove(sid)
             changeCallbacks.forEach { it.onSessionChanged(sessionList) }
         }
+    }
+
+    /**
+     * The app list read the other way round: when this is set, a session is
+     * rejected unless its uid appears here (port d69429b, report K12).
+     *
+     * Null, the usual case, means the list is a list of apps to skip. Null
+     * and empty are deliberately different: an empty allowlist would mean
+     * "process nothing", which is not what someone who turned the mode on
+     * and has not chosen any apps yet is asking for, so the caller passes
+     * null until they have picked at least one.
+     */
+    fun setAllowedUids(uids: Array<Int>?) {
+        allowedUids = uids
+        if (uids == null)
+            return
+
+        val rejected = sessionList.filter { !uids.contains(it.value.uid) }
+        val notify = rejected.isNotEmpty()
+        rejected.forEach { (_, session) -> onSessionRemoved(session) }
+        rejected.map { it.key }.forEach { sid ->
+            anchors.remove(sid)?.release()
+            lastPlayerSeenAt.remove(sid)
+            sessionList.remove(sid)
+        }
+        if (notify)
+            changeCallbacks.forEach { it.onSessionChanged(sessionList) }
     }
 
     fun setExcludedUids(uids: Array<Int>) {

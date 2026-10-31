@@ -329,6 +329,30 @@ this repository.
 This notice is shipped inside the Magisk module zip as NOTICE, next to the
 generated sepolicy.rule.
 
+Rootless session policy (K12)
+-----------------------------
+Files:
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/service/RootlessAudioProcessorService.kt
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/service/RootAudioProcessorService.kt
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/session/shared/BaseSessionDatabase.kt
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/fragment/BlocklistFragment.kt
+
+The app-list allowlist mode (the same list read as "process only these"
+instead of "skip these", enforced through AudioPlaybackCaptureConfiguration
+addMatchingUid because the API forbids matching and excluding at once; the
+restricted-uid filter applied to the allowlist itself since capturing a
+restricted app returns silence rather than failing) and the 20-second
+digital-silence gate (after which the DSP chain and output track are
+stopped while capture keeps running, resuming instantly on the first
+non-silent buffer) are ported from RootlessViPER4Android,
+https://github.com/alienware377/RootlessViPER4Android, which is itself
+distributed under the GNU General Public License v3.0.
+
+Copyright (c) alienware377 and contributors
+
+This port remains under the GNU General Public License v3.0, like the rest of
+this repository.
+
 Crash diagnostics (K11)
 -----------------------
 Files:

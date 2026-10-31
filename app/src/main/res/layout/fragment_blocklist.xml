@@ -41,6 +41,33 @@
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
+    <!-- One list, read either way round: skip these apps, or process only
+         these apps. The capture API forbids matching and excluding at once,
+         so this is a mode on the list, not a second list. -->
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/modeToggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginBottom="8dp"
+        app:singleSelection="true"
+        app:selectionRequired="true">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/modeExclude"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/blocklist_mode_exclude" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/modeInclude"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/blocklist_mode_include" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerview"
         android:layout_width="match_parent"
@@ -68,12 +95,23 @@
             tools:ignore="ContentDescription" />
 
         <TextView
+            android:id="@+id/emptyTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="20sp"
             android:textColor="@color/material_on_background_disabled"
             android:gravity="center"
             android:text="@string/blocklist_no_exclusions"/>
+
+        <TextView
+            android:id="@+id/emptyHint"
+            android:visibility="gone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/material_on_background_disabled"
+            android:gravity="center"
+            android:text="@string/blocklist_no_inclusions_hint"/>
 
     </LinearLayout>
 

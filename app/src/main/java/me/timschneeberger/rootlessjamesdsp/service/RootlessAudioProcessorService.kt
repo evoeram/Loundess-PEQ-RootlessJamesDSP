@@ -223,6 +223,10 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     // Exclude restricted apps flag
     private var excludeRestrictedSessions = false
 
+    // Whether the app list names what to process rather than what to skip
+    // (port d69429b, report K12)
+    private var allowlistMode = false
+
     // Processing mode (Standard / Low-latency / Direct)
     private var processingMode: ProcessingMode = ProcessingMode.LOW_LATENCY
 
@@ -298,6 +302,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         preferences.registerOnSharedPreferenceChangeListener(preferencesListener)
         loadFromPreferences(getString(R.string.key_powersave_suspend))
         loadFromPreferences(getString(R.string.key_session_exclude_restricted))
+        loadFromPreferences(getString(R.string.key_blocklist_allowlist_mode))
         loadFromPreferences(getString(R.string.key_processing_mode))
 
         // Load smooth volume settings at startup
@@ -619,6 +624,15 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
                 requestAudioRecordRecreation()
             }
+            getString(R.string.key_blocklist_allowlist_mode) -> {
+                allowlistMode = preferences.get<Boolean>(R.string.key_blocklist_allowlist_mode)
+                Timber.d("App list allowlist mode set to $allowlistMode")
+
+                // Android bakes the matching rules into the AudioRecord when
+                // it is built, so flipping this changes nothing until the
+                // recorder is rebuilt.
+                requestAudioRecordRecreation()
+            }
             getString(R.string.key_processing_mode) -> {
                         val modeInt = preferences.get<String>(R.string.key_processing_mode).toIntOrNull() ?: 1
                         val newMode = ProcessingMode.fromInt(modeInt)
@@ -843,6 +857,33 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     return true
                 }
 
+                // Silence gate (port b980c22, report K12): session-based idle
+                // never fires while an app sits paused holding its audio
+                // session, so the pipeline used to process pure silence
+                // indefinitely. After 20 s of digital silence (longer than
+                // the longest reverb tail) the DSP chain and output track are
+                // skipped; capture keeps running so the first non-silent
+                // buffer resumes instantly and loses nothing. The gate counts
+                // only true digital silence, and only under the existing
+                // suspend-on-idle opt-in.
+                var silenceGateSecs = 0.0
+                var bufferGated = false
+                fun updateSilenceGate(silentBuffer: Boolean, bufferSecs: Double): Boolean {
+                    silenceGateSecs = if (silentBuffer) silenceGateSecs + bufferSecs else 0.0
+                    return silenceGateSecs >= 20.0
+                }
+                fun isDigitallySilentShort(buf: ShortArray, n: Int): Boolean {
+                    for (i in 0 until n) if (buf[i].toInt() != 0) return false
+                    return true
+                }
+                fun isDigitallySilentFloat(buf: FloatArray, n: Int): Boolean {
+                    for (i in 0 until n) {
+                        val v = buf[i]
+                        if (v > 1e-7f || v < -1e-7f) return false
+                    }
+                    return true
+                }
+
                 while (!isProcessorDisposing) {
                     if(recreateRecorderRequested) {
                         recreateRecorderRequested = false
@@ -884,16 +925,11 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                         continue
                     }
 
-                    // Resume recorder if suspended
+                    // Resume recorder if suspended (capture keeps running even
+                    // while the silence gate holds the output stopped)
                     if(recorder.recordingState == AudioRecord.RECORDSTATE_STOPPED) {
                         recorder.startRecording()
                         tracer.onRecorderStarted()
-                    }
-                    // Resume track if suspended
-                    if(track.playState != AudioTrack.PLAYSTATE_PLAYING) {
-                        track.play()
-                        tracer.onTrackStarted()
-                        queueControl.onTrackStarted()
                     }
 
                     // Чтение маленькими блоками (Low-latency) или полный буфер (Standard)
@@ -915,7 +951,30 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                                 consecutiveSilentBlocks = 0
                                 notifyCaptureGap(false)
                             }
-                            // Обработка всегда выполняется — DSP state должен быть непрерывным.
+                            // Silence gate (port b980c22, report K12): 20 s of
+                            // digital silence (suspend-on-idle opt-in only)
+                            // stops the output track and skips the DSP chain;
+                            // capture keeps running, so the first non-silent
+                            // block below resumes playback without losing it.
+                            val bufferSecs = samples / 2.0 / sampleRate
+                            if (updateSilenceGate(suspendOnIdle && isDigitallySilentShort(shortBuffer, samples), bufferSecs)) {
+                                if (!bufferGated) {
+                                    bufferGated = true
+                                    if (track.playState != AudioTrack.PLAYSTATE_STOPPED)
+                                        track.stop()
+                                }
+                                continue
+                            }
+                            bufferGated = false
+                            // Resume track if suspended
+                            if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                                track.play()
+                                tracer.onTrackStarted()
+                                queueControl.onTrackStarted()
+                            }
+                            // Обработка выполняется всегда, кроме закрытого
+                            // silence-gate: после 20с цифровой тишины DSP-state
+                            // затух ниже слышимости (дольше любого хвоста реверба).
                             // In-place: тот же буфер подаётся на вход и выход — нативный движок
                             // видит один и тот же массив и обрабатывает без промежуточной копии
                             engine.processInt16(shortBuffer, shortBuffer)
@@ -954,7 +1013,30 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                                 consecutiveSilentBlocks = 0
                                 notifyCaptureGap(false)
                             }
-                            // Обработка всегда выполняется — DSP state должен быть непрерывным.
+                            // Silence gate (port b980c22, report K12): 20 s of
+                            // digital silence (suspend-on-idle opt-in only)
+                            // stops the output track and skips the DSP chain;
+                            // capture keeps running, so the first non-silent
+                            // block below resumes playback without losing it.
+                            val bufferSecs = samples / 2.0 / sampleRate
+                            if (updateSilenceGate(suspendOnIdle && isDigitallySilentFloat(floatBuffer, samples), bufferSecs)) {
+                                if (!bufferGated) {
+                                    bufferGated = true
+                                    if (track.playState != AudioTrack.PLAYSTATE_STOPPED)
+                                        track.stop()
+                                }
+                                continue
+                            }
+                            bufferGated = false
+                            // Resume track if suspended
+                            if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                                track.play()
+                                tracer.onTrackStarted()
+                                queueControl.onTrackStarted()
+                            }
+                            // Обработка выполняется всегда, кроме закрытого
+                            // silence-gate: после 20с цифровой тишины DSP-state
+                            // затух ниже слышимости (дольше любого хвоста реверба).
                             // In-place: тот же буфер подаётся на вход и выход — нативный движок
                             // видит один и тот же массив и обрабатывает без промежуточной копии
                             engine.processFloat(floatBuffer, floatBuffer)
@@ -1394,23 +1476,59 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             .addMatchingUsage(AudioAttributes.USAGE_GAME)
             .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
 
-        val excluded = (if(excludeRestrictedSessions)
-            sessionManager.sessionPolicyDatabase.getRestrictedUids().toList()
-        else {
+        // Read the app list the other way round when asked to: capture only
+        // the apps on it rather than everything except them. Android refuses
+        // a configuration that both matches and excludes uids, so this is one
+        // branch or the other, never a mix (port d69429b/8ff9e05, K12).
+        //
+        // An empty list in this mode is treated as "not configured yet"
+        // rather than "capture nothing": someone who has just turned the
+        // mode on and picked no apps would otherwise get silence everywhere
+        // and reasonably conclude the app was broken.
+        //
+        // In this mode there is no exclusion list to put anything on, so
+        // everything that has to be kept out is filtered out of the allowlist
+        // itself: our own uid (capturing ourselves is a loop) and restricted
+        // uids (capturing one does not fail, it returns silence, and because
+        // this effect re-routes the audio the user hears nothing at all).
+        val restricted = if (excludeRestrictedSessions)
+            sessionManager.sessionPolicyDatabase.getRestrictedUids().toSet()
+        else emptySet()
+        val requested = if (allowlistMode) blockedApps.value?.map { it.uid }.orEmpty() else emptyList()
+        val allowed = requested.filter { it != Process.myUid() && !restricted.contains(it) }
+        if (allowlistMode && requested.size != allowed.size)
+            Timber.w("buildAudioRecord: ${requested.size - allowed.size} allowlisted app(s) " +
+                    "cannot be captured and were skipped; processing them would silence them")
+
+        if (allowed.isNotEmpty()) {
+            allowed.forEach { configBuilder.addMatchingUid(it) }
+            sessionManager.sessionDatabase.setAllowedUids(allowed.toTypedArray())
+            sessionManager.sessionDatabase.setExcludedUids(arrayOf())
             sessionManager.pollOnce(false)
-            emptyList()
-        }).toMutableList()
 
-        blockedApps.value?.map { it.uid }?.let {
-            excluded += it
+            Timber.d("buildAudioRecord: Allowed UIDs only: ${allowed.joinToString("; ")}")
         }
-        excluded += Process.myUid()
+        else {
+            val excluded = (if(excludeRestrictedSessions)
+                sessionManager.sessionPolicyDatabase.getRestrictedUids().toList()
+            else {
+                sessionManager.pollOnce(false)
+                emptyList()
+            }).toMutableList()
 
-        excluded.forEach { configBuilder.excludeUid(it) }
-        sessionManager.sessionDatabase.setExcludedUids(excluded.toTypedArray())
-        sessionManager.pollOnce(false)
+            if (!allowlistMode)
+                blockedApps.value?.map { it.uid }?.let {
+                    excluded += it
+                }
+            excluded += Process.myUid()
 
-        Timber.d("buildAudioRecord: Excluded UIDs: ${excluded.joinToString("; ")}")
+            excluded.forEach { configBuilder.excludeUid(it) }
+            sessionManager.sessionDatabase.setAllowedUids(null)
+            sessionManager.sessionDatabase.setExcludedUids(excluded.toTypedArray())
+            sessionManager.pollOnce(false)
+
+            Timber.d("buildAudioRecord: Excluded UIDs: ${excluded.joinToString("; ")}")
+        }
 
         return AudioRecord.Builder()
             .setAudioFormat(format)
