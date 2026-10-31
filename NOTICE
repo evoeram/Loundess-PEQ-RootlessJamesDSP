@@ -273,6 +273,14 @@ the resampler always shrinks the block, which only holds above 48 kHz;
 below 44.1 kHz the block grows, the channels overlapped in the scratch
 and at 12 kHz and under the block ran off the end of the allocation.
 
+The non-finite-sample guards (a NaN/Inf sample replaced with silence at
+the output stage before the limiter envelope sees it, in both copies of
+that loop; the same guard at the input of the dynamic bass boost
+analysis and of the stereo widening filterbank) are ported from the same
+repository. Without them one bad sample latched the limiter envelope
+(silence, or NaN on every sample out), the smoothed boost and both SVF
+states, or the widening's band envelopes for the life of the engine.
+
 Engine file provenance (U-5)
 ----------------------------
 Files:

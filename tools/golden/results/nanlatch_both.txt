@@ -1,0 +1,30 @@
+== -5 pre-fix (75f2616), expected FAIL ==
+[nanlatch] full chain through the float entry, limiter defaults
+  control: finite 1e30 spike (L+R)   pre peak 0.5000 | 10 s later peak 0.4999 non-finite 0 -> recovered
+  one +Inf sample (L+R)              pre peak 0.5000 | 10 s later peak 0.0000 non-finite 0 -> DEAD (latched)
+  one -Inf sample (R only)           pre peak 0.5000 | 10 s later peak 0.0000 non-finite 0 -> DEAD (latched)
+  one NaN sample (L+R)               pre peak 0.5000 | 10 s later peak 0.0000 non-finite 958464 -> DEAD (latched)
+  one NaN sample (L only)            pre peak 0.5000 | 10 s later peak 0.0000 non-finite 958464 -> DEAD (latched)
+  one NaN sample (R only)            pre peak 0.5000 | 10 s later peak 0.5000 non-finite 0 -> recovered
+[nanlatch] stereo widening
+  widening, one NaN (L only)         pre peak 0.4047 | 1 s later peak 0.0000 non-finite 94208 -> DEAD (latched)
+[nanlatch] bass boost (direct, as the wrapper sets it up)
+  one NaN sample     peak before 0.6210, 1 s after 0.0000, non-finite 48128  FAIL
+  one +Inf sample    peak before 0.6210, 1 s after 0.0000, non-finite 48128  FAIL
+  one -Inf sample    peak before 0.6210, 1 s after 0.0000, non-finite 48128  FAIL
+FAIL (8)
+== -5 post-fix, expected PASS ==
+[nanlatch] full chain through the float entry, limiter defaults
+  control: finite 1e30 spike (L+R)   pre peak 0.5000 | 10 s later peak 0.4999 non-finite 0 -> recovered
+  one +Inf sample (L+R)              pre peak 0.5000 | 10 s later peak 0.5000 non-finite 0 -> recovered
+  one -Inf sample (R only)           pre peak 0.5000 | 10 s later peak 0.5000 non-finite 0 -> recovered
+  one NaN sample (L+R)               pre peak 0.5000 | 10 s later peak 0.5000 non-finite 0 -> recovered
+  one NaN sample (L only)            pre peak 0.5000 | 10 s later peak 0.5000 non-finite 0 -> recovered
+  one NaN sample (R only)            pre peak 0.5000 | 10 s later peak 0.5000 non-finite 0 -> recovered
+[nanlatch] stereo widening
+  widening, one NaN (L only)         pre peak 0.4047 | 1 s later peak 0.3807 non-finite 0 -> recovered
+[nanlatch] bass boost (direct, as the wrapper sets it up)
+  one NaN sample     peak before 0.6210, 1 s after 0.6250, non-finite     0  ok
+  one +Inf sample    peak before 0.6210, 1 s after 0.6250, non-finite     0  ok
+  one -Inf sample    peak before 0.6210, 1 s after 0.6250, non-finite     0  ok
+PASS

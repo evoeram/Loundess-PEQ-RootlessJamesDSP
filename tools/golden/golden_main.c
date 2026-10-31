@@ -390,6 +390,169 @@ static int asrcGuardRun(void)
 	printf(asrcFailures ? "FAIL (%d)\n" : "PASS\n", asrcFailures);
 	return asrcFailures != 0;
 }
+// ---- NaN-latch mode (-5): one bad sample must not kill the output --------
+// (docs/PLAN.md Phase 4, report K9; port of source tools/limlatch_harness.c,
+// dbbnan_harness.c and the sterenh_harness.c NaN case). A non-finite sample
+// used to latch the limiter envelope (gain 0 forever, or NaN out forever),
+// the bass boost state, or the widening filterbank - nothing but an engine
+// reset cleared it. After the guards one bad block must be forgotten: the
+// chain recovers to full peak with zero non-finite samples.
+#define NL_N 1024
+static JamesDSPLib nlG;
+static float nlIn[NL_N * 2], nlOut[NL_N * 2];
+static long nlT;
+
+static void nlFresh(void)
+{
+	static int inited = 0;
+	if (inited)
+		JamesDSPFree(&nlG);
+	memset(&nlG, 0, sizeof(nlG));
+	JamesDSPInit(&nlG, NL_N, 48000);
+	inited = 1;
+	JLimiterSetCoefficients(&nlG, 0.0, 60.0); /* 0 dB threshold, 60 ms release */
+	nlT = 0;
+}
+/* one block where frame 0 carries the spike in the chosen channels, rest silence */
+static void nlSpike(float v, int chL, int chR)
+{
+	memset(nlIn, 0, sizeof(nlIn));
+	if (chL) nlIn[0] = v;
+	if (chR) nlIn[1] = v;
+	nlG.processFloatMultiplexd(&nlG, nlIn, nlOut, NL_N);
+}
+/* seconds of clean -6 dBFS 1 kHz tone; report peak and non-finite count */
+static void nlTone(double sec, double *peak, long *nf)
+{
+	*peak = 0;
+	*nf = 0;
+	int blocks = (int)(sec * 48000 / NL_N);
+	for (int b = 0; b < blocks; b++)
+	{
+		for (int i = 0; i < NL_N; i++, nlT++)
+			nlIn[2 * i] = nlIn[2 * i + 1] = 0.5f * (float)sin(2 * M_PI * 1000.0 * nlT / 48000.0);
+		nlG.processFloatMultiplexd(&nlG, nlIn, nlOut, NL_N);
+		for (int i = 0; i < 2 * NL_N; i++)
+		{
+			if (!isfinite(nlOut[i]))
+				(*nf)++;
+			else if (fabsf(nlOut[i]) > *peak)
+				*peak = fabsf(nlOut[i]);
+		}
+	}
+}
+static int nlDead(double pk, long nf) { return !(pk > 0.3 && nf == 0); }
+
+static int nanLatchRun(void)
+{
+	int fails = 0;
+	double p0 = 0;
+	long n0 = 0;
+	printf("[nanlatch] full chain through the float entry, limiter defaults\n");
+	struct { const char *name; float v; int l, r; } cs[] = {
+		{ "control: finite 1e30 spike (L+R)", 1e30f, 1, 1 },
+		{ "one +Inf sample (L+R)", INFINITY, 1, 1 },
+		{ "one -Inf sample (R only)", -INFINITY, 0, 1 },
+		{ "one NaN sample (L+R)", NAN, 1, 1 },
+		{ "one NaN sample (L only)", NAN, 1, 0 },
+		{ "one NaN sample (R only)", NAN, 0, 1 },
+	};
+	for (unsigned k = 0; k < sizeof(cs) / sizeof(cs[0]); k++)
+	{
+		nlFresh();
+		double p0;
+		long n0;
+		nlTone(1.0, &p0, &n0); /* pre-roll: proves the chain passes the tone */
+		nlSpike(cs[k].v, cs[k].l, cs[k].r);
+		double pk;
+		long nf;
+		nlTone(10.0, &pk, &nf);
+		int d = nlDead(pk, nf);
+		printf("  %-34s pre peak %.4f | 10 s later peak %.4f non-finite %ld -> %s\n",
+		       cs[k].name, p0, pk, nf, d ? "DEAD (latched)" : "recovered");
+		if (k == 0 && d)
+		{
+			printf("  control broke: harness invalid\n");
+			return 9;
+		}
+		if (d)
+			fails++;
+	}
+	// the widening's band envelopes latch NaN the same way (port of the
+	// sterenh_harness NaN case, guard from ed58602)
+	printf("[nanlatch] stereo widening\n");
+	nlFresh();
+	StereoEnhancementSetParam(&nlG, 0.6f);
+	StereoEnhancementEnable(&nlG);
+	nlTone(1.0, &p0, &n0);
+	nlSpike(NAN, 1, 0);
+	{
+		double pk;
+		long nf;
+		nlTone(1.0, &pk, &nf);
+		int d = nlDead(pk, nf);
+		printf("  %-34s pre peak %.4f | 1 s later peak %.4f non-finite %ld -> %s\n",
+		       "widening, one NaN (L only)", p0, pk, nf, d ? "DEAD (latched)" : "recovered");
+		if (d)
+			fails++;
+	}
+	// the bass boost analysis/smoothing/SVF state (port of dbbnan_harness.c)
+	printf("[nanlatch] bass boost (direct, as the wrapper sets it up)\n");
+	{
+		static float dL[1024], dR[1024];
+		static long dt;
+		const char *names[] = { "one NaN sample", "one +Inf sample", "one -Inf sample" };
+		float bads[] = { NAN, INFINITY, -INFINITY };
+		for (int c = 0; c < 3; c++)
+		{
+			JamesDSPLib d;
+			memset(&d, 0, sizeof(d));
+			d.fs = 48000.0f;
+			d.tmpBuffer[0] = dL;
+			d.tmpBuffer[1] = dR;
+			BassBoostConstructor(&d); // as JamesDSPInit
+			BassBoostSetParam(&d, 5.0f);
+			BassBoostSetParam(&d, 10.0f); // as setBassBoost
+			BassBoostEnable(&d);
+			dt = 0;
+			double before = 0, after = 0;
+			int nf = 0;
+			for (int b = 0; b < 47; b++)
+			{
+				for (int i = 0; i < 1024; i++, dt++)
+					dL[i] = dR[i] = 0.2f * (float)sin(2 * M_PI * 60.0 * dt / d.fs);
+				BassBoostProcess(&d, 1024);
+				for (int i = 0; i < 1024; i++)
+				{
+					if (!isfinite(dL[i]) || !isfinite(dR[i])) nf++;
+					else if (fabs(dL[i]) > before) before = fabs(dL[i]);
+				}
+			}
+			memset(dL, 0, sizeof(dL));
+			memset(dR, 0, sizeof(dR));
+			dL[100] = bads[c];
+			BassBoostProcess(&d, 1024);
+			for (int b = 0; b < 47; b++)
+			{
+				for (int i = 0; i < 1024; i++, dt++)
+					dL[i] = dR[i] = 0.2f * (float)sin(2 * M_PI * 60.0 * dt / d.fs);
+				BassBoostProcess(&d, 1024);
+				for (int i = 0; i < 1024; i++)
+				{
+					if (!isfinite(dL[i]) || !isfinite(dR[i])) nf++;
+					else if (fabs(dL[i]) > after) after = fabs(dL[i]);
+				}
+			}
+			const int ok = nf == 0 && after > 0.3;
+			printf("  %-18s peak before %.4f, 1 s after %.4f, non-finite %5d  %s\n",
+			       names[c], before, after, nf, ok ? "ok" : "FAIL");
+			if (!ok)
+				fails++;
+		}
+	}
+	printf(fails ? "FAIL (%d)\n" : "PASS\n", fails);
+	return fails != 0;
+}
 // -----------------------------------------------------------------------------
 
 int main(int argc, char **argv)
@@ -397,6 +560,13 @@ int main(int argc, char **argv)
 	if (argc >= 2 && atoi(argv[1]) == -4)
 	{
 		return asrcGuardRun();
+	}
+	if (argc >= 2 && atoi(argv[1]) == -5)
+	{
+		JamesDSPGlobalMemoryAllocation();
+		int rc = nanLatchRun();
+		JamesDSPGlobalMemoryDeallocation();
+		return rc;
 	}
 	if (argc >= 2 && atoi(argv[1]) == -3)
 	{
@@ -411,7 +581,8 @@ int main(int argc, char **argv)
 		       "       golden -1 <file.vdc> [more.vdc ...]\n"
 		       "       golden -2 <seconds>\n"
 		       "       golden -3\n"
-		       "       golden -4\n");
+		       "       golden -4\n"
+		       "       golden -5\n");
 		return 1;
 	}
 	if (atoi(argv[1]) == -2)
