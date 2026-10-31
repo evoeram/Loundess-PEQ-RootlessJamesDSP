@@ -37,6 +37,7 @@
     <string name="key_exclude_app_from_recents" translatable="false">exclude_app_from_recents</string>
     <string name="key_autostart_prompt_at_boot" translatable="false">autostart_prompt_at_boot</string>
     <string name="key_powersave_suspend" translatable="false">powersave_suspend</string>
+    <string name="key_blocklist_allowlist_mode" translatable="false">blocklist_allowlist_mode</string>
     <string name="key_audioformat_encoding" translatable="false">audioformat_encoding</string>
     <string name="key_audioformat_buffersize" translatable="false">audioformat_buffersize</string>
     <string name="key_audioformat_rootless_usb_rate_mode" translatable="false">audioformat_rootless_usb_rate_mode</string>

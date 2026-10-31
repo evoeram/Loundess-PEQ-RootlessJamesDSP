@@ -888,7 +888,6 @@
     <string name="editor_text_size">Text size</string>
 
     <!-- Blocklist -->
-    <string name="key_blocklist_allowlist_mode" translatable="false">blocklist_allowlist_mode</string>
     <string name="title_activity_blocklist">Excluded apps</string>
     <string name="blocklist_add_exclusion_alt">Add application to exclude</string>
     <string name="blocklist_delete_title">Remove selected app?</string>

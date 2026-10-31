@@ -965,10 +965,14 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                                     bufferGated = true
                                     if (track.playState != AudioTrack.PLAYSTATE_STOPPED)
                                         track.stop()
+                                    Timber.i("Silence gate: DSP chain and output stopped after 20 s of digital silence")
                                 }
                                 continue
                             }
-                            bufferGated = false
+                            if (bufferGated) {
+                                bufferGated = false
+                                Timber.i("Silence gate: audio resumed, output restarted instantly")
+                            }
                             // Resume track if suspended
                             if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
                                 track.play()
@@ -1027,10 +1031,14 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                                     bufferGated = true
                                     if (track.playState != AudioTrack.PLAYSTATE_STOPPED)
                                         track.stop()
+                                    Timber.i("Silence gate: DSP chain and output stopped after 20 s of digital silence")
                                 }
                                 continue
                             }
-                            bufferGated = false
+                            if (bufferGated) {
+                                bufferGated = false
+                                Timber.i("Silence gate: audio resumed, output restarted instantly")
+                            }
                             // Resume track if suspended
                             if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
                                 track.play()
