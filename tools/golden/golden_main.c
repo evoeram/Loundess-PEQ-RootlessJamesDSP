@@ -553,6 +553,154 @@ static int nanLatchRun(void)
 	printf(fails ? "FAIL (%d)\n" : "PASS\n", fails);
 	return fails != 0;
 }
+// ---- perf mode (-6): ns/sample per effect, and what silence costs --------
+// (docs/PLAN.md Phase 4, P4.3; method from source commit 5672330). Two
+// questions, one harness, because the second is only visible in the timing
+// of the first: what each effect costs per sample on real hardware, and
+// what happens when the music stops - every IIR filter and envelope keeps
+// decaying through the denormal range, where hardware that traps denormals
+// slows by orders of magnitude. The silent phase is timed block by block
+// and judged on its shape: a denormal stall is thousands of consecutive
+// samples, so it must appear as an unbroken run of slow blocks, while the
+// scheduler takes a core away one block at a time. Averaging the silent
+// run would hide exactly the thing being looked for.
+#define PF_BLOCK 1024
+#define PF_BLOCKS 400
+static double pfNowNs(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (double)ts.tv_sec * 1e9 + (double)ts.tv_nsec;
+}
+static int perfSubject(const char *name, void (*setup)(JamesDSPLib *), double *nsPerSample, int *worstRunOut)
+{
+	JamesDSPLib *jdsp = (JamesDSPLib *)calloc(1, sizeof(JamesDSPLib));
+	JamesDSPInit(jdsp, PF_BLOCK, 48000);
+	jdsp->smoothVolumeGain = 1.0f;
+	if (setup)
+		setup(jdsp);
+	float *inL = (float *)malloc(PF_BLOCK * sizeof(float));
+	float *inR = (float *)malloc(PF_BLOCK * sizeof(float));
+	float *outL = (float *)malloc(PF_BLOCK * sizeof(float));
+	float *outR = (float *)malloc(PF_BLOCK * sizeof(float));
+	unsigned s = 4242u;
+	for (int i = 0; i < PF_BLOCK; i++)
+	{
+		s = s * 1664525u + 1013904223u;
+		const float a = 0.6f * ((float)((s >> 9) & 0xFFFF) / 32768.0f - 1.0f);
+		inL[i] = a;
+		inR[i] = a * 0.8f;
+	}
+	// warmup: lets the convolver benchmark thread finish and processInternal
+	// settle on JamesDSPProcess before any timing happens
+	for (int b = 0; b < 50; b++)
+		jdsp->processFloatDeinterleaved(jdsp, inL, inR, outL, outR, PF_BLOCK);
+	// loud phase: total time -> ns/sample (includes the copy + limiter floor)
+	double t0 = pfNowNs();
+	for (int b = 0; b < PF_BLOCKS; b++)
+		jdsp->processFloatDeinterleaved(jdsp, inL, inR, outL, outR, PF_BLOCK);
+	double t1 = pfNowNs();
+	*nsPerSample = (t1 - t0) / ((double)PF_BLOCKS * PF_BLOCK);
+	// silent phase, block by block, state genuinely decaying after loud audio
+	memset(inL, 0, PF_BLOCK * sizeof(float));
+	memset(inR, 0, PF_BLOCK * sizeof(float));
+	double blk[PF_BLOCKS];
+	for (int b = 0; b < PF_BLOCKS; b++)
+	{
+		double a = pfNowNs();
+		jdsp->processFloatDeinterleaved(jdsp, inL, inR, outL, outR, PF_BLOCK);
+		blk[b] = pfNowNs() - a;
+	}
+	// median on a sorted copy; the run analysis keeps the original order
+	double sorted[PF_BLOCKS];
+	memcpy(sorted, blk, sizeof(blk));
+	for (int i = 1; i < PF_BLOCKS; i++)
+		for (int j = i; j > 0 && sorted[j - 1] > sorted[j]; j--)
+		{
+			double tmp = sorted[j - 1];
+			sorted[j - 1] = sorted[j];
+			sorted[j] = tmp;
+		}
+	double median = sorted[PF_BLOCKS / 2];
+	double worst = sorted[PF_BLOCKS - 1];
+	double slowAt = median * 3.0;
+	int longest = 0, run = 0;
+	for (int b = 0; b < PF_BLOCKS; b++)
+	{
+		if (blk[b] > slowAt)
+		{
+			run++;
+			if (run > longest)
+				longest = run;
+		}
+		else
+			run = 0;
+	}
+	*worstRunOut = longest;
+	free(inL);
+	free(inR);
+	free(outL);
+	free(outR);
+	JamesDSPFree(jdsp);
+	free(jdsp);
+	printf("  %-14s %8.1f ns/sample  silent median %7.1f us worst %7.1f us (%.1fx)  slow-run %d %s\n",
+	       name, *nsPerSample, median / 1000.0, worst / 1000.0, worst / median, longest,
+	       longest <= 2 ? "ok" : "SUSPECT");
+	return longest <= 2;
+}
+
+static void pfTube(JamesDSPLib *j) { VacuumTubeSetGain(j, 8.0); VacuumTubeEnable(j); }
+static void pfDbb(JamesDSPLib *j) { BassBoostSetParam(j, 5.0f); BassBoostEnable(j); }
+static void pfComp(JamesDSPLib *j)
+{
+	double freq[NUMPTS_DRS] = { 95.0, 200.0, 400.0, 800.0, 1600.0, 3400.0, 7500.0 };
+	double gains[NUMPTS_DRS] = { -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0 };
+	CompressorSetParam(j, 0.8f, 4, 1, 1);
+	CompressorSetGain(j, freq, gains, 1);
+	CompressorEnable(j, 1);
+}
+static void pfMeq(JamesDSPLib *j)
+{
+	double freqM[NUMPTS] = { 25.0, 40.0, 63.0, 100.0, 160.0, 250.0, 400.0, 630.0, 1000.0, 1600.0, 2500.0, 4000.0, 6300.0, 10000.0, 16000.0 };
+	double gainsM[NUMPTS] = { 5.0, -1.0, -4.0, -1.0, 2.1, 0.0, 0.0, 0.7, -10.7, 0.0, 0.0, 0.0, 0.0, 0.8, 8.0 };
+	MultimodalEqualizerAxisInterpolation(j, 0, 5, freqM, gainsM);
+	MultimodalEqualizerEnable(j, 1);
+}
+static void pfStereo(JamesDSPLib *j) { StereoEnhancementSetParam(j, 0.9f); StereoEnhancementEnable(j); }
+static void pfReverb(JamesDSPLib *j) { Reverb_SetParam(j, 4); ReverbEnable(j); }
+static void pfCrossfeed(JamesDSPLib *j) { CrossfeedChangeMode(j, 1); CrossfeedEnable(j, 1); }
+static void pfArbEq(JamesDSPLib *j)
+{
+	static char s[] = "perf: 20 -2; 100 1.5; 1000 -3; 5000 2.5; 15000 -1.5; 20000 0;";
+	ArbitraryResponseEqualizerStringParser(j, s);
+	ArbitraryResponseEqualizerEnable(j, 1);
+}
+
+static int perfRun(void)
+{
+	int fails = 0;
+	double ns;
+	int run;
+	printf("[perf] ns/sample at 48 kHz; silent-phase shape after loud audio\n");
+	JamesDSPGlobalMemoryAllocation();
+	struct { const char *name; void (*setup)(JamesDSPLib *); } cs[] = {
+		{ "baseline", 0 },
+		{ "vacuum tube", pfTube },
+		{ "bass boost", pfDbb },
+		{ "compander", pfComp },
+		{ "mEQ", pfMeq },
+		{ "arbEq", pfArbEq },
+		{ "widening", pfStereo },
+		{ "reverb", pfReverb },
+		{ "crossfeed", pfCrossfeed },
+	};
+	for (unsigned k = 0; k < sizeof(cs) / sizeof(cs[0]); k++)
+		if (!perfSubject(cs[k].name, cs[k].setup, &ns, &run))
+			fails++;
+	JamesDSPGlobalMemoryDeallocation();
+	printf(fails ? "FAIL (%d)\n" : "PASS\n", fails);
+	return fails != 0;
+}
 // -----------------------------------------------------------------------------
 
 int main(int argc, char **argv)
@@ -567,6 +715,10 @@ int main(int argc, char **argv)
 		int rc = nanLatchRun();
 		JamesDSPGlobalMemoryDeallocation();
 		return rc;
+	}
+	if (argc >= 2 && atoi(argv[1]) == -6)
+	{
+		return perfRun();
 	}
 	if (argc >= 2 && atoi(argv[1]) == -3)
 	{

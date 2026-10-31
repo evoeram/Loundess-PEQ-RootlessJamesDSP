@@ -1,0 +1,11 @@
+[perf] ns/sample at 48 kHz; silent-phase shape after loud audio
+  baseline           12.5 ns/sample  silent median    12.3 us worst    34.2 us (2.8x)  slow-run 0 ok
+  vacuum tube       663.4 ns/sample  silent median   671.1 us worst   788.5 us (1.2x)  slow-run 0 ok
+  bass boost         91.8 ns/sample  silent median    92.6 us worst   141.3 us (1.5x)  slow-run 0 ok
+  compander        1361.5 ns/sample  silent median  1364.6 us worst  1598.4 us (1.2x)  slow-run 0 ok
+  mEQ               506.2 ns/sample  silent median   511.8 us worst   606.6 us (1.2x)  slow-run 0 ok
+  arbEq             161.7 ns/sample  silent median   163.2 us worst   227.0 us (1.4x)  slow-run 0 ok
+  widening          667.6 ns/sample  silent median   648.2 us worst   754.0 us (1.2x)  slow-run 0 ok
+  reverb            603.2 ns/sample  silent median   609.0 us worst   721.7 us (1.2x)  slow-run 0 ok
+  crossfeed          28.7 ns/sample  silent median    29.0 us worst    81.1 us (2.8x)  slow-run 0 ok
+PASS
