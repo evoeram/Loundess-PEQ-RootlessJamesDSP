@@ -701,6 +701,319 @@ static int perfRun(void)
 	printf(fails ? "FAIL (%d)\n" : "PASS\n", fails);
 	return fails != 0;
 }
+// ---- FIR-eq mode (-7): phase mode + per-ear curves --------------------------
+// Acceptance for docs/PLAN.md Phase 6 (report K14; ports of source
+// tools/percheq_harness.c and tools/arbphase_harness.c). The arbitrary
+// magnitude EQ must (a) take a curve per ear through the 2x2 convolver it has
+// always had, (b) rebuild its coefficient generator on a minimum/linear phase
+// switch and keep the magnitude within +-0.1 dB while the impulse becomes
+// symmetric, and (c) survive 200 phase switches - each changes the filter
+// length 8192 <-> 16383, which used to refresh the wrong segment count and
+// read past the per-ear buffer - without a loudness jump. Heap overruns are
+// caught by running this same mode in the GOLDEN_ASAN=1 build (Phase 2
+// pattern: functional pass here, clean ASAN exit there).
+#define EQ_N 4096
+#define EQ_FS 48000.0
+#define EQ_SINE_RMS_DB (-15.05) /* 20*log10(0.25/sqrt(2)) */
+
+static int eqFails = 0;
+static void eqCheck(const char *what, double got, double lo, double hi)
+{
+	int ok = got >= lo && got <= hi;
+	if (!ok)
+		eqFails++;
+	printf("  %-52s %10.4f  [%.4f, %.4f]  %s\n", what, got, lo, hi, ok ? "ok" : "FAIL");
+}
+
+static JamesDSPLib *eqPrepare(void)
+{
+	JamesDSPLib *lib = (JamesDSPLib *)calloc(1, sizeof(JamesDSPLib));
+	JamesDSPInit(lib, EQ_N, (float)EQ_FS);
+	return lib;
+}
+
+/* The filter is 8192-16383 taps against a 4096-sample block, so a single
+   block measures the convolver filling up rather than its response: push
+   enough blocks for it to settle, keeping the tone's phase continuous across
+   them, and measure the last one (source percheq_harness.c approach). */
+static long eqOscPhase = 0;
+static void eqLevelDb(JamesDSPLib *lib, double freq, double *lDb, double *rDb)
+{
+	double sumL = 0.0, sumR = 0.0;
+	eqOscPhase = 0;
+	for (int block = 0; block < 6; block++)
+	{
+		sumL = sumR = 0.0;
+		for (int i = 0; i < EQ_N; i++, eqOscPhase++)
+		{
+			float s = (float)(0.25 * sin(2.0 * M_PI * freq * (double)eqOscPhase / EQ_FS));
+			lib->tmpBuffer[0][i] = s;
+			lib->tmpBuffer[1][i] = s;
+		}
+		ArbitraryResponseEqualizerProcess(lib, EQ_N);
+		for (int i = 0; i < EQ_N; i++)
+		{
+			sumL += (double)lib->tmpBuffer[0][i] * lib->tmpBuffer[0][i];
+			sumR += (double)lib->tmpBuffer[1][i] * lib->tmpBuffer[1][i];
+		}
+	}
+	double rmsL = sqrt(sumL / EQ_N), rmsR = sqrt(sumR / EQ_N);
+	*lDb = 20.0 * log10(rmsL > 1e-12 ? rmsL : 1e-12);
+	*rDb = 20.0 * log10(rmsR > 1e-12 ? rmsR : 1e-12);
+}
+
+/* First EQ_N taps of the convolver's impulse response, straight off the
+   process path (what actually plays), L<-L and R<-R. The segment ring is
+   flushed with silence first: whatever ran before (the sine blocks of a
+   level measurement) still sits in the history and would bleed through the
+   higher IR segments into the capture. */
+static void eqImpulse(JamesDSPLib *lib, float *outL, float *outR)
+{
+	for (int block = 0; block < (int)lib->arbMag.instance.convState._segCount + 1; block++)
+	{
+		memset(lib->tmpBuffer[0], 0, EQ_N * sizeof(float));
+		memset(lib->tmpBuffer[1], 0, EQ_N * sizeof(float));
+		ArbitraryResponseEqualizerProcess(lib, EQ_N);
+	}
+	memset(lib->tmpBuffer[0], 0, EQ_N * sizeof(float));
+	memset(lib->tmpBuffer[1], 0, EQ_N * sizeof(float));
+	lib->tmpBuffer[0][0] = 1.0f;
+	lib->tmpBuffer[1][0] = 1.0f;
+	ArbitraryResponseEqualizerProcess(lib, EQ_N);
+	memcpy(outL, lib->tmpBuffer[0], EQ_N * sizeof(float));
+	memcpy(outR, lib->tmpBuffer[1], EQ_N * sizeof(float));
+}
+
+static double eqAsymmetry(const float *h, int n)
+{
+	double peak = 0.0, worst = 0.0;
+	for (int i = 0; i < n; i++)
+		if (fabs(h[i]) > peak)
+			peak = fabs(h[i]);
+	for (int i = 0; i < n / 2; i++)
+	{
+		double d = fabs(h[i] - h[n - 1 - i]);
+		if (d > worst)
+			worst = d;
+	}
+	return peak > 0.0 ? worst / peak : 1.0;
+}
+
+static int firEqRun(void)
+{
+	static char curveLeft[]  = "GraphicEQ: 20 0; 500 0; 1000 12; 2000 0; 20000 0";
+	static char curveRight[] = "GraphicEQ: 20 0; 500 0; 1000 -12; 2000 0; 20000 0";
+	static char curveFlat[]  = "GraphicEQ: 20 0; 20000 0";
+	static char curveShape[] = "GraphicEQ: 20 4; 200 -2; 1000 3; 5000 -4; 20000 0";
+	static const double freqs[] = { 100.0, 1000.0, 5000.0, 10000.0 };
+	double lDb, rDb;
+
+	setvbuf(stdout, NULL, _IONBF, 0);
+	printf("[fireq] per-ear curves + min/linear phase (report K14)\n");
+	JamesDSPGlobalMemoryAllocation();
+
+	printf(" each ear gets its own curve\n");
+	{
+		JamesDSPLib *lib = eqPrepare();
+		ArbitraryResponseEqualizerStringParserStereo(lib, curveLeft, curveRight);
+		ArbitraryResponseEqualizerEnable(lib, 1);
+		eqLevelDb(lib, 1000.0, &lDb, &rDb);
+		printf("  left %.2f dB, right %.2f dB\n", lDb, rDb);
+		/* 24 dB asked for; the FIR will not hit it exactly at one frequency,
+		   but anything under half of it means the curves are being mixed
+		   rather than kept apart. */
+		eqCheck("left louder than right by about 24 dB", lDb - rDb, 14.0, 30.0);
+		eqCheck("left really was boosted", lDb, -18.0, 0.0);
+		eqCheck("right really was cut", rDb, -40.0, -20.0);
+		JamesDSPFree(lib);
+		free(lib);
+	}
+
+	printf(" the same curve on both ears matches the single-curve path\n");
+	{
+		JamesDSPLib *st = eqPrepare();
+		ArbitraryResponseEqualizerStringParserStereo(st, curveLeft, curveLeft);
+		ArbitraryResponseEqualizerEnable(st, 1);
+		double stL, stR;
+		eqLevelDb(st, 1000.0, &stL, &stR);
+		JamesDSPFree(st);
+		free(st);
+
+		JamesDSPLib *mo = eqPrepare();
+		ArbitraryResponseEqualizerStringParser(mo, curveLeft);
+		ArbitraryResponseEqualizerEnable(mo, 1);
+		double moL, moR;
+		eqLevelDb(mo, 1000.0, &moL, &moR);
+		JamesDSPFree(mo);
+		free(mo);
+
+		printf("  stereo path L %.3f R %.3f, mono path L %.3f\n", stL, stR, moL);
+		eqCheck("both ears match each other", fabs(stL - stR), 0.0, 0.05);
+		eqCheck("and match the single-curve path", fabs(stL - moL), 0.0, 0.05);
+	}
+
+	printf(" a flat curve on one side leaves that side alone\n");
+	{
+		JamesDSPLib *lib = eqPrepare();
+		ArbitraryResponseEqualizerStringParserStereo(lib, curveFlat, curveRight);
+		ArbitraryResponseEqualizerEnable(lib, 1);
+		eqLevelDb(lib, 1000.0, &lDb, &rDb);
+		printf("  flat side %.2f dB, cut side %.2f dB (input %.2f)\n", lDb, rDb, EQ_SINE_RMS_DB);
+		eqCheck("the flat side is left alone", fabs(lDb - EQ_SINE_RMS_DB), 0.0, 0.2);
+		eqCheck("the cut side is well below it", EQ_SINE_RMS_DB - rDb, 6.0, 30.0);
+		JamesDSPFree(lib);
+		free(lib);
+	}
+
+	printf(" swapping the sides swaps the result\n");
+	{
+		JamesDSPLib *lib = eqPrepare();
+		ArbitraryResponseEqualizerStringParserStereo(lib, curveRight, curveLeft);
+		ArbitraryResponseEqualizerEnable(lib, 1);
+		eqLevelDb(lib, 1000.0, &lDb, &rDb);
+		printf("  left %.2f dB, right %.2f dB\n", lDb, rDb);
+		eqCheck("now the right is the loud one", rDb - lDb, 14.0, 30.0);
+		JamesDSPFree(lib);
+		free(lib);
+	}
+
+	printf(" re-sending a per-channel pair does not drift\n");
+	{
+		JamesDSPLib *lib = eqPrepare();
+		double firstL = 0.0, firstR = 0.0;
+		for (int pass = 0; pass < 4; pass++)
+		{
+			ArbitraryResponseEqualizerStringParserStereo(lib, curveLeft, curveRight);
+			ArbitraryResponseEqualizerEnable(lib, 1);
+			eqLevelDb(lib, 1000.0, &lDb, &rDb);
+			if (!pass)
+			{
+				firstL = lDb;
+				firstR = rDb;
+			}
+			else
+			{
+				eqCheck("left unchanged on a repeat", fabs(lDb - firstL), 0.0, 0.5);
+				eqCheck("right unchanged on a repeat", fabs(rDb - firstR), 0.0, 0.5);
+			}
+		}
+		JamesDSPFree(lib);
+		free(lib);
+	}
+
+	printf(" a forceRefresh reload keeps the per-ear pair (kept filters)\n");
+	{
+		JamesDSPLib *lib = eqPrepare();
+		ArbitraryResponseEqualizerStringParserStereo(lib, curveLeft, curveRight);
+		ArbitraryResponseEqualizerEnable(lib, 1);
+		lib->arbMagForceRefresh = 1; // what JamesDSPSetSampleRate sets
+		ArbitraryResponseEqualizerEnable(lib, 1);
+		eqLevelDb(lib, 1000.0, &lDb, &rDb);
+		printf("  after refresh: left %.2f dB, right %.2f dB\n", lDb, rDb);
+		eqCheck("per-ear separation survives the refresh", lDb - rDb, 14.0, 30.0);
+		JamesDSPFree(lib);
+		free(lib);
+	}
+
+	printf(" minimum vs linear phase: same magnitude, different impulse\n");
+	double minLevels[4], linLevels[4];
+	{
+		JamesDSPLib *lib = eqPrepare();
+		eqCheck("minimum-phase filter is 8192 taps", lib->arbMag.instance.filterLen, 8192.0, 8192.0);
+		ArbitraryResponseEqualizerStringParser(lib, curveShape);
+		ArbitraryResponseEqualizerEnable(lib, 1);
+		for (int i = 0; i < 4; i++)
+		{
+			double a, b;
+			eqLevelDb(lib, freqs[i], &a, &b);
+			minLevels[i] = a;
+		}
+		/* Symmetry of a linear-phase FIR is about the centre of the whole
+		   filter (h[i] vs h[len-1-i]); the largest one is 16383 taps. */
+		static float hFull[16384];
+		float *h = lib->arbMag.instance.coeffGen.GetFilter(&lib->arbMag.instance.coeffGen, (float)lib->fs);
+		memcpy(hFull, h, lib->arbMag.instance.filterLen * sizeof(float));
+		double asymMin = eqAsymmetry(hFull, (int)lib->arbMag.instance.filterLen);
+		ArbitraryResponseEqualizerSetPhaseMode(lib, 1);
+		eqCheck("linear-phase filter is 16383 taps", lib->arbMag.instance.filterLen, 16383.0, 16383.0);
+		ArbitraryResponseEqualizerStringParser(lib, curveShape);
+		for (int i = 0; i < 4; i++)
+		{
+			double a, b;
+			eqLevelDb(lib, freqs[i], &a, &b);
+			linLevels[i] = a;
+		}
+		h = lib->arbMag.instance.coeffGen.GetFilter(&lib->arbMag.instance.coeffGen, (float)lib->fs);
+		memcpy(hFull, h, lib->arbMag.instance.filterLen * sizeof(float));
+		double asymLin = eqAsymmetry(hFull, (int)lib->arbMag.instance.filterLen);
+		eqCheck("linear impulse is symmetric", asymLin, 0.0, 1e-3);
+		eqCheck("minimum impulse is not symmetric", asymMin, 0.01, 2.0);
+		for (int i = 0; i < 4; i++)
+		{
+			char what[96];
+			snprintf(what, sizeof(what), "magnitude match @ %.0f Hz (min vs linear)", freqs[i]);
+			eqCheck(what, fabs(minLevels[i] - linLevels[i]), 0.0, 0.1);
+		}
+		JamesDSPFree(lib);
+		free(lib);
+	}
+
+	printf(" 200 phase switches: response follows, level stays put\n");
+	{
+		JamesDSPLib *lib = eqPrepare();
+		ArbitraryResponseEqualizerStringParser(lib, curveShape);
+		ArbitraryResponseEqualizerEnable(lib, 1);
+		double refL, refR;
+		eqLevelDb(lib, 1000.0, &refL, &refR);
+
+		/* what a convolver built at each phase from the start must answer:
+		   capture both references once, then compare after every 25th switch */
+		ArbitraryResponseEqualizerSetPhaseMode(lib, 0);
+		ArbitraryResponseEqualizerStringParser(lib, curveShape);
+		float refMinL[EQ_N], refMinR[EQ_N], refLinL[EQ_N], refLinR[EQ_N], gotL[EQ_N], gotR[EQ_N];
+		eqImpulse(lib, refMinL, refMinR);
+		ArbitraryResponseEqualizerSetPhaseMode(lib, 1);
+		ArbitraryResponseEqualizerStringParser(lib, curveShape);
+		eqImpulse(lib, refLinL, refLinR);
+
+		double worstJump = 0.0, worstDiff = 0.0;
+		for (int sw = 0; sw < 200; sw++)
+		{
+			ArbitraryResponseEqualizerSetPhaseMode(lib, sw % 2);
+			ArbitraryResponseEqualizerStringParser(lib, curveShape);
+			ArbitraryResponseEqualizerEnable(lib, 1);
+			eqLevelDb(lib, 1000.0, &lDb, &rDb);
+			double jump = fabs(lDb - refL);
+			if (jump > worstJump)
+				worstJump = jump;
+			if (sw % 25 == 24)
+			{
+				const float *rl = sw % 2 ? refLinL : refMinL;
+				const float *rr = sw % 2 ? refLinR : refMinR;
+				double d = 0.0;
+				eqImpulse(lib, gotL, gotR);
+				for (int i = 0; i < EQ_N; i++)
+				{
+					double a = fabs(gotL[i] - rl[i]);
+					double b = fabs(gotR[i] - rr[i]);
+					if (a > d) d = a;
+					if (b > d) d = b;
+				}
+				if (d > worstDiff)
+					worstDiff = d;
+			}
+		}
+		printf("  worst level jump %.4f dB, worst impulse diff %.3g\n", worstJump, worstDiff);
+		eqCheck("no loudness jump across 200 switches", worstJump, 0.0, 0.5);
+		eqCheck("switched convolver matches fresh-built", worstDiff, 0.0, 1e-3);
+		JamesDSPFree(lib);
+		free(lib);
+	}
+
+	JamesDSPGlobalMemoryDeallocation();
+	printf(eqFails ? "FAIL (%d)\n" : "PASS\n", eqFails);
+	return eqFails != 0;
+}
 // -----------------------------------------------------------------------------
 
 int main(int argc, char **argv)
@@ -720,6 +1033,10 @@ int main(int argc, char **argv)
 	{
 		return perfRun();
 	}
+	if (argc >= 2 && atoi(argv[1]) == -7)
+	{
+		return firEqRun();
+	}
 	if (argc >= 2 && atoi(argv[1]) == -3)
 	{
 		JamesDSPGlobalMemoryAllocation();
@@ -734,7 +1051,9 @@ int main(int argc, char **argv)
 		       "       golden -2 <seconds>\n"
 		       "       golden -3\n"
 		       "       golden -4\n"
-		       "       golden -5\n");
+		       "       golden -5\n"
+		       "       golden -6\n"
+		       "       golden -7\n");
 		return 1;
 	}
 	if (atoi(argv[1]) == -2)

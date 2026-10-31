@@ -789,6 +789,14 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setConvolver(JN
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setEqPhaseMode(JNIEnv *env, jobject obj, jlong self, jboolean linearPhase)
+{
+    DECLARE_DSP_B
+    ArbitraryResponseEqualizerSetPhaseMode(dsp, linearPhase ? 1 : 0);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setGraphicEq(JNIEnv *env, jobject obj, jlong self,
                                                                              jboolean enable, jstring graphicEq)
 {
@@ -805,6 +813,36 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setGraphicEq(JN
         ArbitraryResponseEqualizerStringParser(dsp, (char*)nativeString);
         env->ReleaseStringUTFChars(graphicEq, nativeString);
 
+        ArbitraryResponseEqualizerEnable(dsp, 1);
+    }
+    else
+        ArbitraryResponseEqualizerDisable(dsp);
+
+    return true;
+}
+
+/* The same, with a curve per ear. Sent only when the parametric EQ has a band
+   assigned to one channel, which most people will never do, so the ordinary
+   single-curve call above is left exactly as it was. */
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setGraphicEqStereo(JNIEnv *env, jobject obj, jlong self,
+                                                                             jboolean enable, jstring eqLeft, jstring eqRight)
+{
+    DECLARE_DSP_B
+    if(eqLeft == nullptr || eqRight == nullptr ||
+       env->GetStringUTFLength(eqLeft) <= 0 || env->GetStringUTFLength(eqRight) <= 0)
+    {
+        LOGE("JamesDspWrapper::setGraphicEqStereo: a curve is empty or NULL. Disabling graphic eq.");
+        enable = false;
+    }
+
+    if(enable)
+    {
+        const char *nativeLeft = env->GetStringUTFChars(eqLeft, nullptr);
+        const char *nativeRight = env->GetStringUTFChars(eqRight, nullptr);
+        ArbitraryResponseEqualizerStringParserStereo(dsp, (char*)nativeLeft, (char*)nativeRight);
+        env->ReleaseStringUTFChars(eqLeft, nativeLeft);
+        env->ReleaseStringUTFChars(eqRight, nativeRight);
         ArbitraryResponseEqualizerEnable(dsp, 1);
     }
     else

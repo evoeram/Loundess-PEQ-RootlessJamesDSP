@@ -372,3 +372,32 @@ Copyright (c) alienware377 and contributors
 
 This port remains under the GNU General Public License v3.0, like the rest of
 this repository.
+
+FIR equalizer phase mode and per-ear curves (K14)
+-------------------------------------------------
+Files:
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/arbEqConv.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/jdsp_header.h
+  app/src/main/cpp/libjamesdsp-wrapper/JamesDspWrapper.cpp
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/interop/JamesDspBaseEngine.kt
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/interop/JamesDspLocalEngine.kt
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/interop/JamesDspRemoteEngine.kt
+
+The minimum/linear phase switch (ArbitraryResponseEqualizerSetPhaseMode with
+EqNodesFree + re-InitArbitraryEq), the per-ear curve parser
+(ArbitraryResponseEqualizerStringParserStereo with kept copies of both
+channels' filters) and the segment-count guard on loading filters
+(arbLoadFilters: a phase switch changes the filter length 8192 <-> 16383, so
+an in-place refresh across it must fall back to a full load) are ported from
+RootlessViPER4Android, https://github.com/alienware377/RootlessViPER4Android,
+which is itself distributed under the GNU General Public License v3.0.
+
+Unlike the source, the phase mode reaches the engine as a boolean preference
+of the existing graphic-EQ screen instead of a segment control with a second
+R-curve text field; per-ear curves come from the parametric EQ's per-band
+channel assignment that this fork already had.
+
+Copyright (c) alienware377 and contributors
+
+This port remains under the GNU General Public License v3.0, like the rest of
+this repository.

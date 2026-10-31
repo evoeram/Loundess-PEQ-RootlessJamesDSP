@@ -88,6 +88,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
             cache.select(Constants.PREF_GEQ)
             val geqEnabled = cache.get(R.string.key_geq_enable, false)
+            val geqLinearPhase = cache.get(R.string.key_geq_linear_phase, false)
             val geqBands = cache.get(R.string.key_geq_nodes, Constants.DEFAULT_GEQ_INTERNAL)
 
             cache.select(Constants.PREF_PEQ)
@@ -265,6 +266,9 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                         // GEQ and PEQ are now independent: GEQ uses frequency-domain,
                         // PEQ uses time-domain biquad cascade (if supported).
                         // For engines without native PEQ support, fall back to GEQ+PEQ merge.
+                        // Phase mode first: it rebuilds the coefficient
+                        // generator, so the nodes must be re-sent after it.
+                        setEqPhaseMode(geqLinearPhase)
                         if (supportsParametricEqCascade()) {
                             setGraphicEq(geqEnabled, geqBands)
                         } else {
@@ -295,6 +299,9 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                             // Fallback: merge PEQ into GraphicEQ for engines without native PEQ.
                             // Squig bands are merged into the PEQ band string so they reach the
                             // graphic-eq combined path too.
+                            // Phase mode first: it rebuilds the coefficient generator, so the
+                            // nodes must be re-sent after it.
+                            setEqPhaseMode(geqLinearPhase)
                             val combinedBandsStr = if (squigEnabled) {
                                 val merged = ParametricEqBandList()
                                 if (peqEnabled) merged.deserialize(peqBandsStr)
@@ -354,6 +361,9 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                         } else {
                             // Fallback for engines without native PEQ cascade:
                             // merge squig bands into the graphic-eq combined path.
+                            // Phase mode first: it rebuilds the coefficient generator,
+                            // so the nodes must be re-sent after it.
+                            setEqPhaseMode(geqLinearPhase)
                             val combinedBandsStr = if (squigEnabled) {
                                 val merged = ParametricEqBandList()
                                 if (peqEnabled) merged.deserialize(peqBandsStr)
@@ -633,12 +643,14 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             preampOffset = preampOffset
         )
 
-        val graphicEqPayload = when {
-            leftString == null && rightString == null -> ""
-            leftString != null && rightString != null && leftString != rightString ->
-                buildStereoGraphicEqPayload(leftString, rightString)
-            else -> leftString ?: rightString ?: ""
+        // Two different curves go to the engine as one per ear; the native
+        // path loads them into the 2x2 convolver it has always had. The
+        // joined payload is still built for callers that only understand a
+        // single string (Android EQ direct mode splits it again).
+        if (leftString != null && rightString != null && leftString != rightString) {
+            return setGraphicEqStereoInternal(true, leftString, rightString)
         }
+        val graphicEqPayload = leftString ?: rightString ?: ""
 
         return setGraphicEqInternal(graphicEqPayload.isNotBlank(), graphicEqPayload)
     }
@@ -692,7 +704,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         return sb.toString()
     }
 
-    private fun buildStereoGraphicEqPayload(leftBands: String, rightBands: String): String {
+    protected fun buildStereoGraphicEqPayload(leftBands: String, rightBands: String): String {
         return leftBands.trim() + STEREO_GRAPHIC_EQ_SPLIT + rightBands.trim()
     }
 
@@ -772,6 +784,26 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         irSampleRate: Int,
     ): Boolean
     protected abstract fun setGraphicEqInternal(enable: Boolean, bands: String): Boolean
+
+    /**
+     * FIR equalizer phase mode: false = minimum phase (no added latency),
+     * true = linear phase (constant group delay). Rebuilding the coefficient
+     * generator invalidates the current filter, so implementations must
+     * expect the node string to be re-sent right after this call.
+     */
+    abstract fun setEqPhaseMode(linearPhase: Boolean): Boolean
+
+    /**
+     * One curve per ear. Only called when the combined PEQ/GEQ response
+     * actually differs between channels; everything else keeps going through
+     * [setGraphicEqInternal], so the ordinary case is untouched.
+     *
+     * Root mode has no way to send two curves: its buffered payload carries
+     * one string and the effect library applies it to both ears, so its
+     * override folds them back into one and says so rather than applying a
+     * correction meant for one ear to both.
+     */
+    protected abstract fun setGraphicEqStereoInternal(enable: Boolean, bandsLeft: String, bandsRight: String): Boolean
     protected abstract fun setLiveprogInternal(enable: Boolean, name: String, script: String): Boolean
 
     // Time-domain parametric EQ (biquad cascade, all 8 filter types, L+R/L/R per band)

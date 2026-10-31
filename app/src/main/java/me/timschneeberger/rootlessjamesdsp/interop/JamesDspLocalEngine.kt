@@ -189,16 +189,35 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         return JamesDspWrapper.setConvolver(handle, enable, impulseResponse, irChannels, irFrames)
     }
 
+    override fun setEqPhaseMode(linearPhase: Boolean): Boolean =
+        JamesDspWrapper.setEqPhaseMode(handle, linearPhase)
+
     override fun setGraphicEqInternal(enable: Boolean, bands: String): Boolean {
         // Передаём EQ-кривую в AndroidEq (Direct Mode) — поддерживает per-channel стерео
         // AndroidEq.setCurve парсит строку (включая STEREO_GRAPHIC_EQ_SPLIT) и запускает refit
         if (me.timschneeberger.rootlessjamesdsp.utils.SdkCheck.isPie)
             me.timschneeberger.rootlessjamesdsp.androideq.AndroidEq.setCurve(enable, bands)
 
-        // Native JamesDspWrapper не понимает стерео payload с CHANNEL_SPLIT —
-        // передаём только левую кривую (или моно, если кривые одинаковы).
-        val nativeBands = bands.substringBefore(JamesDspBaseEngine.STEREO_GRAPHIC_EQ_SPLIT)
-        return JamesDspWrapper.setGraphicEq(handle, enable, nativeBands)
+        // Стерео payload (две кривые через CHANNEL_SPLIT): нативный движок
+        // загружает их в 2x2 convolver как L/R impulse responses.
+        if (bands.contains(JamesDspBaseEngine.STEREO_GRAPHIC_EQ_SPLIT)) {
+            val left = bands.substringBefore(JamesDspBaseEngine.STEREO_GRAPHIC_EQ_SPLIT)
+            val right = bands.substringAfter(JamesDspBaseEngine.STEREO_GRAPHIC_EQ_SPLIT)
+            return JamesDspWrapper.setGraphicEqStereo(handle, enable, left, right)
+        }
+
+        return JamesDspWrapper.setGraphicEq(handle, enable, bands)
+    }
+
+    override fun setGraphicEqStereoInternal(enable: Boolean, bandsLeft: String, bandsRight: String): Boolean {
+        // Тот же payload, что и setGraphicEqInternal со стерео-разделителем:
+        // AndroidEq получает обе кривые, нативный движок — тоже.
+        if (me.timschneeberger.rootlessjamesdsp.utils.SdkCheck.isPie)
+            me.timschneeberger.rootlessjamesdsp.androideq.AndroidEq.setCurve(
+                enable,
+                buildStereoGraphicEqPayload(bandsLeft, bandsRight))
+
+        return JamesDspWrapper.setGraphicEqStereo(handle, enable, bandsLeft, bandsRight)
     }
 
     override fun setLiveprogInternal(enable: Boolean, name: String, script: String): Boolean {

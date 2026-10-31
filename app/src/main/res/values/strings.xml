@@ -323,6 +323,8 @@
 
     <string name="geq_enable">Arbitrary response equalizer</string>
     <string name="geq_nodes">Magnitude response</string>
+    <string name="geq_linear_phase">Linear phase</string>
+    <string name="geq_linear_phase_summary">Symmetric filters with constant group delay. Off uses minimum phase, which adds no latency and is usually the better choice for listening.</string>
 
     <string name="bass_enable">Dynamic bass boost</string>
     <string name="bass_max_gain">Maximum gain</string>

@@ -1,0 +1,41 @@
+[fireq] per-ear curves + min/linear phase (report K14)
+ each ear gets its own curve
+  left -3.06 dB, right -27.03 dB
+  left louder than right by about 24 dB                   23.9720  [14.0000, 30.0000]  ok
+  left really was boosted                                 -3.0613  [-18.0000, 0.0000]  ok
+  right really was cut                                   -27.0332  [-40.0000, -20.0000]  ok
+ the same curve on both ears matches the single-curve path
+  stereo path L -3.061 R -3.061, mono path L -3.061
+  both ears match each other                               0.0000  [0.0000, 0.0500]  ok
+  and match the single-curve path                          0.0000  [0.0000, 0.0500]  ok
+ a flat curve on one side leaves that side alone
+  flat side -15.05 dB, cut side -27.03 dB (input -15.05)
+  the flat side is left alone                              0.0028  [0.0000, 0.2000]  ok
+  the cut side is well below it                           11.9832  [6.0000, 30.0000]  ok
+ swapping the sides swaps the result
+  left -27.03 dB, right -3.06 dB
+  now the right is the loud one                           23.9720  [14.0000, 30.0000]  ok
+ re-sending a per-channel pair does not drift
+  left unchanged on a repeat                               0.0000  [0.0000, 0.5000]  ok
+  right unchanged on a repeat                              0.0000  [0.0000, 0.5000]  ok
+  left unchanged on a repeat                               0.0000  [0.0000, 0.5000]  ok
+  right unchanged on a repeat                              0.0000  [0.0000, 0.5000]  ok
+  left unchanged on a repeat                               0.0000  [0.0000, 0.5000]  ok
+  right unchanged on a repeat                              0.0000  [0.0000, 0.5000]  ok
+ a forceRefresh reload keeps the per-ear pair (kept filters)
+  after refresh: left -3.06 dB, right -27.03 dB
+  per-ear separation survives the refresh                 23.9720  [14.0000, 30.0000]  ok
+ minimum vs linear phase: same magnitude, different impulse
+  minimum-phase filter is 8192 taps                     8192.0000  [8192.0000, 8192.0000]  ok
+  linear-phase filter is 16383 taps                    16383.0000  [16383.0000, 16383.0000]  ok
+  linear impulse is symmetric                              0.0000  [0.0000, 0.0010]  ok
+  minimum impulse is not symmetric                         1.0000  [0.0100, 2.0000]  ok
+  magnitude match @ 100 Hz (min vs linear)                 0.0052  [0.0000, 0.1000]  ok
+  magnitude match @ 1000 Hz (min vs linear)                0.0010  [0.0000, 0.1000]  ok
+  magnitude match @ 5000 Hz (min vs linear)                0.0003  [0.0000, 0.1000]  ok
+  magnitude match @ 10000 Hz (min vs linear)               0.0000  [0.0000, 0.1000]  ok
+ 200 phase switches: response follows, level stays put
+  worst level jump 0.0010 dB, worst impulse diff 0
+  no loudness jump across 200 switches                     0.0010  [0.0000, 0.5000]  ok
+  switched convolver matches fresh-built                   0.0000  [0.0000, 0.0010]  ok
+PASS
