@@ -68,9 +68,7 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
     // mute-эффект на старый список, новая сессия (новый трек плеера) играет
     // без mute на полной громкости — при агрессивном автопреампе это SPL-удар.
     // Флаг коалесцирует пропущенные опросы и доигрывает их после текущего дампа
-    private val pendingDump = AtomicBoolean(false)
-
-    // Окно смерти сессии (release старого трека -> create нового) укладывается
+    private val pendingDump = AtomicBoolean(false)    // Окно смерти сессии (release старого трека -> create нового) укладывается
     // в тишину между треками и длится меньше интервала обычного опроса. Пока
     // capture молчит, опрашиваем refs audioflinger чаще: смерть ловится в
     // момент, когда ещё можно pre-attach mute до первого сэмпла нового трека
@@ -106,8 +104,12 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
                     var elapsed = 0L
                     while (captureGapActive && elapsed < 8_000L) {
                         refsDeathCheckOnce()
-                        delay(400)
-                        elapsed += 400
+                        // Первая секунда тишины — окно смерти/создания трека
+                        // (перелистывание лент): refs-опрос частый, чтобы
+                        // упредить первый сэмпл нового трека, дальше — экономно
+                        val step = if (elapsed < 1_200L) 150L else 400L
+                        delay(step)
+                        elapsed += step
                     }
                 }
                 finally {
@@ -138,6 +140,12 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
 
                 Timber.i("[SPL] onPlaybackConfigChanged: ${configs?.size ?: -1} players")
                 Timber.d("Playback config changed")
+                // Событие таймится в момент создания/гибели AudioTrack — раньше
+                // любого дампа. На Android 12+ поля конфигов sanitized (sid=0,
+                // uid=-1), но сам сигнал идеален: refs audioflinger, снятые
+                // сразу после него, содержат новый sid ещё до первого сэмпла —
+                // упреждающий mute успевает накрыть трек с нуля
+                refsDeathCheckOnce()
                 pollOnce(false)
             }
         }

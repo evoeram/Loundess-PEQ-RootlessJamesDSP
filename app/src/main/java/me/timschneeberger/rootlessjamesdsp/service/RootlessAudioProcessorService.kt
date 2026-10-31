@@ -117,6 +117,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 }
             }
             sessionManager.sessionDatabase.syncFromPlaybackConfigs(fastEntries)
+            Timber.d("[SPL] fast configs: ${fastEntries.size} entries [${fastEntries.joinToString(",") { "${it.first}/${it.second}" }}]")
 
             if (isUsbOutputConnected() && followUsbHardwareRate()) {
                 applicationScope.launch(Dispatchers.IO) {
@@ -1428,6 +1429,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             .setTransferMode(AudioTrack.MODE_STREAM)
             .setAudioAttributes(buildMediaAudioAttributes())
             .setBufferSizeInBytes(bufferSize)
+            .setSessionId(allocateOutputSessionId())
 
         // Low-latency: PERFORMANCE_MODE_LOW_LATENCY запрашивает fast audio path
         if (tuning.lowLatencyTrack) {
@@ -1450,6 +1452,27 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         }
 
         return track
+    }
+
+    /**
+     * Счётчик sid глобальный: выданный «как обычно» id может попасть в окно
+     * пула упреждающих mute (RootlessSessionDatabase) — тогдаmute пула, уже
+     * висящий на этой сессии, заглушает наш собственный выходной трек в момент
+     * его пересоздания (рестарт на смене частоты и т.п.) до перезапуска DSP.
+     * Пропускаем занятые прогнозом id — пул достроится выше счётчика.
+     */
+    private fun allocateOutputSessionId(): Int {
+        val database = sessionManager.sessionDatabase
+        var sid = audioManager.generateAudioSessionId()
+        var attempts = 0
+        while (sid != android.media.audiofx.AudioEffect.ERROR_BAD_VALUE &&
+            database.isPoolSid(sid) && attempts < 8
+        ) {
+            attempts++
+            Timber.i("Output session id $sid hits the mute pool window; skipping")
+            sid = audioManager.generateAudioSessionId()
+        }
+        return sid
     }
 
     @SuppressLint("MissingPermission")
