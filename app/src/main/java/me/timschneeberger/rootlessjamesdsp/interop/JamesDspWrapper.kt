@@ -11,6 +11,12 @@ object JamesDspWrapper {
     external fun free(self: JamesDspHandle)
     external fun isHandleValid(self: JamesDspHandle): Boolean
 
+    // Crash diagnostics (K11): installs the native signal recorder; the
+    // test hook is for the on-device acceptance only and is removed before
+    // release.
+    external fun initCrashGuard(path: String)
+    external fun testNativeCrash()
+
     // Benchmarking
     external fun getBenchmarkSize(): Int
     external fun runBenchmark(c0: DoubleArray, c1: DoubleArray)

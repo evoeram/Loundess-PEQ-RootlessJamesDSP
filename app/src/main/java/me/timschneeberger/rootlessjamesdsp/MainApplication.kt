@@ -136,6 +136,42 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
             Timber.e(ex)
         }
 
+        // Crash diagnostics (port fd-free of RootlessViPER4Android, report
+        // K11): record JVM exceptions next to the other diagnostics in
+        // filesDir, keep a durable rolling history (the one-shot copy can be
+        // deleted by the UI), and install the native signal recorder. The
+        // previous handler (Crashlytics where present) still runs after us.
+        run {
+            val prev = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { t, e ->
+                try {
+                    val trace = "thread=" + t.name + "\n" +
+                            android.util.Log.getStackTraceString(e)
+                    File(filesDir, "last_crash.txt").writeText(trace)
+                    val history = File(filesDir, "crash_history.txt")
+                    val stamp = java.text.SimpleDateFormat(
+                        "yyyy-MM-dd HH:mm:ss", java.util.Locale.ENGLISH
+                    ).format(java.util.Date())
+                    val previous = if (history.exists()) history.readText().takeLast(60000) else ""
+                    history.writeText(previous + "\n===== " + stamp + " (JVM) =====\n" + trace)
+                } catch (_: Exception) {}
+                prev?.uncaughtException(t, e)
+            }
+        }
+
+        try {
+            me.timschneeberger.rootlessjamesdsp.interop.JamesDspWrapper.initCrashGuard(filesDir.absolutePath)
+        } catch (t: Throwable) {
+            Timber.e(t)
+        }
+
+        // K11 acceptance hook, removed before release: with a marker file in
+        // filesDir a debug build crashes natively on purpose so the signal
+        // recorder can be verified on device.
+        if (BuildConfig.DEBUG && File(filesDir, ".test_native_crash").exists()) {
+            me.timschneeberger.rootlessjamesdsp.interop.JamesDspWrapper.testNativeCrash()
+        }
+
         Timber.i("====> Application starting up")
 
         val dumpFile = File(filesDir, "dump.txt")
