@@ -1,0 +1,19 @@
+K11 CrashGuard acceptance, MT2111 (OnePlus/MT2111_IND Android 14), rootlessFullDebug
+APK: JamesDSP-v1.6.22-65-rootless-full-arm64-v8a-debug.apk (post restore-and-return fix)
+
+-- trigger: files/.test_native_crash marker -> testNativeCrash() null deref in Application.onCreate
+-- native_crash.txt:
+signal=11 code=1 fault_addr=0x0
+pc=0x7bf688ced4 lr=0x7c7eac8274 sp=0x7fc0e31c00 x0=0xb400007c81512ba0
+7be69a0000-7be6b09000 r-xp 02c48000 fd:48 2138588                        /data/app/~~xg_d5zhBu9M_tknO6lFJaA==/me.timschneeberger.rootlessjamesdsp.debug-urDjBDN7LtXO5UIy_iNfEw==/base.apk
+   map lines: 39 (>=5 required)
+
+-- crash_history.txt durable copy:
+===== (native) =====
+
+-- logcat -b crash (root; OEM restricts shell read on this device), tombstone_21 written:
+--------- beginning of crash
+10-31 09:26:44.339 13727 13727 F libc    : Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 in tid 13727 (sjamesdsp.debug), pid 13727 (sjamesdsp.debug)
+
+-- marker removed -> clean relaunch, pid alive:
+   u0_a298 15605 ... S me.timschneeberger.rootlessjamesdsp.debug
