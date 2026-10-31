@@ -79,7 +79,9 @@ object ServiceNotificationHelper: KoinComponent {
     }
 
     fun createServiceNotification(context: Context, sessions: Array<IEffectSession>): Notification {
-        val apps = sessions.distinct().joinToString(", ") {
+        // Дедуп по имени: ленты Shorts/Reels на каждый свайп создают новый sid —
+        // без дедупа одно приложение повторялось в «Active apps» на каждую сессию
+        val apps = sessions.map {
             // Rootless uses UIDs primarily internally, while Root has a guaranteed package name
             if(isRootless()) {
                 context.getAppNameFromUid(it.uid)
@@ -90,7 +92,7 @@ object ServiceNotificationHelper: KoinComponent {
                     ?: context.getAppNameFromUid(it.uid)
                     ?: it.packageName as CharSequence
             }
-        }
+        }.distinct().joinToString(", ")
 
         // Rootless: if service active it is always processing audio
         val enabled = isRootless() || preferences.get<Boolean>(R.string.key_powered_on)

@@ -1605,6 +1605,13 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     }
 
     private fun applyActiveContentSampleRate(detectedRate: Int) {
+        // Пауза обнуляет «активный» контент: сброс в 0 перезапускал пайплайн на
+        // HAL-ставку, а возврат play — обратно на ставку контента (окно ~0.7s
+        // после нажатия) — слышимый провал звука после каждого resume. Ставка
+        // контента не может измениться, пока ничего не играет: держим последнюю
+        // известную до появления реально другого рейтинга
+        if (detectedRate == 0) return
+
         if (activeContentSampleRate != detectedRate) {
             Timber.i(
                 "Active content sample rate changed from " +

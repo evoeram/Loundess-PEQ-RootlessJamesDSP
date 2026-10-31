@@ -179,6 +179,16 @@ abstract class BaseSessionDatabase(protected val context: Context) {
                     Timber.i("[SPL] sid=$sid idle ${idleFor}ms; releasing anchored session")
                     removeSession(sid)
                 }
+                else if (isUidLiveOnAnotherSid(sessionList[sid]?.uid, sid, rows)) {
+                    // Ленты Shorts/Reels создают плеер (и новый sid) на каждый
+                    // свайп: брошенный sid висит с якорем и mute-эффектом полные
+                    // 5 минут и копится в уведомлении «Active apps». Живой трек
+                    // того же uid на другом sid означает, что этот поток покинут
+                    // навсегда; возврат на старый sid накрывается fast-path по
+                    // AudioPlaybackCallback
+                    Timber.i("[SPL] sid=$sid superseded by live player of uid ${sessionList[sid]?.uid}; releasing anchored session")
+                    removeSession(sid)
+                }
                 return@forEach
             }
             if (preAttachedSids.contains(sid)) return@forEach
@@ -194,6 +204,22 @@ abstract class BaseSessionDatabase(protected val context: Context) {
                 preAttachedSids.add(sid)
                 fastAttachedAt[sid] = SystemClock.elapsedRealtime()
             }
+        }
+    }
+
+    /**
+     * Живой (чужой pid) трек того же uid на другом sid: приложение переехало
+     * на новый поток, якорь на брошенном sid больше не нужен.
+     */
+    private fun isUidLiveOnAnotherSid(
+        uid: Int?,
+        selfSid: Int,
+        rows: List<AudioFlingerServiceDumpUtils.Dataset>
+    ): Boolean {
+        if (uid == null) return false
+        return sessionList.any { (otherSid, session) ->
+            otherSid != selfSid && session.uid == uid &&
+                rows.any { it.sid == otherSid && it.pid != Process.myPid() }
         }
     }
 

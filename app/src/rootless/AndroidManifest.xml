@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Android 11+ package visibility: без этого разрешения uid произвольного
+         приложения не разворачивается в имя пакета, и уведомление «Audio
+         processing active» показывает сырой uid («10337») вместо названия
+         приложения; списки блокировки тоже остаются пустыми. Сборка
+         распространяется вне Play, поэтому политика Google на неё не
+         действует (root/fdroid/plugin flavours уже несут это разрешение). -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+</manifest>

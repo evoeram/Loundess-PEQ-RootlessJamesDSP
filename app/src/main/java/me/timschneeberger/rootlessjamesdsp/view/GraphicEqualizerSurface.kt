@@ -132,7 +132,11 @@ class GraphicEqualizerSurface(context: Context?, attrs: AttributeSet?) : View(co
             val tangents = pchipTangents(logFreqs, gains)
             for (i in displayFreq.indices) {
                 val x = precomputeCurveXAxis[i] * mWidth
-                y = projectY(pchipEval(logFreqs, gains, tangents, displayFreq[i]).toFloat()) * mHeight
+                // pchipEval работает в log-частотном домене: узлы хранятся как ln(f).
+                // Передача частоты в герцах (20..20000 > ln любого узла) уводила все
+                // сэмплы за правый край сетки — кривая вырождалась в прямую на gain
+                // последнего узла
+                y = projectY(pchipEval(logFreqs, gains, tangents, ln(displayFreq[i])).toFloat()) * mHeight
                 if (i == 0)
                     freqResponse.moveTo(x, y)
                 else
