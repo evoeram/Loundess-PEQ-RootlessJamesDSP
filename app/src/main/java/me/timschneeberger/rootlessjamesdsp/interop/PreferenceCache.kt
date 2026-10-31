@@ -54,7 +54,7 @@ class PreferenceCache(val context: Context) {
             context: Context,
             namespace: String,
         ): SharedPreferences {
-            return context.getSharedPreferences(namespace, Context.MODE_MULTI_PROCESS)
+            return context.getSharedPreferences(namespace, Context.MODE_PRIVATE)
         }
 
         @Suppress("UNCHECKED_CAST")

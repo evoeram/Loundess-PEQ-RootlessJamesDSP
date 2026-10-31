@@ -400,6 +400,18 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         // Сервис уничтожен — DSP больше не обрабатывает звук
         preferences.set(R.string.key_powered_on, false)
 
+        // Release the projection FIRST (port b387a23, report K12-adjacent
+        // teardown order): if anything below fails, the capture must still be
+        // handed back or every app on the device stays silent until this
+        // process is killed.
+        // Native code holds an internal callback that retains MediaProjection → ContextImpl → Service.
+        // unregisterCallback removes our callback; stop() releases the native projection.
+        // Setting to null allows GC to collect the Service once native releases its reference.
+        mediaProjection?.unregisterCallback(projectionCallback)
+        mediaProjection?.stop()
+        mediaProjection = null
+        mediaProjectionStartIntent = null
+
         // Stop recording and release engine
         stopRecording()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -424,15 +436,6 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         // Unregister receivers and release resources
         unregisterLocalReceiver(broadcastReceiver)
-
-        // Stop and release MediaProjection to prevent memory leak.
-        // Native code holds an internal callback that retains MediaProjection → ContextImpl → Service.
-        // unregisterCallback removes our callback; stop() releases the native projection.
-        // Setting to null allows GC to collect the Service once native releases its reference.
-        mediaProjection?.unregisterCallback(projectionCallback)
-        mediaProjection?.stop()
-        mediaProjection = null
-        mediaProjectionStartIntent = null
 
         sessionManager.sessionPolicyDatabase.unregisterOnRestrictedSessionChangeListener(onSessionPolicyChangeListener)
         sessionManager.sessionDatabase.unregisterOnSessionChangeListener(onSessionChangeListener)

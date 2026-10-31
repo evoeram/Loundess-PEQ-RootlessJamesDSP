@@ -815,7 +815,7 @@ class MainActivity : BaseActivity() {
                         }
                         else if (namespace != null && key != null && keyEnable != null)
                             @Suppress("DEPRECATION")
-                            getSharedPreferences(namespace, MODE_MULTI_PROCESS)
+                            getSharedPreferences(namespace, MODE_PRIVATE)
                                 .edit()
                                 .putBoolean(getString(keyEnable), true)
                                 .putString(getString(key), file.absolutePath)

@@ -67,7 +67,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
                 val enabled = preferenceManager.sharedPreferences
                     ?.getBoolean(key, false) ?: false
                 val squigPrefs = context?.getSharedPreferences(
-                    Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS
+                    Constants.PREF_SQUIG, Context.MODE_PRIVATE
                 )
                 squigPrefs?.edit()
                     ?.putBoolean(
@@ -115,7 +115,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
         val args = requireArguments()
         preferenceManager.sharedPreferencesName = args.getString(BUNDLE_PREF_NAME)
         @Suppress("DEPRECATION")
-        preferenceManager.sharedPreferencesMode = Context.MODE_MULTI_PROCESS
+        preferenceManager.sharedPreferencesMode = Context.MODE_PRIVATE
         addPreferencesFromResource(args.getInt(BUNDLE_XML_RES))
 
         requireContext().registerLocalReceiver(receiver, IntentFilter().apply {

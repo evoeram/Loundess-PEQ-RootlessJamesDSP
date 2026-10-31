@@ -179,7 +179,7 @@ class SquigLiveFragment : Fragment() {
 
     /** SharedPreferences namespace for Squig Live plugin state. */
     private val squigPrefs: SharedPreferences?
-        get() = context?.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
+        get() = context?.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_PRIVATE)
 
     /** Saved instance/target/phone names restored from prefs; applied once the
      *  async spinner loaders finish populating their adapters. */
@@ -1197,7 +1197,7 @@ class SquigLiveFragment : Fragment() {
         // Also sync key_squig_enable so the card switch turns off.
         val ctx = context ?: return
         try {
-            val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
+            val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_PRIVATE)
             squigPref.edit()
                 .putBoolean(getString(R.string.key_squig_peq_enable), false)
                 .putBoolean(getString(R.string.key_squig_enable), false)
@@ -1318,7 +1318,7 @@ class SquigLiveFragment : Fragment() {
         try {
             // preamp: workingPreamp если был Live EQ, иначе autoEqPreamp
             val preamp = workingPreamp
-            val prefs = requireContext().getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
+            val prefs = requireContext().getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_PRIVATE)
             prefs.edit()
                 .putString(getString(R.string.key_squig_peq_bands), bands.serialize())
                 .putFloat(getString(R.string.key_squig_peq_preamp), preamp.toFloat())
@@ -1682,7 +1682,7 @@ class SquigLiveFragment : Fragment() {
             val usePreamp = preamp ?: workingPreamp
             val effectiveBands = if (enable && useBands.isNotEmpty()) useBands else ParametricEqBandList()
             val effectivePreamp = if (enable) usePreamp else 0.0
-            val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
+            val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_PRIVATE)
             // Sync both keys: key_squig_enable (card switch) and key_squig_peq_enable (engine)
             val effectiveEnable = enable && effectiveBands.isNotEmpty()
             squigPref.edit()

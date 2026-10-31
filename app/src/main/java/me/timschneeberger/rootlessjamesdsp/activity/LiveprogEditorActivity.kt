@@ -235,7 +235,7 @@ class LiveprogEditorActivity : BaseActivity() {
         path ?: return
 
         @Suppress("DEPRECATION")
-        val liveprog = getSharedPreferences(Constants.PREF_LIVEPROG, Context.MODE_MULTI_PROCESS)
+        val liveprog = getSharedPreferences(Constants.PREF_LIVEPROG, Context.MODE_PRIVATE)
         var key = getString(R.string.key_liveprog_enable)
         // Make sure liveprog is enabled
         if(!liveprog.getBoolean(key, false)) {

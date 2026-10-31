@@ -42,7 +42,7 @@ class SquigPreviewFragment : Fragment(), SharedPreferences.OnSharedPreferenceCha
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         squigPrefs = requireContext()
-            .getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
+            .getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_PRIVATE)
         squigPrefs?.registerOnSharedPreferenceChangeListener(this)
         updateGraph()
     }
