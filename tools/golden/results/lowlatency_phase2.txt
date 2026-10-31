@@ -1,0 +1,11 @@
+Phase 2 lock contract — Low-Latency Mode on-device soak, MT2111, 2026-10-31
+Engine: sub 25856dc (K6/K2 locking contract, ports 88744ab/bb80913/1f5151f/d3a15fb)
+        + 8fa277e (spectral interpolator overread); app parent 758d1d9 lineage
+
+Soak: Low-Latency processing mode, ~15 min of music playback with live settings
+changes (effect/preset toggles, app-list flips that rebuild the recorder on the
+fly — the crossfeed/arbEq/mEQ self-locking entry points exercised repeatedly).
+
+PASS — no deadlocks, no ANRs, no audio dropouts or service restarts; the lock
+contract holds in the small-block capture loop on device, complementing the
+300 s ASAN host stress (results/stress_asan_300s.txt).

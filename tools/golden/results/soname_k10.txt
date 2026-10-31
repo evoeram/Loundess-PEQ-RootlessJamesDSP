@@ -1,0 +1,10 @@
+K10 soname acceptance, MT2111 (OnePlus/MT2111_IND Android 14), 2026-10-31
+Parent commit 6a62bb6 (port 8ff9e05, report K10), NO_SONAME + -Wl,-soname
+
+-- build-time re-verification (NDK r27 llvm-readelf, arm64-v8a, this machine):
+Debug build:         SONAME = libjamesdsp.so
+RelWithDebInfo (x2): SONAME = libjamesdsp.so   (both CMake target variants)
+
+-- on-device (root flow, magisk module):
+JamesDSP effect registers and processes; dumpsys media.audio_fx shows it
+backed by libjamesdsp.so. Operator-verified PASS.
