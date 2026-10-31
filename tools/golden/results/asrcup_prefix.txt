@@ -1,0 +1,21 @@
+  init      96000 Hz  fs 48000  ASRC 1  guard bytes changed      0  RMS L 0.3535 R 0.00000  ok
+  init      48000 Hz  fs 48000  ASRC 0  guard bytes changed      0  RMS L 0.3534 R 0.00000  ok
+  init      44100 Hz  fs 44100  ASRC 0  guard bytes changed      0  RMS L 0.3536 R 0.00000  ok
+  init      32000 Hz  fs 48000  ASRC 1  guard bytes changed      0  RMS L 0.3536 R 0.28876  FAIL
+  init      24000 Hz  fs 48000  ASRC 1  guard bytes changed      0  RMS L 0.3536 R 0.35355  FAIL
+  init      22050 Hz  fs 44100  ASRC 1  guard bytes changed      0  RMS L 0.3535 R 0.35347  FAIL
+  init      16000 Hz  fs 48000  ASRC 1  guard bytes changed      0  RMS L 0.3477 R 0.34460  FAIL
+  init      12000 Hz  fs 48000  ASRC 1  guard bytes changed  16384  RMS L 0.3369 R 0.30244  FAIL
+  init      11025 Hz  fs 44100  ASRC 1  guard bytes changed  16384  RMS L 0.3343 R 0.30075  FAIL
+  init       8000 Hz  fs 48000  ASRC 1  guard bytes changed  49152  RMS L 0.3483 R 0.31922  FAIL
+  set rate  96000 Hz  fs 48000  ASRC 1  guard bytes changed      0  RMS L 0.3536 R 0.00000  ok
+  set rate  48000 Hz  fs 48000  ASRC 0  guard bytes changed      0  RMS L 0.3534 R 0.00000  ok
+  set rate  44100 Hz  fs 44100  ASRC 0  guard bytes changed      0  RMS L 0.3536 R 0.00000  ok
+  set rate  32000 Hz  fs 48000  ASRC 1  guard bytes changed      0  RMS L 0.3536 R 0.28878  FAIL
+  set rate  24000 Hz  fs 48000  ASRC 1  guard bytes changed      0  RMS L 0.3536 R 0.35357  FAIL
+  set rate  22050 Hz  fs 44100  ASRC 1  guard bytes changed      0  RMS L 0.3535 R 0.35349  FAIL
+  set rate  16000 Hz  fs 48000  ASRC 1  guard bytes changed      0  RMS L 0.3476 R 0.34461  FAIL
+  set rate  12000 Hz  fs 48000  ASRC 1  guard bytes changed  16384  RMS L 0.3329 R 0.29986  FAIL
+  set rate  11025 Hz  fs 44100  ASRC 1  guard bytes changed  16384  RMS L 0.3305 R 0.29824  FAIL
+  set rate   8000 Hz  fs 48000  ASRC 1  guard bytes changed  49152  RMS L 0.3481 R 0.31924  FAIL
+FAIL (14)

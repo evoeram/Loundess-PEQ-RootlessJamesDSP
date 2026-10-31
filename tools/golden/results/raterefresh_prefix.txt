@@ -1,0 +1,7 @@
+  48000 -> 44100  DDC b0 2.10 (want 1.10)  FAIL
+  48000 -> 44100  compander smoothing 0.023951 (want 0.026041)  FAIL
+  48000 -> 44100  widening envelope alpha 0.011962 (want 0.013013)  FAIL
+  44100 -> 48000  DDC b0 1.10 (want 2.10)  FAIL
+  44100 -> 48000  compander smoothing 0.026041 (want 0.023951)  FAIL
+  44100 -> 48000  widening envelope alpha 0.013013 (want 0.011962)  FAIL
+FAIL (6)

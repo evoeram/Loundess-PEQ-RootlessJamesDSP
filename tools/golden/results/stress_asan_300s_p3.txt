@@ -1,0 +1,8 @@
+ASAN stress, golden -2 300, MT2111, phase 3 (post P3.1/P3.4)
+wall ~14.7 min (15000 settings ticks, 20 ms apart, plus per-tick DSP rebuilds)
+
+[stress] init engine
+[stress] hammering settings for 300 s
+HASH_L b1c9881c
+HASH_R fd895674
+[stress] clean exit

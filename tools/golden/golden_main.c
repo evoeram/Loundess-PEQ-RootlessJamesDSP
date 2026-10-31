@@ -394,6 +394,17 @@ static int asrcGuardRun(void)
 
 int main(int argc, char **argv)
 {
+	if (argc >= 2 && atoi(argv[1]) == -4)
+	{
+		return asrcGuardRun();
+	}
+	if (argc >= 2 && atoi(argv[1]) == -3)
+	{
+		JamesDSPGlobalMemoryAllocation();
+		int rc = rateRefreshRun();
+		JamesDSPGlobalMemoryDeallocation();
+		return rc;
+	}
 	if (argc < 3)
 	{
 		printf("usage: golden <crossfeedMode> <out.wav> [ddcFile]\n"
@@ -402,17 +413,6 @@ int main(int argc, char **argv)
 		       "       golden -3\n"
 		       "       golden -4\n");
 		return 1;
-	}
-	if (atoi(argv[1]) == -4)
-	{
-		return asrcGuardRun();
-	}
-	if (atoi(argv[1]) == -3)
-	{
-		JamesDSPGlobalMemoryAllocation();
-		int rc = rateRefreshRun();
-		JamesDSPGlobalMemoryDeallocation();
-		return rc;
 	}
 	if (atoi(argv[1]) == -2)
 	{
