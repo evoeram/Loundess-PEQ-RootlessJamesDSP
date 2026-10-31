@@ -1,0 +1,46 @@
+Phase 5 (K12) acceptance, MT2111 (OnePlus/MT2111_IND Android 14), rootlessFullDebug
+Build: parent 758d1d9 (v1.6.22/65-debug lineage; post f531829/9ce1e53 K12 ports + 758d1d9 default/log follow-up)
+Manual acceptance 2026-10-31, operator-run; logcat tag RootlessAudioProcessorService; processing mode Standard
+
+P5.1 (K12, port d69429b/8ff9e05/b980c22) — app-list policy + silence gate:
+
+A. Default exclude mode (regression)
+   PASS — capture built on the Excluded UIDs branch (own uid + blocklist subtracted),
+   playback from the test player processed as before the port.
+
+B. Allowlist mode ON, list empty = "not configured"
+   PASS — pref flip logged "App list allowlist mode set to true"; recorder rebuilt live
+   ("Recreating recorder without stopping thread..." / "Recorder recreated"), service
+   kept running; empty list fell back to the Excluded UIDs branch; music from any app
+   still processed — no device-wide silence.
+
+C. Allowlist mode with an app selected
+   PASS — rebuild logged "buildAudioRecord: Allowed UIDs only: <uid>"; the listed player
+   was captured and processed, the unlisted player bypassed DSP (plain device output).
+
+D. Switch back to exclude mode
+   PASS — recorder rebuilt without a service restart; both players processed again;
+   log back on the Excluded UIDs branch.
+
+E. Silence gate, suspend-on-idle ON (player paused holding its session)
+   PASS — after >20 s of digital silence, once:
+   "Silence gate: DSP chain and output stopped after 20 s of digital silence".
+   On resume playback: "Silence gate: audio resumed, output restarted instantly" —
+   audio continued from the first samples, nothing lost at the resume point
+   (capture never stopped while gated).
+
+F. Silence gate negative, suspend-on-idle OFF
+   PASS — same paused-player scenario >20 s produced no gate log lines;
+   DSP chain kept running.
+
+P5.2 (02ef76b/b387a23) — MODE_PRIVATE + projection-first teardown
+   PASS — service stop from the UI tears the capture down cleanly: no leftover capture,
+   no device-wide silence after stop; other apps' audio unaffected.
+   (MODE_PRIVATE re-parse change has no user-visible behavior by itself.)
+
+P5.3 (9feab0a) — NOT_APPLIC as planned: no K15 effects in the target engine,
+   nothing resident to measure; alloc-on-enable idea deferred to K15.
+
+Result: Phase 5 accepted on MT2111. Behavioral surface matches the ported
+source semantics; the only intended deltas vs pre-port: allowlist include-mode
+capture and the 20 s digital-silence gate under the existing suspend-on-idle opt-in.
