@@ -226,7 +226,9 @@ Files:
   app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/dbb.c
   app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/vdc.c
   app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/crossfeed.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/Effects/stereoEnhancement.c
   app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/jdspController.c
+  app/src/main/cpp/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/jdsp_header.h
 
 The decimator phase reset (pos >= factor wrap and phase/buffer reset on
 sample-rate change) is ported from RootlessViPER4Android,
@@ -252,6 +254,17 @@ path reads the crossfeed mode once per block (instead of per sample, which
 could index bs2b[] - two entries - with values 2 to 5 and write filter
 state over the following DDC and convolver fields), ported from the same
 repository.
+
+The rate-following redesigns in JamesDSPSetSampleRate are ported from the
+same repository. The DDC re-selects its per-rate coefficient set, the
+compander re-initialises its smoothing time constants, and the stereo
+widening re-runs its band-split/envelope design unconditionally on a rate
+change (through a lock-free StereoEnhancementDesign, since the engine lock
+is held there and is not recursive). Without them every 44.1 kHz session
+kept filtering with designs made at the engine's initial 48 kHz: the DDC
+parser returns early on unchanged text, so a loaded .vdc file never
+re-picked its coefficients, and the compander and widening cached their
+rate-derived constants until their settings happened to change.
 
 Engine file provenance (U-5)
 ----------------------------

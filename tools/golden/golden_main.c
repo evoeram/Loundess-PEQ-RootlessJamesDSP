@@ -220,6 +220,72 @@ static int stressRun(int seconds)
 	printf("[stress] clean exit\n");
 	return 0;
 }
+// ---- rate-refresh mode (-3): do DDC, compander and stereo widening --------
+// follow a 44.1 / 48 kHz move? (docs/PLAN.md Phase 3, report K8; port of
+// source tools/raterefresh_harness.c + tools/sterenh_harness.c). Set both up
+// at one rate with the real engine, move with the real JamesDSPSetSampleRate,
+// resend the same settings the way the app does after ACTION_SAMPLE_RATE_UPDATED
+// (P3.3) - the DDC text matches, so its parser returns early - and they must
+// equal an engine set up at the new rate to begin with.
+static const char rateDdc[] =
+	"# test\nSR_44100:1.10,0.11,0.12,0.13,0.14,1.20,0.21,0.22,0.23,0.24\n"
+	"SR_48000:2.10,0.31,0.32,0.33,0.34,2.20,0.41,0.42,0.43,0.44\n";
+static double rateFreqs[NUMPTS_DRS] = { 95, 200, 400, 800, 1600, 3400, 7500 };
+static double rateGains[NUMPTS_DRS] = { 0.6, -0.4, 0.3, -0.6, 0.5, -0.2, 0.4 };
+
+static JamesDSPLib *rateMake(float rate)
+{
+	JamesDSPLib *d = (JamesDSPLib *)calloc(1, sizeof(JamesDSPLib));
+	JamesDSPInit(d, 128, rate);
+	DDCStringParser(d, strdup(rateDdc));
+	DDCEnable(d, 1);
+	CompressorSetParam(d, 0.22f, 2, 0, 0);
+	CompressorSetGain(d, rateFreqs, rateGains, 1);
+	CompressorEnable(d, 1);
+	StereoEnhancementSetParam(d, 0.6f);
+	StereoEnhancementEnable(d);
+	return d;
+}
+// what the app does next after the rate arrives: push the same settings again
+static void rateResend(JamesDSPLib *d)
+{
+	DDCStringParser(d, strdup(rateDdc));
+	DDCEnable(d, 1);
+	CompressorSetParam(d, 0.22f, 2, 0, 0);
+	CompressorSetGain(d, rateFreqs, rateGains, 1);
+	CompressorEnable(d, 1);
+	StereoEnhancementSetParam(d, 0.6f);
+}
+static int rateRefreshRun(void)
+{
+	int failures = 0;
+	float dirs[2][2] = { { 48000.0f, 44100.0f }, { 44100.0f, 48000.0f } };
+	for (int k = 0; k < 2; k++)
+	{
+		const float from = dirs[k][0], to = dirs[k][1];
+		JamesDSPLib *moved = rateMake(from), *ref = rateMake(to);
+		JamesDSPSetSampleRate(moved, to, 0);
+		rateResend(moved);
+		const double b0 = moved->vdcFl.sosPointer[0].b0, wantB0 = ref->vdcFl.sosPointer[0].b0;
+		const int ddcOk = b0 == wantB0 && moved->ddcEnabled == ref->ddcEnabled;
+		printf("  %5.0f -> %5.0f  DDC b0 %.2f (want %.2f)  %s\n", from, to, b0, wantB0, ddcOk ? "ok" : "FAIL");
+		const int compOk = moved->comp.fgt_fac == ref->comp.fgt_fac && moved->comp.spectralRate == ref->comp.spectralRate;
+		printf("  %5.0f -> %5.0f  compander smoothing %.6f (want %.6f)  %s\n", from, to,
+			moved->comp.fgt_fac, ref->comp.fgt_fac, compOk ? "ok" : "FAIL");
+		int stereoOk = 1;
+		for (int i = 0; i < 5; i++)
+			stereoOk &= moved->sterEnh.emaAlpha[i] == ref->sterEnh.emaAlpha[i];
+		printf("  %5.0f -> %5.0f  widening envelope alpha %.6f (want %.6f)  %s\n", from, to,
+			moved->sterEnh.emaAlpha[0], ref->sterEnh.emaAlpha[0], stereoOk ? "ok" : "FAIL");
+		failures += !ddcOk + !compOk + !stereoOk;
+		JamesDSPFree(moved);
+		free(moved);
+		JamesDSPFree(ref);
+		free(ref);
+	}
+	printf(failures ? "FAIL (%d)\n" : "PASS\n", failures);
+	return failures != 0;
+}
 // -----------------------------------------------------------------------------
 
 int main(int argc, char **argv)
@@ -228,8 +294,16 @@ int main(int argc, char **argv)
 	{
 		printf("usage: golden <crossfeedMode> <out.wav> [ddcFile]\n"
 		       "       golden -1 <file.vdc> [more.vdc ...]\n"
-		       "       golden -2 <seconds>\n");
+		       "       golden -2 <seconds>\n"
+		       "       golden -3\n");
 		return 1;
+	}
+	if (atoi(argv[1]) == -3)
+	{
+		JamesDSPGlobalMemoryAllocation();
+		int rc = rateRefreshRun();
+		JamesDSPGlobalMemoryDeallocation();
+		return rc;
 	}
 	if (atoi(argv[1]) == -2)
 	{
