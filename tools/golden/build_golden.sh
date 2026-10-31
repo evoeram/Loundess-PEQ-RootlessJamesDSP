@@ -122,15 +122,20 @@ for s in $SRCS; do FULL_LIST="$FULL_LIST $ENG/$s"; done
 
 SANITIZE=""
 if [ -n "$GOLDEN_ASAN" ]; then SANITIZE="-fsanitize=address"; fi
+# Mode -4 guards every large scratch allocation with 0xA5 bytes behind it;
+# ASAN builds keep the interceptor instead (the two do not mix).
+WRAP="-Wl,--wrap=malloc"
+WRAPDEF="-DGOLDEN_MALLOC_WRAP"
+if [ -n "$GOLDEN_ASAN" ]; then WRAP=""; WRAPDEF=""; fi
 
 mkdir -p "$REPO/tools/golden/build"
 "$CC" -O2 -std=gnu11 \
 	-ffunction-sections -fdata-sections \
 	-Wno-incompatible-pointer-types -Wno-implicit-int -Wno-implicit-function-declaration \
-	-DDEBUG $SANITIZE \
+	-DDEBUG $SANITIZE $WRAPDEF \
 	-I"$ENG" -I"$ENG/jdsp" \
 	"$REPO/tools/golden/golden_main.c" $FULL_LIST \
-	-lm -llog \
+	-lm -llog $WRAP \
 	-o "$REPO/tools/golden/build/golden_arm64"
 if [ -n "$GOLDEN_ASAN" ]; then
 	CLANG_LIB_DIR="$(dirname "$CC")/../lib/clang"

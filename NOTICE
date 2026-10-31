@@ -266,6 +266,13 @@ parser returns early on unchanged text, so a loaded .vdc file never
 re-picked its coefficients, and the compander and widening cached their
 rate-derived constants until their settings happened to change.
 
+The ASRC scratch sizing (JamesDSPASRCWorkLength/Assign, feeding a
+resampled block longer than the effects' block size through the chain in
+pieces) is ported from the same repository. The scratch layout assumed
+the resampler always shrinks the block, which only holds above 48 kHz;
+below 44.1 kHz the block grows, the channels overlapped in the scratch
+and at 12 kHz and under the block ran off the end of the allocation.
+
 Engine file provenance (U-5)
 ----------------------------
 Files:

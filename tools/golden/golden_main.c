@@ -286,6 +286,110 @@ static int rateRefreshRun(void)
 	printf(failures ? "FAIL (%d)\n" : "PASS\n", failures);
 	return failures != 0;
 }
+// ---- ASRC up-sampling guard mode (-4): stream rates below 44.1 kHz grow --
+// the resampled block past the scratch areas, which used to overlap the
+// channels and run off the allocation (docs/PLAN.md Phase 3; port of source
+// tools/asrcup_harness.c). Every allocation of 32 KB or more gets a 64 KB
+// 0xA5 guard behind it (-Wl,--wrap=malloc). Each rate is fed 12 blocks of
+// 4096 frames, left a 300 Hz sine at 0.5, right silence, all effects off,
+// set up both by JamesDSPInit (the HAL's way) and by a 48 kHz -> rate move
+// with JamesDSPSetSampleRate (the app engine's way). The scratch guard must
+// be intact, the right channel silent, the left still the sine.
+#define ASRC_N 4096
+#define ASRC_BIG 32768
+#define ASRC_GUARD 65536
+#define ASRC_MAXREC 8192
+static struct { unsigned char *p; size_t n; } asrcRec[ASRC_MAXREC];
+static int asrcNrec = 0;
+
+// GOLDEN_MALLOC_WRAP is set by build_golden.sh only together with
+// -Wl,--wrap=malloc; without the wrap there is no __real_malloc to call.
+#ifdef GOLDEN_MALLOC_WRAP
+void *__real_malloc(size_t);
+#else
+#define __real_malloc malloc
+#endif
+void *__wrap_malloc(size_t n)
+{
+	if (n < ASRC_BIG || asrcNrec >= ASRC_MAXREC)
+		return __real_malloc(n);
+	unsigned char *p = (unsigned char *)__real_malloc(n + ASRC_GUARD);
+	if (!p)
+		return p;
+	memset(p + n, 0xA5, ASRC_GUARD);
+	asrcRec[asrcNrec].p = p;
+	asrcRec[asrcNrec].n = n;
+	asrcNrec++;
+	return p;
+}
+
+static int asrcFailures = 0;
+static void asrcRun(float rate, int viaSetRate)
+{
+	static float x[ASRC_N * 2], y[ASRC_N * 2];
+	JamesDSPLib *lib = (JamesDSPLib *)calloc(1, sizeof(JamesDSPLib));
+	if (viaSetRate)
+	{
+		// the app engine's way: made at 48 kHz with a small block, then moved,
+		// so the layout comes from JamesDSPSetSampleRate and then
+		// JamesDSPReallocateBlock on the first full-size block
+		JamesDSPInit(lib, 128, 48000.f);
+		JamesDSPSetSampleRate(lib, rate, 0);
+	}
+	else
+		JamesDSPInit(lib, ASRC_N, rate);
+	double rmsL = 0, rmsR = 0, ph = 0, w = 2.0 * M_PI * 300.0 / rate;
+	int cnt = 0;
+	for (int b = 0; b < 12; b++)
+	{
+		for (int i = 0; i < ASRC_N; i++)
+		{
+			x[2 * i] = 0.5f * (float)sin(ph);
+			x[2 * i + 1] = 0.0f;
+			ph += w;
+		}
+		lib->processFloatMultiplexd(lib, x, y, ASRC_N);
+		if (b >= 4)
+			for (int i = 0; i < ASRC_N; i++)
+			{
+				rmsL += y[2 * i] * (double)y[2 * i];
+				rmsR += y[2 * i + 1] * (double)y[2 * i + 1];
+				cnt++;
+			}
+	}
+	rmsL = sqrt(rmsL / cnt);
+	rmsR = sqrt(rmsR / cnt);
+	long changed = -1;
+	for (int i = 0; i < asrcNrec; i++)
+		if (asrcRec[i].p == (unsigned char *)lib->tmpBuffer[0])
+		{
+			changed = 0;
+			for (long k = 0; k < ASRC_GUARD; k++)
+				changed += asrcRec[i].p[asrcRec[i].n + k] != 0xA5;
+		}
+	// an unguarded scratch block (under 32 KB) is only possible without the ASRC
+	if (changed < 0 && lib->enableASRC)
+		changed = 1 << 30;
+	if (changed < 0)
+		changed = 0;
+	int ok = changed == 0 && rmsR < 1e-3 && rmsL > 0.3 && rmsL < 0.4;
+	printf("  %s %6.0f Hz  fs %5.0f  ASRC %d  guard bytes changed %6ld  RMS L %.4f R %.5f  %s\n",
+		viaSetRate ? "set rate" : "init    ", rate, lib->fs, lib->enableASRC, changed, rmsL, rmsR, ok ? "ok" : "FAIL");
+	if (!ok)
+		asrcFailures++;
+}
+static int asrcGuardRun(void)
+{
+	setvbuf(stdout, NULL, _IONBF, 0);
+	JamesDSPGlobalMemoryAllocation();
+	const float rates[] = { 96000.f, 48000.f, 44100.f, 32000.f, 24000.f, 22050.f, 16000.f, 12000.f, 11025.f, 8000.f };
+	for (int i = 0; i < (int)(sizeof(rates) / sizeof(rates[0])); i++)
+		asrcRun(rates[i], 0);
+	for (int i = 0; i < (int)(sizeof(rates) / sizeof(rates[0])); i++)
+		asrcRun(rates[i], 1);
+	printf(asrcFailures ? "FAIL (%d)\n" : "PASS\n", asrcFailures);
+	return asrcFailures != 0;
+}
 // -----------------------------------------------------------------------------
 
 int main(int argc, char **argv)
@@ -295,8 +399,13 @@ int main(int argc, char **argv)
 		printf("usage: golden <crossfeedMode> <out.wav> [ddcFile]\n"
 		       "       golden -1 <file.vdc> [more.vdc ...]\n"
 		       "       golden -2 <seconds>\n"
-		       "       golden -3\n");
+		       "       golden -3\n"
+		       "       golden -4\n");
 		return 1;
+	}
+	if (atoi(argv[1]) == -4)
+	{
+		return asrcGuardRun();
 	}
 	if (atoi(argv[1]) == -3)
 	{
