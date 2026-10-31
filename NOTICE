@@ -328,3 +328,23 @@ this repository.
 
 This notice is shipped inside the Magisk module zip as NOTICE, next to the
 generated sepolicy.rule.
+
+Crash diagnostics (K11)
+-----------------------
+Files:
+  app/src/main/cpp/libjamesdsp-wrapper/CrashGuard.cpp
+
+The native signal recorder (sigaction on SIGSEGV/SIGBUS/SIGFPE/SIGILL/
+SIGABRT, dumping the fault context - pc/lr/sp/x0 on arm64 - and the
+jamesdsp lines of /proc/self/maps next to the app's other diagnostics,
+then re-raising so the platform crash pipeline still sees the fault) is
+ported from RootlessViPER4Android,
+https://github.com/alienware377/RootlessViPER4Android, which is itself
+distributed under the GNU General Public License v3.0. The JVM-side
+UncaughtExceptionHandler and the durable crash_history.txt it appends to
+follow the same source.
+
+Copyright (c) alienware377 and contributors
+
+This port remains under the GNU General Public License v3.0, like the rest of
+this repository.
