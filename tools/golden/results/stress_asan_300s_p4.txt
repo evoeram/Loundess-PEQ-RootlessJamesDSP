@@ -1,0 +1,8 @@
+ASAN stress, golden -2 300, MT2111, phase 4 (post K9 guards)
+wall ~13.3 min (15000 settings ticks, 20 ms apart, plus per-tick DSP rebuilds)
+
+[stress] init engine
+[stress] hammering settings for 300 s
+HASH_L a00d064a
+HASH_R 2eee3804
+[stress] clean exit

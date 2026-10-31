@@ -1,0 +1,20 @@
+[golden] init engine
+[golden] process 441000 frames, block 1024
+HASH_L 62f01cca
+HASH_R 4bbcb766
+[golden] wrote /data/local/tmp/golden/golden_a.wav
+[golden] init engine
+[golden] process 441000 frames, block 1024
+HASH_L 55124d8a
+HASH_R 926282c2
+[golden] wrote /data/local/tmp/golden/golden_b.wav
+[golden] init engine
+[golden] process 441000 frames, block 1024
+HASH_L 32db303c
+HASH_R 2e485d25
+[golden] wrote /data/local/tmp/golden/golden_a_notube.wav
+[golden] init engine
+[golden] process 441000 frames, block 1024
+HASH_L 65cccefa
+HASH_R 7bdc73f1
+[golden] wrote /data/local/tmp/golden/golden_b_notube.wav
