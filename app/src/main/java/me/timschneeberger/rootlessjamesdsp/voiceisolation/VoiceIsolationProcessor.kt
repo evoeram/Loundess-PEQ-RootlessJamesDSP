@@ -2,6 +2,9 @@ package me.timschneeberger.rootlessjamesdsp.voiceisolation
 
 import android.content.Context
 import timber.log.Timber
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.log10
 
 /**
@@ -24,7 +27,7 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
         set(value) {
             if (value != field) {
                 field = value
-                if (value) pipeline?.reset()
+                if (value) synchronized(this) { pipeline?.reset() }
             }
         }
 
@@ -80,11 +83,14 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
         }
     }
 
+    // The lock serialises processing against configure()/close(): without it a model switch could
+    // free the native ONNX session while the audio thread is still inside OrtSession.run.
     fun processFloat(buffer: FloatArray, frames: Int, offset: Int = 0) {
         if (!enabled) return
-        val chain = pipeline ?: return
         try {
-            chain.process(buffer, frames, offset, settings)
+            synchronized(this) {
+                pipeline?.process(buffer, frames, offset, settings)
+            }
         } catch (e: Exception) {
             enabled = false
             Timber.e(e, "VoiceIsolation: disabled after a processing failure")
@@ -93,13 +99,15 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
 
     fun processShort(buffer: ShortArray, frames: Int, offset: Int = 0) {
         if (!enabled) return
-        val chain = pipeline ?: return
         val samples = frames * 2
         try {
-            val scratch = chain.scratch(samples)
-            PcmConverter.toFloatRange(buffer, scratch, offset, samples)
-            chain.process(scratch, frames, 0, settings)
-            PcmConverter.toShortRange(scratch, buffer, offset, samples)
+            synchronized(this) {
+                val chain = pipeline ?: return
+                val scratch = chain.scratch(samples)
+                PcmConverter.toFloatRange(buffer, scratch, offset, samples)
+                chain.process(scratch, frames, 0, settings)
+                PcmConverter.toShortRange(scratch, buffer, offset, samples)
+            }
         } catch (e: Exception) {
             enabled = false
             Timber.e(e, "VoiceIsolation: disabled after a processing failure")
@@ -107,6 +115,9 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
     }
 
     fun inferenceMs(): Float = pipeline?.maxInferenceMs() ?: 0f
+
+    /** Output blocks replaced by silence because the enhancer could not keep up, so far. */
+    fun underruns(): Long = pipeline?.underruns() ?: 0L
 
     fun speechDetected(): Boolean = pipeline?.channels?.any { it.mixer.speechDetected } ?: false
 
@@ -173,14 +184,28 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
 
         private var scratch: FloatArray = FloatArray(0)
 
+        // The two channels are independent chains sharing nothing but the interleaved buffer, so one
+        // of them runs on a worker while the caller does the other. Sequential stereo costs two
+        // inferences per hop and pushed the 48 kHz models to ~1.6x their real-time budget.
+        private val worker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+            Thread({
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
+                runnable.run()
+            }, "voice-isolation-channel").apply { isDaemon = true }
+        }
+
         fun scratch(size: Int): FloatArray {
             if (scratch.size < size) scratch = FloatArray(size)
             return scratch
         }
 
         fun process(buffer: FloatArray, frames: Int, offset: Int, settings: VoiceIsolationSettings) {
-            for (channel in channels.indices) {
-                channels[channel].process(buffer, channel, frames, offset, settings)
+            val pending = worker.submit<Unit> { channels[0].process(buffer, 0, frames, offset, settings) }
+            try {
+                channels[1].process(buffer, 1, frames, offset, settings)
+                pending.get()
+            } catch (e: ExecutionException) {
+                throw e.cause as? Exception ?: e
             }
             var index = offset
             val last = offset + frames * 2
@@ -193,11 +218,14 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
 
         fun maxInferenceMs(): Float = channels.maxOf { it.backend.inferenceMs() }
 
+        fun underruns(): Long = channels.sumOf { it.underruns() }
+
         fun reset() {
             channels.forEach { it.reset() }
         }
 
         override fun close() {
+            worker.shutdown()
             channels.forEach { it.close() }
         }
     }
@@ -230,6 +258,8 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
 
         fun process(buffer: FloatArray, channel: Int, frames: Int, offset: Int, settings: VoiceIsolationSettings) =
             framing.process(buffer, channel, frames, offset, settings)
+
+        fun underruns(): Long = framing.underruns
 
         fun reset() {
             framing.reset()

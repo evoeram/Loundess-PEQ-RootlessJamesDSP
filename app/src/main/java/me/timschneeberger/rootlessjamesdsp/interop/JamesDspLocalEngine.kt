@@ -135,12 +135,13 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         val budget = processor.hopBudgetMs()
         return (
             "voiceIsolation[${processor.activeModelKey ?: "none"}]: inference=%.2fms budget=%.2fms " +
-                "rtf=%.2f latency=%.1fms speech=%s reduction=%.0f%% out=%.0fdB"
+                "rtf=%.2f latency=%.1fms speech=%s reduction=%.0f%% out=%.0fdB drops=%d"
             ).format(
                 inference, budget, if (budget > 0f) inference / budget else 0f,
                 processor.latencyMs,
                 processor.speechDetected(), processor.effectiveReduction() * 100f,
                 processor.takeOutputLevelDb(),
+                processor.underruns(),
             )
     }
 

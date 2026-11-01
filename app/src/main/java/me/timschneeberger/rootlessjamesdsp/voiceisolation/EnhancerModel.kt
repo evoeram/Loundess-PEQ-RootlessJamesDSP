@@ -11,6 +11,11 @@ enum class EnhancerModel(
     /** Rate and hop of the running pipeline, used to describe the model before it is loaded. */
     val modelSampleRate: Int,
     val hopSize: Int,
+    /**
+     * Models too heavy for one inference per channel per hop run on the mono downmix instead:
+     * the voice estimate is shared, and each channel's mixer subtracts it from its own dry track.
+     */
+    val mono: Boolean = false,
 ) {
     GTCRN("gtcrn", listOf("gtcrn.onnx"), 16_000, 256),
     DEEPFILTERNET3(
@@ -20,7 +25,8 @@ enum class EnhancerModel(
         480,
     ),
     DPDFNET2("dpdfnet2_48khz_hr", listOf("dpdfnet2_48khz_hr.onnx"), 48_000, 480),
-    DPDFNET8("dpdfnet8_48khz_hr", listOf("dpdfnet8_48khz_hr.onnx"), 48_000, 480),
+    // Two inferences of the 8-layer checkpoint do not fit the 10 ms hop on a mid-range SoC.
+    DPDFNET8("dpdfnet8_48khz_hr", listOf("dpdfnet8_48khz_hr.onnx"), 48_000, 480, mono = true),
     ;
 
     internal fun create(modelBytes: List<ByteArray>): EnhancerBackend = when (this) {

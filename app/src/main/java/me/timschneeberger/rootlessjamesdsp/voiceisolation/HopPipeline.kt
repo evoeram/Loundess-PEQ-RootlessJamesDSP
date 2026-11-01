@@ -43,6 +43,10 @@ internal class HopPipeline(
     var processedHops = 0L
         private set
 
+    /** Blocks answered with zeros because the output ring ran dry; audible as dropouts. */
+    var underruns = 0L
+        private set
+
     /** Delay of the whole chain in milliseconds, independent of the block size. */
     val latencyMs: Float
         get() = (decimator.inputDelay * 1000f / sampleRate +
@@ -86,6 +90,7 @@ internal class HopPipeline(
 
         val needed = maxOf(frames.toLong(), if (started) 0L else prebufferFrames.toLong())
         if (ringWritten - ringRead < needed) {
+            if (started) underruns++
             started = false
             for (index in 0 until frames) buffer[first + 2 * index] = 0f
             return
@@ -117,6 +122,7 @@ internal class HopPipeline(
         ringWritten = 0
         ringRead = 0
         processedHops = 0
+        underruns = 0
         prime()
     }
 
