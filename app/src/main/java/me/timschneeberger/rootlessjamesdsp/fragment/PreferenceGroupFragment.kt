@@ -85,6 +85,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             // preset selector to Custom (a preset application sets the flag and is skipped).
             if (!applyingVoiceIsolationPreset &&
                 (key == context?.resources?.getString(R.string.key_voice_isolation_reduction) ||
+                        key == context?.resources?.getString(R.string.key_voice_isolation_voice_reduction) ||
                         key == context?.resources?.getString(R.string.key_voice_isolation_boost))) {
                 syncVoiceIsolationPresetSelection()
             }
@@ -695,11 +696,13 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
     }
 
     /**
-     * Voice Isolation: a preset writes both mix endpoints, editing an endpoint returns the module
+     * Voice Isolation: a preset writes all mix endpoints, editing an endpoint returns the module
      * to Custom. Boost is stored in dB, the engine converts it to the linear voice gain.
      */
     private fun setupVoiceIsolation() {
         findPreference<MaterialSeekbarPreference>(getString(R.string.key_voice_isolation_reduction))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f %%".format(it) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_voice_isolation_voice_reduction))?.valueLabelOverride =
             fun(it: Float): String { return "%.0f %%".format(it) }
         findPreference<MaterialSeekbarPreference>(getString(R.string.key_voice_isolation_boost))?.valueLabelOverride =
             fun(it: Float): String { return "%.1f dB".format(it) }
@@ -712,6 +715,8 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
                     findPreference<MaterialSeekbarPreference>(
                         getString(R.string.key_voice_isolation_reduction))?.setValue(preset.reductionPct)
                     findPreference<MaterialSeekbarPreference>(
+                        getString(R.string.key_voice_isolation_voice_reduction))?.setValue(0f)
+                    findPreference<MaterialSeekbarPreference>(
                         getString(R.string.key_voice_isolation_boost))?.setValue(preset.boostDb)
                     applyingVoiceIsolationPreset = false
                 }
@@ -723,8 +728,13 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
         val prefs = preferenceManager.sharedPreferences ?: return
         val presetKey = getString(R.string.key_voice_isolation_preset)
         val reduction = prefs.getFloat(getString(R.string.key_voice_isolation_reduction), 65f)
+        val voiceReduction = prefs.getFloat(getString(R.string.key_voice_isolation_voice_reduction), 0f)
         val boost = prefs.getFloat(getString(R.string.key_voice_isolation_boost), 0f)
-        val matching = VoiceIsolationPreset.matching(reduction, boost).storageValue
+        val matching = if (voiceReduction > 0f) {
+            VoiceIsolationPreset.Custom.storageValue
+        } else {
+            VoiceIsolationPreset.matching(reduction, boost).storageValue
+        }
         if (prefs.getString(presetKey, null) == matching) return
 
         val preference = findPreference<ListPreference>(presetKey)

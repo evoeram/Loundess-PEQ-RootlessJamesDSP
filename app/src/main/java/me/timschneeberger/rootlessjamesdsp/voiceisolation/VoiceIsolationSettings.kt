@@ -11,6 +11,7 @@ data class VoiceIsolationSettings(
     val backgroundReduction: Float = DEFAULT_REDUCTION,
     val voiceGain: Float = 1f,
     val autoMode: Boolean = false,
+    val voiceReduction: Float = 0f,
 ) {
     fun normalized(): VoiceIsolationSettings {
         val reduction = if (backgroundReduction.isFinite()) {
@@ -19,10 +20,11 @@ data class VoiceIsolationSettings(
             DEFAULT_REDUCTION
         }
         val gain = if (voiceGain.isFinite()) voiceGain.coerceIn(MINIMUM_VOICE_GAIN, MAXIMUM_VOICE_GAIN) else 1f
-        return if (reduction == backgroundReduction && gain == voiceGain) {
+        val voice = if (voiceReduction.isFinite()) voiceReduction.coerceIn(0f, 1f) else 0f
+        return if (reduction == backgroundReduction && gain == voiceGain && voice == voiceReduction) {
             this
         } else {
-            copy(backgroundReduction = reduction, voiceGain = gain)
+            copy(backgroundReduction = reduction, voiceGain = gain, voiceReduction = voice)
         }
     }
 

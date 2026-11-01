@@ -244,6 +244,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val voiceIsolationEnabled = cache.get(R.string.key_voice_isolation_enable, false)
             val voiceIsolationModel = cache.get(R.string.key_voice_isolation_model, "gtcrn")
             val voiceIsolationReduction = cache.get(R.string.key_voice_isolation_reduction, 65f).toDouble()
+            val voiceIsolationVoiceReduction = cache.get(R.string.key_voice_isolation_voice_reduction, 0f).toDouble()
             val voiceIsolationBoost = cache.get(R.string.key_voice_isolation_boost, 0f).toDouble()
             val voiceIsolationAuto = cache.get(R.string.key_voice_isolation_auto, false)
 
@@ -455,8 +456,8 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                     Constants.PREF_VOICE_ISOLATION -> {
                         setVoiceIsolation(
                             voiceIsolationEnabled, sampleRate.toDouble(),
-                            voiceIsolationReduction, voiceIsolationBoost, voiceIsolationAuto,
-                            voiceIsolationModel
+                            voiceIsolationReduction, voiceIsolationVoiceReduction,
+                            voiceIsolationBoost, voiceIsolationAuto, voiceIsolationModel
                         )
                     }
                     Constants.PREF_CONVOLVER -> {
@@ -932,11 +933,12 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
     ): Boolean = false
 
     // Voice isolation: streaming ML enhancer (rootless engine only).
-    // reductionPct: 0..100 background attenuation, boostDb: 0..6 voice gain.
+    // reductionPct/voiceReductionPct: 0..100 background/voice attenuation, boostDb: 0..6 voice gain.
     open fun setVoiceIsolation(
         enable: Boolean,
         sampleRate: Double,
         reductionPct: Double,
+        voiceReductionPct: Double,
         boostDb: Double,
         autoMode: Boolean,
         modelKey: String

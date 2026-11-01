@@ -607,6 +607,7 @@ class JamesDspRemoteEngine(
         enable: Boolean,
         sampleRate: Double,
         reductionPct: Double,
+        voiceReductionPct: Double,
         boostDb: Double,
         autoMode: Boolean,
         modelKey: String

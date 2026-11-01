@@ -23,8 +23,47 @@ class IsolationIntensityMixerTest {
 
     private fun constant(value: Float) = FloatArray(frameSize) { value }
 
-    private fun settings(reduction: Float, gain: Float = 1f, auto: Boolean = false) =
-        VoiceIsolationSettings(reduction, gain, auto)
+    private fun settings(
+        reduction: Float,
+        gain: Float = 1f,
+        auto: Boolean = false,
+        voiceReduction: Float = 0f,
+    ) = VoiceIsolationSettings(reduction, gain, auto, voiceReduction)
+
+    @Test
+    fun voiceReductionAttenuatesOnlyTheIsolatedPart() {
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
+        val dry = tone(0.3f)
+        val isolated = tone(0.15f, cycles = 3)
+        val output = FloatArray(frameSize)
+
+        mixer.mix(dry, isolated, output, settings(0.25f, voiceReduction = 0.5f))
+        mixer.mix(dry, isolated, output, settings(0.25f, voiceReduction = 0.5f))
+
+        val expected = FloatArray(frameSize) {
+            0.75f * (dry[it] - isolated[it]) + 0.5f * isolated[it]
+        }
+        assertArrayEquals(expected, output, 1e-6f)
+    }
+
+    @Test
+    fun measuredDelayIsUsedForBackgroundSubtraction() {
+        val random = java.util.Random(7)
+        val dry = Array(20) {
+            FloatArray(frameSize) { random.nextFloat() * 0.4f - 0.2f }
+        }
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
+        val output = FloatArray(frameSize)
+        val silence = FloatArray(frameSize)
+
+        for (hop in dry.indices) {
+            val isolated = if (hop >= 2) dry[hop - 2] else silence
+            mixer.mix(dry[hop], isolated, output, settings(0f))
+        }
+
+        assertEquals(2, mixer.detectedDelayHops)
+        assertArrayEquals(dry[17], output, 1e-6f)
+    }
 
     @Test
     fun neutralControlsLeaveTheSignalUntouchedApartFromOneFrameOfDelay() {

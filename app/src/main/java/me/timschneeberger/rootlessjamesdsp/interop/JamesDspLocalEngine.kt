@@ -151,6 +151,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         enable: Boolean,
         sampleRate: Double,
         reductionPct: Double,
+        voiceReductionPct: Double,
         boostDb: Double,
         autoMode: Boolean,
         modelKey: String
@@ -170,6 +171,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         }
         processor.settings = VoiceIsolationSettings(
             backgroundReduction = (reductionPct / 100.0).toFloat(),
+            voiceReduction = (voiceReductionPct / 100.0).toFloat(),
             voiceGain = VoiceIsolationSettings.boostDbToGain(boostDb.toFloat()),
             autoMode = autoMode,
         )

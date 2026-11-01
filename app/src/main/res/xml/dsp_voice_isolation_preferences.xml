@@ -40,6 +40,19 @@
             app:showSeekBarValue="true"
             app:iconSpaceReserved="false"/>
         <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+            android:key="@string/key_voice_isolation_voice_reduction"
+            android:title="@string/voice_isolation_voice_reduction"
+            android:defaultValue="0"
+            app:minValue="0"
+            app:maxValue="100"
+            app:seekBarIncrement="1"
+            app:precision="0"
+            app:unit="%"
+            app:allowDividerAbove="false"
+            app:updatesContinuously="true"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false"/>
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
             android:key="@string/key_voice_isolation_boost"
             android:title="@string/voice_isolation_boost"
             android:defaultValue="0"

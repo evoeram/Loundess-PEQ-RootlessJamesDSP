@@ -45,6 +45,14 @@ class VoiceIsolationSettingsTest {
     }
 
     @Test
+    fun voiceReductionDefaultsOffAndIsClamped() {
+        assertEquals(0f, VoiceIsolationSettings().voiceReduction, 0f)
+        assertEquals(0f, VoiceIsolationSettings(voiceReduction = -1f).normalized().voiceReduction, 0f)
+        assertEquals(1f, VoiceIsolationSettings(voiceReduction = 2f).normalized().voiceReduction, 0f)
+        assertEquals(0f, VoiceIsolationSettings(voiceReduction = Float.NaN).normalized().voiceReduction, 0f)
+    }
+
+    @Test
     fun boostDbConvertsToTheDocumentedLinearGain() {
         assertEquals(1f, VoiceIsolationSettings.boostDbToGain(0f), 1e-6f)
         assertEquals(1.41254f, VoiceIsolationSettings.boostDbToGain(3f), 1e-4f)

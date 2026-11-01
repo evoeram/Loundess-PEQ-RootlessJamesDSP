@@ -179,7 +179,7 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
         val hopSize: Int = channels.first().backend.hopSize
         val modelSampleRate: Int = channels.first().backend.modelSampleRate
         val hopBudgetMs: Float = hopSize * 1000f / modelSampleRate
-        val latencyMs: Float = channels.first().latencyMs
+        val latencyMs: Float get() = channels.first().latencyMs
         var outputPeak = 0f
 
         private var scratch: FloatArray = FloatArray(0)
@@ -232,27 +232,21 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
 
     private class Channel(sampleRate: Int, model: EnhancerModel, modelBytes: List<ByteArray>) : AutoCloseable {
         val backend: EnhancerBackend = model.create(modelBytes)
-        val mixer = IsolationIntensityMixer(backend.hopSize, backend.modelSampleRate)
+        val mixer = IsolationIntensityMixer(
+            backend.hopSize,
+            backend.modelSampleRate,
+            initialDelayHops = 1 + backend.dryDelayHops,
+        )
         private val isolated = FloatArray(backend.hopSize)
-
-        /**
-         * Dry frames kept waiting for a backend that answers with older audio; see
-         * [EnhancerBackend.dryDelayHops]. Slot `step % size` always holds the hop from `size` hops
-         * back, which is what the enhancer just returned.
-         */
-        private val dryDelay = Array(backend.dryDelayHops) { FloatArray(backend.hopSize) }
-        private var dryStep = 0
 
         private val framing = HopPipeline(sampleRate, backend.modelSampleRate, backend.hopSize) { dry, mixed, settings ->
             backend.process(dry, isolated)
-            val aligned = if (dryDelay.isEmpty()) dry else dryDelay[dryStep % dryDelay.size]
-            mixer.mix(aligned, isolated, mixed, settings)
-            if (aligned !== dry) dry.copyInto(aligned)
-            dryStep++
+            mixer.mix(dry, isolated, mixed, settings)
         }
 
-        /** Beyond what [HopPipeline] accounts for, only a lookahead model adds to the delay. */
-        val extraLatencyMs: Float = backend.dryDelayHops * 1000f / backend.modelSampleRate
+        /** HopPipeline includes the STFT hop; the mixer reports any additional measured delay. */
+        val extraLatencyMs: Float
+            get() = (mixer.detectedDelayHops - 1) * 1000f / backend.modelSampleRate
 
         val latencyMs: Float get() = framing.latencyMs + extraLatencyMs
 
@@ -265,8 +259,6 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
             framing.reset()
             backend.reset()
             mixer.reset()
-            dryDelay.forEach { it.fill(0f) }
-            dryStep = 0
         }
 
         override fun close() {

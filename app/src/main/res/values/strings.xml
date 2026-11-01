@@ -334,6 +334,7 @@
     <string name="voice_isolation_preset_maximum">Maximum</string>
     <string name="voice_isolation_preset_custom">Custom</string>
     <string name="voice_isolation_reduction">Reduce background</string>
+    <string name="voice_isolation_voice_reduction">Reduce vocal</string>
     <string name="voice_isolation_boost">Boost voice</string>
     <string name="voice_isolation_auto">Auto mode</string>
     <string name="voice_isolation_auto_summary">Softens background reduction between speech passages</string>
