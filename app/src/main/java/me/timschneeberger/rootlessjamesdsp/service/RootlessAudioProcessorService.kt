@@ -40,6 +40,9 @@ import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.androideq.AndroidEq
 import me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode
+import me.timschneeberger.rootlessjamesdsp.loopback.LoopbackCaptureClient
+import me.timschneeberger.rootlessjamesdsp.loopback.LoopbackPcmSource
+import me.timschneeberger.rootlessjamesdsp.loopback.LoopbackCaptureUserService
 import me.timschneeberger.rootlessjamesdsp.latency.LatencyTracer
 import me.timschneeberger.rootlessjamesdsp.latency.LatencyTuning
 import me.timschneeberger.rootlessjamesdsp.latency.QueueController
@@ -93,6 +96,10 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
             if (!isRunning) return
 
+            // Loopback: формат микса фиксирован при регистрации policy, чужие
+            // сессии не отслеживаются — детект частоты и fast-path не нужны
+            if (loopbackCapture) return
+
             // [SPL] Быстрый mute: событие приходит в момент создания/гибели
             // трека плеера — раньше, чем пересозданную сессию отдаст dumpsys
             // (~0.5с). Вешаем mute прямо из конфига, минуя опрос
@@ -116,7 +123,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     // Hidden API недоступен — сессию подхватит dump-путь
                 }
             }
-            sessionManager.sessionDatabase.syncFromPlaybackConfigs(fastEntries)
+            sessionManager?.sessionDatabase?.syncFromPlaybackConfigs(fastEntries)
             Timber.d("[SPL] fast configs: ${fastEntries.size} entries [${fastEntries.joinToString(",") { "${it.first}/${it.second}" }}]")
 
             if (isUsbOutputConnected() && followUsbHardwareRate()) {
@@ -211,8 +218,14 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     private val isRunning: Boolean
         get() = recorderThread != null
 
+    // Privileged loopback capture (Shizuku): альтернативный источник PCM.
+    // Оригинал не рендерится на устройство (AudioPolicy LOOP_BACK) — mute-
+    // механика не нужна; sessionManager в этом режиме не создаётся
+    private var loopbackCapture = false
+    private var loopbackClient: LoopbackCaptureClient? = null
+
     // Session management
-    private lateinit var sessionManager: RootlessSessionManager
+    private var sessionManager: RootlessSessionManager? = null
     private var sessionLossRetryCount = 0
     @Volatile
     private var notificationSessions: Array<IEffectSession> = emptyArray()
@@ -269,12 +282,21 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         mediaProjectionManager = applicationContext.getSystemService<MediaProjectionManager>()!!
         notificationManager = getSystemService<NotificationManager>()!!
 
-        // Setup session manager
-        sessionManager = RootlessSessionManager(this)
-        sessionManager.sessionDatabase.setOnSessionLossListener(onSessionLossListener)
-        sessionManager.sessionDatabase.setOnAppProblemListener(onAppProblemListener)
-        sessionManager.sessionDatabase.registerOnSessionChangeListener(onSessionChangeListener)
-        sessionManager.sessionPolicyDatabase.registerOnRestrictedSessionChangeListener(onSessionPolicyChangeListener)
+        // Privileged loopback (Shizuku) загружается ДО sessionManager: в этом
+        // режиме mute-механика не создаётся вовсе — оригинал не рендерится на
+        // устройство, глушить нечего, и mute-эффекты на сессиях только навредили
+        // бы (заглушили бы сам loopback-микс)
+        loopbackCapture = preferences.get<Boolean>(R.string.key_privileged_loopback)
+        Timber.i("Privileged loopback capture: $loopbackCapture")
+
+        // Setup session manager (только для MediaProjection-режима)
+        if (!loopbackCapture) {
+            sessionManager = RootlessSessionManager(this)
+            sessionManager?.sessionDatabase?.setOnSessionLossListener(onSessionLossListener)
+            sessionManager?.sessionDatabase?.setOnAppProblemListener(onAppProblemListener)
+            sessionManager?.sessionDatabase?.registerOnSessionChangeListener(onSessionChangeListener)
+            sessionManager?.sessionPolicyDatabase?.registerOnRestrictedSessionChangeListener(onSessionPolicyChangeListener)
+        }
 
         // Setup core engine
         engine = JamesDspLocalEngine(this, ProcessorMessageHandler())
@@ -414,6 +436,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         mediaProjectionStartIntent = null
 
         // Stop recording and release engine
+        loopbackClient?.stop()
+        loopbackClient = null
         stopRecording()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             clearPreferredUsbMixer()
@@ -438,9 +462,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         // Unregister receivers and release resources
         unregisterLocalReceiver(broadcastReceiver)
 
-        sessionManager.sessionPolicyDatabase.unregisterOnRestrictedSessionChangeListener(onSessionPolicyChangeListener)
-        sessionManager.sessionDatabase.unregisterOnSessionChangeListener(onSessionChangeListener)
-        sessionManager.destroy()
+        sessionManager?.sessionPolicyDatabase?.unregisterOnRestrictedSessionChangeListener(onSessionPolicyChangeListener)
+        sessionManager?.sessionDatabase?.unregisterOnSessionChangeListener(onSessionChangeListener)
+        sessionManager?.destroy()
 
         preferences.unregisterOnSharedPreferenceChangeListener(preferencesListener)
         // Уведомление состояния висит всегда: после остановки остаётся постоянное
@@ -533,7 +557,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     // Retry
                     sessionLossRetryCount++
                     Timber.d("Session lost. Retry count: $sessionLossRetryCount/$SESSION_LOSS_MAX_RETRIES")
-                    sessionManager.pollOnce(false)
+                    sessionManager?.pollOnce(false)
                     restartRecording()
                     return
                 }
@@ -628,6 +652,14 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
                 requestAudioRecordRecreation()
             }
+            getString(R.string.key_privileged_loopback) -> {
+                val newMode = preferences.get<Boolean>(R.string.key_privileged_loopback)
+                if (newMode != loopbackCapture) {
+                    Timber.i("Privileged loopback mode switched to $newMode; restarting capture")
+                    loopbackCapture = newMode
+                    if (isRunning) restartRecording()
+                }
+            }
             getString(R.string.key_blocklist_allowlist_mode) -> {
                 allowlistMode = preferences.get<Boolean>(R.string.key_blocklist_allowlist_mode)
                 Timber.d("App list allowlist mode set to $allowlistMode")
@@ -700,7 +732,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             }
             // Синхронизируем настройки: supportsParametricEqCascade() теперь false → PEQ через fallback
             engine.syncWithPreferences()
-            sessionManager.pollOnce(false)
+            sessionManager?.pollOnce(false)
             recorderThread = Thread {
                 while (!isProcessorDisposing) {
                     try {
@@ -714,18 +746,49 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             return
         }
 
-        // Sanity check (only for capture-loop modes)
-        if (!hasRecordPermission()) {
+        // Privileged loopback (Shizuku): Recording permission не нужна — sink
+        // REMOTE_SUBMIX живёт в shell-процессе UserService. Формат фиксирован
+        // policy (48 кГц стерео PCM16); смена ставки контента отключена.
+        if (loopbackCapture) {
+            Timber.i("Privileged loopback capture mode")
+            val client = LoopbackCaptureClient(applicationContext)
+            if (!client.isShizukuReady()) {
+                Timber.e("Privileged loopback: Shizuku is not running or not granted")
+                toast(getString(R.string.privileged_loopback_start_failed), false)
+                ServiceNotificationHelper.pushDisabledNotification(this)
+                stopSelf()
+                return
+            }
+            client.listener = object : LoopbackCaptureClient.Listener {
+                override fun onStarted(sampleRate: Int, channels: Int) {
+                    Timber.i("[Loopback] pipeline source ready: ${sampleRate} Hz / $channels ch")
+                }
+
+                override fun onError(code: Int, message: String) {
+                    Timber.e("[Loopback] fatal: $code $message")
+                    toast(getString(R.string.privileged_loopback_start_failed), false)
+                    stopSelf()
+                }
+
+                override fun onStopped() {
+                    Timber.i("[Loopback] capture stopped")
+                }
+            }
+            loopbackClient = client
+        }
+
+        // Sanity check (only for capture-loop modes; loopback не требует RECORD_AUDIO)
+        if (!loopbackCapture && !hasRecordPermission()) {
             Timber.e("Record audio permission missing. Can't record")
             stopSelf()
             return
         }
 
         // Load preferences
-        val requestedEncoding = AudioEncoding.fromInt(
+        val requestedEncoding = if (loopbackCapture) AudioEncoding.PcmShort else AudioEncoding.fromInt(
             preferences.get<String>(R.string.key_audioformat_encoding).toIntOrNull() ?: 1
         )
-        val sampleRate = determineSamplingRate()
+        val sampleRate = if (loopbackCapture) LoopbackCaptureUserService.SAMPLE_RATE else determineSamplingRate()
         val requestedEncodingFormat = when (requestedEncoding) {
             AudioEncoding.PcmShort -> AudioFormat.ENCODING_PCM_16BIT
             else -> AudioFormat.ENCODING_PCM_FLOAT
@@ -772,10 +835,16 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 "Mode: $processingMode; Read frames: $readFrames; Max queue: ${tuning.maxQueueFrames}")
 
         // Create recorder and track
-        var recorder: AudioRecord
+        var recorder: AudioRecord? = null
         val track: AudioTrack
         try {
-            recorder = buildAudioRecord(encodingFormat, sampleRate, bufferSizeBytes)
+            if (loopbackCapture) {
+                // UserService (shell UID) поднимет policy и начнёт качать PCM в
+                // pcmSource; read() ниже блокируется до первого блока
+                loopbackClient?.start()
+            } else {
+                recorder = buildAudioRecord(encodingFormat, sampleRate, bufferSizeBytes)
+            }
             track = buildAudioTrack(
                 outputFormat,
                 bufferSize * bytesPerSample(outputFormat.encoding),
@@ -790,6 +859,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         catch(ex: Exception) {
             Timber.e("Failed to create initial audio record/track")
             Timber.e(ex)
+            toast(getString(R.string.privileged_loopback_start_failed), false)
+            loopbackClient?.stop()
+            loopbackClient = null
             stopSelf()
             return
         }
@@ -809,14 +881,20 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         }
 
         // TODO Move all audio-related code to C++
+        val pcmSource: LoopbackPcmSource? = loopbackClient?.pcmSource
         recorderThread = Thread {
             try {
                 // Rebuilding the processing pipeline must not overwrite the current
                 // session-aware notification with a false "idle" state.
-                ServiceNotificationHelper.pushServiceNotification(
-                    applicationContext,
-                    notificationSessions,
-                )
+                if (loopbackCapture) {
+                    // В loopback-режиме список сессий пуст — показываем статус захвата
+                    ServiceNotificationHelper.pushLoopbackNotification(applicationContext)
+                } else {
+                    ServiceNotificationHelper.pushServiceNotification(
+                        applicationContext,
+                        notificationSessions,
+                    )
+                }
 
                 // Буферы аллоцируются под readSamples, а не bufferSize
                 val floatBuffer = FloatArray(readSamples)
@@ -842,7 +920,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     if (captureGapNotified == active) return
                     captureGapNotified = active
                     applicationScope.launch {
-                        sessionManager.onCaptureSilenceChanged(active)
+                        sessionManager?.onCaptureSilenceChanged(active)
                     }
                 }
 
@@ -893,29 +971,47 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                         recreateRecorderRequested = false
                         Timber.d("Recreating recorder without stopping thread...")
 
-                        // Suspend track, release recorder
-                        recorder.stop()
-                        track.stop()
-                        recorder.release()
+                        if (loopbackCapture) {
+                            // Пересоздание = перезапуск UserService-захвата
+                            // (policy перерегистрируется с тем же форматом)
+                            pcmSource?.clear()
+                            loopbackClient?.let { client ->
+                                runCatching {
+                                    client.stop()
+                                    client.start()
+                                }.onFailure {
+                                    Timber.e(it, "[Loopback] capture restart failed")
+                                    stopSelf()
+                                    return@Thread
+                                }
+                            }
+                            Timber.d("Loopback capture restarted")
+                        } else {
+                            // Suspend track, release recorder
+                            recorder?.stop()
+                            track.stop()
+                            recorder?.release()
 
+                            if (mediaProjection == null) {
+                                Timber.e("Media projection handle is null, stopping service")
+                                stopSelf()
+                                return@Thread
+                            }
 
-                        if (mediaProjection == null) {
-                            Timber.e("Media projection handle is null, stopping service")
-                            stopSelf()
-                            return@Thread
+                            // Recreate recorder with new AudioPlaybackRecordingConfiguration
+                            recorder = buildAudioRecord(encodingFormat, sampleRate, bufferSizeBytes)
+                            Timber.d("Recorder recreated")
                         }
-
-                        // Recreate recorder with new AudioPlaybackRecordingConfiguration
-                        recorder = buildAudioRecord(encodingFormat, sampleRate, bufferSizeBytes)
-                        Timber.d("Recorder recreated")
                     }
 
                     // Suspend core while idle
-                    if(isProcessorIdle && suspendOnIdle)
+                    // Loopback: recorder живёт в shell-процессе — только пропускаем
+                    // обработку (очередь PCM переполняется и дропает старые блоки)
+                    if(!loopbackCapture && isProcessorIdle && suspendOnIdle)
                     {
-                        if(recorder.state == AudioRecord.STATE_INITIALIZED &&
-                            recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING)
-                            recorder.stop()
+                        if(recorder?.state == AudioRecord.STATE_INITIALIZED &&
+                            recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING)
+                            recorder?.stop()
                         if(track.state == AudioTrack.STATE_INITIALIZED &&
                             track.playState != AudioTrack.PLAYSTATE_STOPPED)
                             track.stop()
@@ -931,15 +1027,19 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
                     // Resume recorder if suspended (capture keeps running even
                     // while the silence gate holds the output stopped)
-                    if(recorder.recordingState == AudioRecord.RECORDSTATE_STOPPED) {
-                        recorder.startRecording()
+                    if(!loopbackCapture &&
+                        recorder?.recordingState == AudioRecord.RECORDSTATE_STOPPED) {
+                        recorder?.startRecording()
                         tracer.onRecorderStarted()
                     }
 
                     // Чтение маленькими блоками (Low-latency) или полный буфер (Standard)
                     tracer.beginBlock()
                     if(encoding == AudioEncoding.PcmShort) {
-                        val samples = recorder.read(shortBuffer, 0, shortBuffer.size, AudioRecord.READ_BLOCKING)
+                        val samples = if (loopbackCapture)
+                            pcmSource!!.read(shortBuffer, 0, shortBuffer.size)
+                        else
+                            recorder!!.read(shortBuffer, 0, shortBuffer.size, AudioRecord.READ_BLOCKING)
                         if (samples > 0) {
                             tracer.onRead(recorder, shortBuffer, samples)
                             if (isSilentBlockShort(shortBuffer, samples)) {
@@ -1005,7 +1105,10 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                         }
                     }
                     else {
-                        val samples = recorder.read(floatBuffer, 0, floatBuffer.size, AudioRecord.READ_BLOCKING)
+                        val samples = if (loopbackCapture)
+                            throw IllegalStateException("Float encoding is not available in loopback mode")
+                        else
+                            recorder!!.read(floatBuffer, 0, floatBuffer.size, AudioRecord.READ_BLOCKING)
                         if (samples > 0) {
                             tracer.onRead(recorder, floatBuffer, samples)
                             if (isSilentBlock(floatBuffer, samples)) {
@@ -1081,16 +1184,17 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 stopSelf()
             } finally {
                 // Clean up recorder and track
-                if(recorder.state != AudioRecord.STATE_UNINITIALIZED) {
-                    recorder.stop()
+                if(!loopbackCapture && recorder?.state != AudioRecord.STATE_UNINITIALIZED) {
+                    recorder?.stop()
                 }
                 if(track.state != AudioTrack.STATE_UNINITIALIZED) {
                     track.stop()
                 }
 
-                recorder.release()
+                recorder?.release()
                 track.release()
                 activeAudioTrack = null
+                loopbackClient?.stop()
             }
         }
         recorderThread!!.start()
@@ -1176,6 +1280,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     private fun buildMediaAudioAttributes(): AudioAttributes {
         return AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_MEDIA)
+            // Наш выходной трек неперехвачаем: в loopback-режиме иначе он
+            // попадает в собственный capture (петля → тишина на устройстве)
+            .setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_NONE)
             .build()
     }
 
@@ -1462,7 +1569,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
      * Пропускаем занятые прогнозом id — пул достроится выше счётчика.
      */
     private fun allocateOutputSessionId(): Int {
-        val database = sessionManager.sessionDatabase
+        val database = sessionManager?.sessionDatabase ?: return audioManager.generateAudioSessionId()
         var sid = audioManager.generateAudioSessionId()
         var attempts = 0
         while (sid != android.media.audiofx.AudioEffect.ERROR_BAD_VALUE &&
@@ -1526,7 +1633,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         // uids (capturing one does not fail, it returns silence, and because
         // this effect re-routes the audio the user hears nothing at all).
         val restricted = if (excludeRestrictedSessions)
-            sessionManager.sessionPolicyDatabase.getRestrictedUids().toSet()
+            sessionManager?.sessionPolicyDatabase?.getRestrictedUids()!!.toSet()
         else emptySet()
         val requested = if (allowlistMode) blockedApps.value?.map { it.uid }.orEmpty() else emptyList()
         val allowed = requested.filter { it != Process.myUid() && !restricted.contains(it) }
@@ -1536,17 +1643,17 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         if (allowed.isNotEmpty()) {
             allowed.forEach { configBuilder.addMatchingUid(it) }
-            sessionManager.sessionDatabase.setAllowedUids(allowed.toTypedArray())
-            sessionManager.sessionDatabase.setExcludedUids(arrayOf())
-            sessionManager.pollOnce(false)
+            sessionManager?.sessionDatabase?.setAllowedUids(allowed.toTypedArray())
+            sessionManager?.sessionDatabase?.setExcludedUids(arrayOf())
+            sessionManager?.pollOnce(false)
 
             Timber.d("buildAudioRecord: Allowed UIDs only: ${allowed.joinToString("; ")}")
         }
         else {
             val excluded = (if(excludeRestrictedSessions)
-                sessionManager.sessionPolicyDatabase.getRestrictedUids().toList()
+                sessionManager?.sessionPolicyDatabase?.getRestrictedUids()!!.toList()
             else {
-                sessionManager.pollOnce(false)
+                sessionManager?.pollOnce(false)
                 emptyList()
             }).toMutableList()
 
@@ -1557,9 +1664,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             excluded += Process.myUid()
 
             excluded.forEach { configBuilder.excludeUid(it) }
-            sessionManager.sessionDatabase.setAllowedUids(null)
-            sessionManager.sessionDatabase.setExcludedUids(excluded.toTypedArray())
-            sessionManager.pollOnce(false)
+            sessionManager?.sessionDatabase?.setAllowedUids(null)
+            sessionManager?.sessionDatabase?.setExcludedUids(excluded.toTypedArray())
+            sessionManager?.pollOnce(false)
 
             Timber.d("buildAudioRecord: Excluded UIDs: ${excluded.joinToString("; ")}")
         }

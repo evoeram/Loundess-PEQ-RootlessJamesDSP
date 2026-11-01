@@ -62,6 +62,19 @@ object ServiceNotificationHelper: KoinComponent {
             ?.notify(Notifications.ID_SERVICE_STATUS, createServiceNotification(context, sessions))
     }
 
+    /** Loopback-режим: список «активных приложений» неприменим — захват микса целиком. */
+    fun pushLoopbackNotification(context: Context) {
+        context.getSystemService<NotificationManager>()
+            ?.notify(
+                Notifications.ID_SERVICE_STATUS,
+                createServiceNotification(
+                    context,
+                    context.getString(if (isRootless()) R.string.notification_processing_title else R.string.notification_processing_disabled_title),
+                    context.getString(R.string.notification_loopback_active),
+                ),
+            )
+    }
+
     fun pushServiceNotificationLegacy(context: Context) {
         context.getSystemService<NotificationManager>()
             ?.notify(Notifications.ID_SERVICE_STATUS, createServiceNotificationLegacy(context))

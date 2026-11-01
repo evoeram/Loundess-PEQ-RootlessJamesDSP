@@ -20,6 +20,13 @@
             android:summary="@string/android_eq_limiter_summary"
             app:iconSpaceReserved="false" />
 
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            android:key="@string/key_privileged_loopback"
+            android:defaultValue="@bool/default_privileged_loopback"
+            android:title="@string/privileged_loopback"
+            android:summary="@string/privileged_loopback_summary"
+            app:iconSpaceReserved="false" />
+
         <ListPreference
             app:key="@string/key_android_eq_latency"
             app:title="@string/android_eq_latency"

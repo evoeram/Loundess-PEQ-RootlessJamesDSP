@@ -138,7 +138,7 @@ class LatencyTracer(private val sampleRate: Int, val enabled: Boolean) {
         tBlockStart = System.nanoTime()
     }
 
-    fun onRead(recorder: AudioRecord, buffer: FloatArray, samples: Int) {
+    fun onRead(recorder: AudioRecord?, buffer: FloatArray, samples: Int) {
         if (!enabled) return
         tRead = System.nanoTime()
         val frames = samples / 2
@@ -148,7 +148,7 @@ class LatencyTracer(private val sampleRate: Int, val enabled: Boolean) {
         finishRead(recorder, frames)
     }
 
-    fun onRead(recorder: AudioRecord, buffer: ShortArray, samples: Int) {
+    fun onRead(recorder: AudioRecord?, buffer: ShortArray, samples: Int) {
         if (!enabled) return
         tRead = System.nanoTime()
         val frames = samples / 2
@@ -194,10 +194,10 @@ class LatencyTracer(private val sampleRate: Int, val enabled: Boolean) {
         silenceFrames = if (peak < SILENCE_LEVEL) silenceFrames + 1 else 0
     }
 
-    private fun finishRead(recorder: AudioRecord, frames: Int) {
+    private fun finishRead(recorder: AudioRecord?, frames: Int) {
         val blockStart = framesRead
         framesRead += frames
-        recTsValid = recorder.getTimestamp(recTs, AudioTimestamp.TIMEBASE_MONOTONIC) == AudioRecord.SUCCESS
+        recTsValid = recorder?.getTimestamp(recTs, AudioTimestamp.TIMEBASE_MONOTONIC) == AudioRecord.SUCCESS
         for (k in 0 until blockOnsetCount) {
             blockOnsetInFrame[k] = blockStart + blockOnsets[k]
             blockOnsetCaptureNs[k] = captureTimeOf(blockOnsetInFrame[k])

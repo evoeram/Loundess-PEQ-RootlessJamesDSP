@@ -162,8 +162,8 @@ android {
 
     buildFeatures {
         viewBinding = true
-        // Disable unused features
-        aidl = false
+        // AIDL: Shizuku UserService (privileged loopback capture)
+        aidl = true
         renderScript = false
         shaders = false
     }

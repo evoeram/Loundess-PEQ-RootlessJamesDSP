@@ -1187,4 +1187,10 @@ Please press \'Continue\' below to re-do the setup wizard.</string>
     <string name="squig_import_target_done">Custom target loaded: %1$s</string>
     <string name="squig_import_target_failed">Failed to import target: %1$s</string>
     <string name="squig_custom_target">Custom Target</string>
+
+    <!-- Privileged loopback capture (Shizuku) -->
+    <string name="privileged_loopback">Privileged capture (Shizuku)</string>
+    <string name="privileged_loopback_summary">Capture the media mix through a Shizuku AudioPolicy loopback instead of MediaProjection. Removes the loud-start burst in Shorts/Reels feeds entirely. Requires a running Shizuku and Android 13+.</string>
+    <string name="notification_loopback_active">Privileged loopback capture</string>
+    <string name="privileged_loopback_start_failed">Privileged loopback failed to start. Check that Shizuku is running and authorized.</string>
 </resources>

@@ -725,4 +725,10 @@
     <string name="squig_cache_cleared">Кэш очищен</string>
     <string name="peq_live_eq_add">Добавить</string>
     <string name="peq_live_eq_delete">Удалить</string>
+
+    <!-- Privileged loopback capture (Shizuku) -->
+    <string name="privileged_loopback">Привилегированный захват (Shizuku)</string>
+    <string name="privileged_loopback_summary">Захват медиа-микса через Shizuku AudioPolicy loopback вместо MediaProjection. Полностью убирает громкий старт роликов в лентах. Требуется запущенный Shizuku и Android 13+.</string>
+    <string name="notification_loopback_active">Привилегированный loopback-захват</string>
+    <string name="privileged_loopback_start_failed">Не удалось запустить привилегированный захват. Проверьте, что Shizuku запущен и авторизован.</string>
 </resources>

@@ -47,6 +47,8 @@
 
     <!-- Processing mode (Прямой / Стандартный / Низкая задержка) -->
     <string name="key_processing_mode" translatable="false">processing_mode</string>
+    <!-- Privileged loopback capture (Shizuku) -->
+    <string name="key_privileged_loopback" translatable="false">privileged_loopback</string>
     <!-- Android EQ mode (внутренние настройки) -->
     <string name="key_android_eq_enable" translatable="false">android_eq_enable</string>
     <string name="key_android_eq_latency" translatable="false">android_eq_latency</string>
