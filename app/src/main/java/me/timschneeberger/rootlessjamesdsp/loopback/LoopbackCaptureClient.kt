@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.IBinder
 import rikka.shizuku.Shizuku
 import timber.log.Timber
+import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -52,29 +53,38 @@ class LoopbackCaptureClient(private val context: Context) {
         }
     }
 
-    private val callback = object : ILoopbackCaptureCallback.Stub() {
+    /** Binder keeps the Stub alive in native code (GC root) for as long as the
+     * remote UserService holds the proxy — even after unbind. It must therefore
+     * not strongly reference the client, or the whole client graph (including
+     * the service set as [listener]) leaks. */
+    private val callback = ClientCallback(this)
+
+    private class ClientCallback(client: LoopbackCaptureClient) : ILoopbackCaptureCallback.Stub() {
+        private val clientRef = WeakReference(client)
+
         override fun onStarted(sampleRate: Int, channels: Int) {
             Timber.i("[Loopback] capture started: ${sampleRate} Hz, $channels ch")
-            listener?.onStarted(sampleRate, channels)
+            clientRef.get()?.listener?.onStarted(sampleRate, channels)
         }
 
         override fun onPcm(pcm: ByteArray) {
+            val client = clientRef.get() ?: return
             // byte[] -> ShortArray: binder-поток не должен блокироваться дольше конверсии
             val shorts = ShortArray(pcm.size / 2)
             for (i in shorts.indices) {
                 shorts[i] =
                     ((pcm[2 * i].toInt() and 0xFF) or (pcm[2 * i + 1].toInt() shl 8)).toShort()
             }
-            pcmSource.offer(shorts)
+            client.pcmSource.offer(shorts)
         }
 
         override fun onError(code: Int, message: String) {
             Timber.e("[Loopback] error $code: $message")
-            listener?.onError(code, message)
+            clientRef.get()?.listener?.onError(code, message)
         }
 
         override fun onStopped() {
-            listener?.onStopped()
+            clientRef.get()?.listener?.onStopped()
         }
     }
 

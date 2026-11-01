@@ -436,6 +436,10 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         mediaProjectionStartIntent = null
 
         // Stop recording and release engine
+        // Очищаем listener ДО обнуления ссылки: binder может продержать Stub
+        // (native GC root) неопределённое время после unbind, и пока client жив,
+        // его listener анонимно захватывает сервис → утечка (LeakCanary #3119e6b)
+        loopbackClient?.listener = null
         loopbackClient?.stop()
         loopbackClient = null
         stopRecording()
