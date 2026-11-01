@@ -233,7 +233,7 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.retrofit2:converter-scalars:2.9.0")
 
-    // Voice Isolation: streaming GTCRN enhancer (rootless engine only)
+    // Voice Isolation: streaming enhancer backends (rootless engine only)
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
 
     // Logging
@@ -280,6 +280,9 @@ dependencies {
 
     // Unit tests
     testImplementation("junit:junit:4.13.2")
+    // DeepFilterNet3 is three graphs plus recurrent state; its streaming equivalence can only be
+    // proven by running them, which the desktop runtime allows inside a JVM unit test.
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.20.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 }

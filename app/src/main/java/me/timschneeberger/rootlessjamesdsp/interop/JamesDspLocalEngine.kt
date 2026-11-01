@@ -8,6 +8,7 @@ import android.media.AudioManager
 import android.os.Build
 import me.timschneeberger.rootlessjamesdsp.interop.structure.EelVmVariable
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
+import me.timschneeberger.rootlessjamesdsp.voiceisolation.EnhancerModel
 import me.timschneeberger.rootlessjamesdsp.voiceisolation.VoiceIsolationProcessor
 import me.timschneeberger.rootlessjamesdsp.voiceisolation.VoiceIsolationSettings
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
@@ -133,36 +134,39 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         val inference = processor.inferenceMs()
         val budget = processor.hopBudgetMs()
         return (
-            "voiceIsolation: inference=%.2fms budget=%.2fms rtf=%.2f latency=%.1fms speech=%s " +
-                "reduction=%.0f%% out=%.0fdB"
+            "voiceIsolation[${processor.activeModelKey ?: "none"}]: inference=%.2fms budget=%.2fms " +
+                "rtf=%.2f latency=%.1fms speech=%s reduction=%.0f%% out=%.0fdB"
             ).format(
-                inference, budget, inference / budget, processor.latencyMs,
+                inference, budget, if (budget > 0f) inference / budget else 0f,
+                processor.latencyMs,
                 processor.speechDetected(), processor.effectiveReduction() * 100f,
                 processor.takeOutputLevelDb(),
             )
     }
+
+    override fun voiceIsolationHopMs(): Float = voiceIsolation?.hopBudgetMs() ?: 0f
 
     override fun setVoiceIsolation(
         enable: Boolean,
         sampleRate: Double,
         reductionPct: Double,
         boostDb: Double,
-        autoMode: Boolean
+        autoMode: Boolean,
+        modelKey: String
     ): Boolean {
         if (!enable) {
             voiceIsolation?.enabled = false
             return true
         }
         val processor = voiceIsolation ?: VoiceIsolationProcessor(context).also { voiceIsolation = it }
-        if (!processor.available) {
-            Timber.w("setVoiceIsolation: skipping, enhancer model is not available")
-            return false
-        }
         if (sampleRate <= 0.0) {
             Timber.w("setVoiceIsolation: skipping, sample rate not yet known ($sampleRate)")
             return false
         }
-        processor.configure(sampleRate.toInt())
+        if (!processor.configure(sampleRate.toInt(), EnhancerModel.fromKey(modelKey))) {
+            Timber.w("setVoiceIsolation: model $modelKey is not available at $sampleRate Hz")
+            return false
+        }
         processor.settings = VoiceIsolationSettings(
             backgroundReduction = (reductionPct / 100.0).toFloat(),
             voiceGain = VoiceIsolationSettings.boostDbToGain(boostDb.toFloat()),

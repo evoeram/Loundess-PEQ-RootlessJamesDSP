@@ -13,7 +13,7 @@ import kotlin.math.sin
  * pauses from pumping the background in auto mode.
  */
 class SpeechActivityDetectorTest {
-    private val frameSize = StftProcessor.HOP_SIZE
+    private val frameSize = GtcrnProcessor.HOP_SIZE
 
     private fun tone(amplitude: Float) =
         FloatArray(frameSize) { amplitude * sin(2.0 * PI * 8.0 * it / frameSize).toFloat() }

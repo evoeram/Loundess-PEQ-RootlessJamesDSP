@@ -7,16 +7,12 @@ import kotlin.math.log10
 /**
  * Block-level Voice Isolation stage for the rootless capture loop.
  *
- * The enhancer core works on 16 kHz mono hops, so each stereo channel gets its own
- * decimator -> hop loop -> interpolator chain. The dry estimate used by the mixer is taken after
- * the decimator, so voice and background are sample-aligned and the subtraction that synthesises
- * the background does not comb-filter the voice.
+ * Any [EnhancerBackend] runs inside the same chain: each stereo channel gets its own
+ * decimator -> hop loop -> interpolator, followed by the mix that reconstructs the background.
+ * The dry estimate used by the mixer is taken after the decimator, so voice and background are
+ * sample-aligned and the subtraction that synthesises the background does not comb-filter the voice.
  */
-class VoiceIsolationProcessor(context: Context) : AutoCloseable {
-    private val model: ByteArray? = runCatching {
-        context.assets.open(GtcrnProcessor.MODEL_ASSET).use { it.readBytes() }
-    }.onFailure { Timber.e(it, "VoiceIsolation: model asset ${GtcrnProcessor.MODEL_ASSET} unavailable") }.getOrNull()
-
+class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
     @Volatile
     private var pipeline: Pipeline? = null
 
@@ -32,29 +28,55 @@ class VoiceIsolationProcessor(context: Context) : AutoCloseable {
             }
         }
 
-    val available: Boolean get() = model != null
+    /** Model the running pipeline was built for; null while nothing is loaded. */
+    @Volatile
+    var model: EnhancerModel? = null
+        private set
 
     /** Adds [latencyMs] to the block it processes; a block always yields exactly its own frame count. */
     val latencyMs: Float
         get() = pipeline?.latencyMs ?: 0f
 
-    fun configure(sampleRate: Int) {
-        if (sampleRate <= 0) return
-        val current = pipeline
-        if (current != null && current.sampleRate == sampleRate) return
+    /** Key of the model actually running, or null when the stage is inactive. */
+    val activeModelKey: String?
+        get() = pipeline?.modelKey
 
-        synchronized(this) {
-            if (pipeline?.sampleRate == sampleRate) return
-            val created = runCatching { Pipeline(sampleRate, requireNotNull(model)) }
-                .onFailure { Timber.e(it, "VoiceIsolation: pipeline for $sampleRate Hz failed to build") }
+    /** Real-time budget of one enhancer hop, in milliseconds; 0 while inactive. */
+    fun hopBudgetMs(): Float = pipeline?.hopBudgetMs ?: 0f
+
+    /**
+     * (Re)builds the pipeline for [sampleRate] and [model]. Returns false when the assets are
+     * missing or the graphs refuse to load, in which case the stage stays off.
+     */
+    fun configure(sampleRate: Int, model: EnhancerModel): Boolean {
+        if (sampleRate <= 0) return false
+        val current = pipeline
+        if (current != null && current.sampleRate == sampleRate && current.modelKey == model.key) {
+            this.model = model
+            enabled = true
+            return true
+        }
+
+        return synchronized(this) {
+            if (pipeline?.sampleRate == sampleRate && pipeline?.modelKey == model.key) {
+                enabled = true
+                return true
+            }
+            val created = runCatching { buildPipeline(sampleRate, model) }
+                .onFailure { Timber.e(it, "VoiceIsolation: pipeline for $sampleRate Hz / ${model.key} failed to build") }
                 .getOrNull()
             pipeline?.close()
             pipeline = created
+            this.model = if (created != null) model else null
+            enabled = created != null
             if (created != null) {
-                Timber.i("VoiceIsolation: pipeline ready at ${sampleRate}Hz, latency %.1f ms".format(created.latencyMs))
-            } else {
-                enabled = false
+                Timber.i(
+                    "VoiceIsolation: ${model.key} ready at ${sampleRate}Hz, " +
+                        "${created.hopSize} samples/${created.modelSampleRate}Hz hop, " +
+                        "latency %.1f ms".format(created.latencyMs)
+                )
             }
+            created != null
         }
     }
 
@@ -86,9 +108,6 @@ class VoiceIsolationProcessor(context: Context) : AutoCloseable {
 
     fun inferenceMs(): Float = pipeline?.maxInferenceMs() ?: 0f
 
-    /** Real-time budget of one enhancer hop (16 ms at 16 kHz). */
-    fun hopBudgetMs(): Float = StftProcessor.HOP_SIZE * 1000f / GtcrnProcessor.SAMPLE_RATE
-
     fun speechDetected(): Boolean = pipeline?.channels?.any { it.mixer.speechDetected } ?: false
 
     fun effectiveReduction(): Float = pipeline?.channels?.maxOfOrNull { it.mixer.effectiveReduction } ?: 0f
@@ -108,11 +127,47 @@ class VoiceIsolationProcessor(context: Context) : AutoCloseable {
         synchronized(this) {
             pipeline?.close()
             pipeline = null
+            model = null
+            enabled = false
         }
     }
 
-    private class Pipeline(val sampleRate: Int, modelBytes: ByteArray) : AutoCloseable {
-        val channels = arrayOf(Channel(sampleRate, modelBytes), Channel(sampleRate, modelBytes))
+    private var cachedKey: String? = null
+    private var cachedBytes: List<ByteArray>? = null
+
+    private fun buildPipeline(sampleRate: Int, model: EnhancerModel): Pipeline {
+        val bytes = loadAssets(model)
+            ?: throw IllegalStateException("Voice Isolation model ${model.key} is not installed")
+        return Pipeline(sampleRate, model, bytes)
+    }
+
+    /** Reads the model files, keeping the last set so switching back does not re-read them. */
+    private fun loadAssets(model: EnhancerModel): List<ByteArray>? {
+        if (model.key == cachedKey && cachedBytes?.size == model.assets.size) return cachedBytes
+        val loaded = model.assets.map { name ->
+            runCatching {
+                context.assets.open(name).use { it.readBytes() }
+            }.onFailure { Timber.e(it, "VoiceIsolation: model asset $name unavailable") }.getOrNull()
+                ?: return null
+        }
+        cachedKey = model.key
+        cachedBytes = loaded
+        return loaded
+    }
+
+    private class Pipeline(
+        val sampleRate: Int,
+        model: EnhancerModel,
+        modelBytes: List<ByteArray>,
+    ) : AutoCloseable {
+        val modelKey: String = model.key
+        val channels = arrayOf(
+            Channel(sampleRate, model, modelBytes),
+            Channel(sampleRate, model, modelBytes),
+        )
+        val hopSize: Int = channels.first().backend.hopSize
+        val modelSampleRate: Int = channels.first().backend.modelSampleRate
+        val hopBudgetMs: Float = hopSize * 1000f / modelSampleRate
         val latencyMs: Float = channels.first().latencyMs
         var outputPeak = 0f
 
@@ -136,7 +191,7 @@ class VoiceIsolationProcessor(context: Context) : AutoCloseable {
             }
         }
 
-        fun maxInferenceMs(): Float = channels.maxOf { it.model.inferenceMs() }
+        fun maxInferenceMs(): Float = channels.maxOf { it.backend.inferenceMs() }
 
         fun reset() {
             channels.forEach { it.reset() }
@@ -147,27 +202,45 @@ class VoiceIsolationProcessor(context: Context) : AutoCloseable {
         }
     }
 
-    private class Channel(sampleRate: Int, modelBytes: ByteArray) : AutoCloseable {
-        val model = GtcrnProcessor(modelBytes)
-        val mixer = IsolationIntensityMixer(StftProcessor.HOP_SIZE)
-        private val framing = HopPipeline(sampleRate) { dry, mixed, settings ->
-            val isolated = model.process(dry)
-            mixer.mix(dry, isolated, mixed, settings)
+    private class Channel(sampleRate: Int, model: EnhancerModel, modelBytes: List<ByteArray>) : AutoCloseable {
+        val backend: EnhancerBackend = model.create(modelBytes)
+        val mixer = IsolationIntensityMixer(backend.hopSize, backend.modelSampleRate)
+        private val isolated = FloatArray(backend.hopSize)
+
+        /**
+         * Dry frames kept waiting for a backend that answers with older audio; see
+         * [EnhancerBackend.dryDelayHops]. Slot `step % size` always holds the hop from `size` hops
+         * back, which is what the enhancer just returned.
+         */
+        private val dryDelay = Array(backend.dryDelayHops) { FloatArray(backend.hopSize) }
+        private var dryStep = 0
+
+        private val framing = HopPipeline(sampleRate, backend.modelSampleRate, backend.hopSize) { dry, mixed, settings ->
+            backend.process(dry, isolated)
+            val aligned = if (dryDelay.isEmpty()) dry else dryDelay[dryStep % dryDelay.size]
+            mixer.mix(aligned, isolated, mixed, settings)
+            if (aligned !== dry) dry.copyInto(aligned)
+            dryStep++
         }
 
-        val latencyMs: Float get() = framing.latencyMs
+        /** Beyond what [HopPipeline] accounts for, only a lookahead model adds to the delay. */
+        val extraLatencyMs: Float = backend.dryDelayHops * 1000f / backend.modelSampleRate
+
+        val latencyMs: Float get() = framing.latencyMs + extraLatencyMs
 
         fun process(buffer: FloatArray, channel: Int, frames: Int, offset: Int, settings: VoiceIsolationSettings) =
             framing.process(buffer, channel, frames, offset, settings)
 
         fun reset() {
             framing.reset()
-            model.reset()
+            backend.reset()
             mixer.reset()
+            dryDelay.forEach { it.fill(0f) }
+            dryStep = 0
         }
 
         override fun close() {
-            model.close()
+            backend.close()
         }
     }
 

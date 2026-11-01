@@ -1,26 +1,28 @@
 package me.timschneeberger.rootlessjamesdsp.voiceisolation
 
 /**
- * Frames a monophonic stream into the enhancer's fixed 16 kHz hops and back out at the device rate.
+ * Frames a monophonic stream into the enhancer's hops and back out at the device rate.
  *
- * The capture loop hands over blocks whose size has nothing in common with [StftProcessor.HOP_SIZE],
- * so partial hops are accumulated here instead of being thrown away, and the interpolated result is
- * queued so that every call emits exactly the frame count it was given. [hop] runs once per
- * complete hop and must write its result into `mixed`.
+ * The capture loop hands over blocks whose size has nothing in common with [hopSize], so partial
+ * hops are accumulated here instead of being thrown away, and the interpolated result is queued so
+ * that every call emits exactly the frame count it was given. [hop] runs once per complete hop and
+ * must write its result into `mixed`.
  */
 internal class HopPipeline(
     val sampleRate: Int,
+    private val modelSampleRate: Int,
+    private val hopSize: Int,
     private val hop: (dry: FloatArray, mixed: FloatArray, settings: VoiceIsolationSettings) -> Unit,
 ) {
-    private val decimator = SincResampler(sampleRate, GtcrnProcessor.SAMPLE_RATE)
-    private val interpolator = SincResampler(GtcrnProcessor.SAMPLE_RATE, sampleRate)
-    private val dry = FloatArray(StftProcessor.HOP_SIZE)
-    private val mixed = FloatArray(StftProcessor.HOP_SIZE)
+    private val decimator = SincResampler(sampleRate, modelSampleRate)
+    private val interpolator = SincResampler(modelSampleRate, sampleRate)
+    private val dry = FloatArray(hopSize)
+    private val mixed = FloatArray(hopSize)
     private var dryFilled = 0
 
     /** One hop of audio measured at the device rate: 256 samples at 16 kHz rounded up. */
-    private val hopOutputFrames = ((StftProcessor.HOP_SIZE.toLong() * sampleRate +
-        GtcrnProcessor.SAMPLE_RATE - 1) / GtcrnProcessor.SAMPLE_RATE).toInt().coerceAtLeast(1)
+    private val hopOutputFrames = ((hopSize.toLong() * sampleRate +
+        modelSampleRate - 1) / modelSampleRate).toInt().coerceAtLeast(1)
 
     private val outputRing = FloatArray(
         (hopOutputFrames * OUTPUT_RING_HOPS).coerceAtLeast(OUTPUT_RING_FLOOR),
@@ -44,8 +46,8 @@ internal class HopPipeline(
     /** Delay of the whole chain in milliseconds, independent of the block size. */
     val latencyMs: Float
         get() = (decimator.inputDelay * 1000f / sampleRate +
-            StftProcessor.HOP_SIZE * 1000f / GtcrnProcessor.SAMPLE_RATE +
-            interpolator.inputDelay * 1000f / GtcrnProcessor.SAMPLE_RATE +
+            hopSize * 1000f / modelSampleRate +
+            interpolator.inputDelay * 1000f / modelSampleRate +
             prebufferFrames * 1000f / sampleRate)
 
     init {
@@ -70,13 +72,13 @@ internal class HopPipeline(
         decimator.push(buffer, first, 2, frames)
 
         while (true) {
-            val requested = StftProcessor.HOP_SIZE - dryFilled
+            val requested = hopSize - dryFilled
             dryFilled += decimator.poll(dry, dryFilled, 1, requested)
-            if (dryFilled < StftProcessor.HOP_SIZE) break
+            if (dryFilled < hopSize) break
 
             hop(dry, mixed, settings)
             processedHops++
-            interpolator.push(mixed, 0, 1, StftProcessor.HOP_SIZE)
+            interpolator.push(mixed, 0, 1, hopSize)
             dryFilled = 0
         }
 

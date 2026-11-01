@@ -321,8 +321,13 @@
     <string name="tape_headbump">Head bump</string>
     <string name="tape_mix">Mix</string>
     <string name="voice_isolation_enable">Voice Isolation</string>
-    <string name="voice_isolation_summary">On-device enhancer that keeps speech and attenuates the estimated background of media audio. Adds about 50 ms of latency</string>
+    <string name="voice_isolation_summary">On-device enhancer that keeps speech and attenuates the estimated background of media audio. Latency depends on the selected model</string>
     <string name="voice_isolation_preset">Preset</string>
+    <string name="voice_isolation_model">Enhancer model</string>
+    <string name="voice_isolation_model_gtcrn">GTCRN (16 kHz, light)</string>
+    <string name="voice_isolation_model_deepfilternet3">DeepFilterNet3 (48 kHz, +20 ms)</string>
+    <string name="voice_isolation_model_dpdfnet2">DPDFNet2 (48 kHz, heavier)</string>
+    <string name="voice_isolation_model_dpdfnet8">DPDFNet8 (48 kHz, heaviest)</string>
     <string name="voice_isolation_preset_podcast">Podcast</string>
     <string name="voice_isolation_preset_film">Film</string>
     <string name="voice_isolation_preset_gaming">Gaming</string>

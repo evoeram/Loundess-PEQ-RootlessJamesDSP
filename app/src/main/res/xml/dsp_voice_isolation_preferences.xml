@@ -11,6 +11,14 @@
         android:icon="@drawable/ic_twotone_mic_24dp"
         app:iconSpaceReserved="false">
         <ListPreference
+            android:key="@string/key_voice_isolation_model"
+            android:title="@string/voice_isolation_model"
+            android:defaultValue="gtcrn"
+            android:entries="@array/voice_isolation_models"
+            android:entryValues="@array/voice_isolation_models_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false"/>
+        <ListPreference
             android:key="@string/key_voice_isolation_preset"
             android:title="@string/voice_isolation_preset"
             android:defaultValue="film"

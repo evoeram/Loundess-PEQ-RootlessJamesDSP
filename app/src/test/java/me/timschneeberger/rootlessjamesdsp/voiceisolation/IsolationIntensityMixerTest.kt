@@ -16,7 +16,7 @@ import kotlin.math.tanh
  * is transparent when both controls are neutral.
  */
 class IsolationIntensityMixerTest {
-    private val frameSize = StftProcessor.HOP_SIZE
+    private val frameSize = GtcrnProcessor.HOP_SIZE
 
     private fun tone(amplitude: Float, cycles: Int = 8) =
         FloatArray(frameSize) { amplitude * sin(2.0 * PI * cycles * it / frameSize).toFloat() }
@@ -28,7 +28,7 @@ class IsolationIntensityMixerTest {
 
     @Test
     fun neutralControlsLeaveTheSignalUntouchedApartFromOneFrameOfDelay() {
-        val mixer = IsolationIntensityMixer(frameSize)
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
         val dry = tone(0.25f)
         val isolated = tone(0.25f, cycles = 3)
         val output = FloatArray(frameSize)
@@ -41,7 +41,7 @@ class IsolationIntensityMixerTest {
 
     @Test
     fun fullReductionOutputsOnlyTheIsolatedVoice() {
-        val mixer = IsolationIntensityMixer(frameSize)
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
         val dry = tone(0.4f)
         val isolated = tone(0.2f, cycles = 5)
         val output = FloatArray(frameSize)
@@ -54,7 +54,7 @@ class IsolationIntensityMixerTest {
 
     @Test
     fun backgroundIsAttenuatedByTheReductionFactor() {
-        val mixer = IsolationIntensityMixer(frameSize)
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
         val dry = tone(0.4f)
         val isolated = tone(0.2f, cycles = 5)
         val output = FloatArray(frameSize)
@@ -68,7 +68,7 @@ class IsolationIntensityMixerTest {
 
     @Test
     fun voiceGainBoostsOnlyTheIsolatedPart() {
-        val mixer = IsolationIntensityMixer(frameSize)
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
         val dry = tone(0.3f)
         val output = FloatArray(frameSize)
 
@@ -82,7 +82,7 @@ class IsolationIntensityMixerTest {
 
     @Test
     fun samplesAboveTheSoftLimitStartAreCompressedNotClipped() {
-        val mixer = IsolationIntensityMixer(frameSize)
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
         val frame = constant(0.5f)
         val output = FloatArray(frameSize)
 
@@ -101,7 +101,7 @@ class IsolationIntensityMixerTest {
 
     @Test
     fun autoModeHoldsTheBackgroundReductionBackWhileNoSpeechIsPresent() {
-        val mixer = IsolationIntensityMixer(frameSize)
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
         val silent = FloatArray(frameSize)
         val output = FloatArray(frameSize)
 
@@ -122,7 +122,7 @@ class IsolationIntensityMixerTest {
 
     @Test
     fun manualModeAppliesTheReductionWithoutRamping() {
-        val mixer = IsolationIntensityMixer(frameSize)
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
         val silent = FloatArray(frameSize)
         val output = FloatArray(frameSize)
 
@@ -133,7 +133,7 @@ class IsolationIntensityMixerTest {
 
     @Test
     fun resetClearsTheRampAndTheDelayLine() {
-        val mixer = IsolationIntensityMixer(frameSize)
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
         val speech = tone(0.3f)
         val output = FloatArray(frameSize)
         repeat(6) { mixer.mix(speech, speech, output, settings(0.65f, auto = true)) }
@@ -150,7 +150,7 @@ class IsolationIntensityMixerTest {
 
     @Test
     fun framesOfTheWrongSizeAreRejected() {
-        val mixer = IsolationIntensityMixer(frameSize)
+        val mixer = IsolationIntensityMixer(frameSize, GtcrnProcessor.SAMPLE_RATE)
         val short = FloatArray(frameSize - 1)
 
         assertThrows(IllegalArgumentException::class.java) {

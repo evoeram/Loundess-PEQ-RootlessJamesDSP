@@ -226,6 +226,19 @@
         <item>2</item>
     </string-array>
 
+    <string-array name="voice_isolation_models">
+        <item>@string/voice_isolation_model_gtcrn</item>
+        <item>@string/voice_isolation_model_deepfilternet3</item>
+        <item>@string/voice_isolation_model_dpdfnet2</item>
+        <item>@string/voice_isolation_model_dpdfnet8</item>
+    </string-array>
+    <string-array name="voice_isolation_models_values" translatable="false">
+        <item>gtcrn</item>
+        <item>deepfilternet3</item>
+        <item>dpdfnet2_48khz_hr</item>
+        <item>dpdfnet8_48khz_hr</item>
+    </string-array>
+
     <string-array name="voice_isolation_presets" translatable="false">
         <item>@string/voice_isolation_preset_podcast</item>
         <item>@string/voice_isolation_preset_film</item>

@@ -254,6 +254,7 @@
     <string name="key_tape_mix" translatable="false">tape_mix</string>
     <string name="key_voice_isolation_enable" translatable="false">voice_isolation_enable</string>
     <string name="key_voice_isolation_preset" translatable="false">voice_isolation_preset</string>
+    <string name="key_voice_isolation_model" translatable="false">voice_isolation_model</string>
     <string name="key_voice_isolation_reduction" translatable="false">voice_isolation_reduction</string>
     <string name="key_voice_isolation_boost" translatable="false">voice_isolation_boost</string>
     <string name="key_voice_isolation_auto" translatable="false">voice_isolation_auto</string>

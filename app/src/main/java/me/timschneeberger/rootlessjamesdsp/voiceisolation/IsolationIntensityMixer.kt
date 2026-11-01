@@ -9,7 +9,8 @@ import kotlin.math.tanh
  * while the background is attenuated. Ported from Voice Isolation for Android (MIT).
  */
 internal class IsolationIntensityMixer(
-    private val frameSize: Int,
+    frameSize: Int,
+    private val modelSampleRate: Int,
 ) {
     private val delayedDryFrame = FloatArray(frameSize)
     private val speechDetector = SpeechActivityDetector()
@@ -50,7 +51,7 @@ internal class IsolationIntensityMixer(
 
         val rampFraction = if (normalized.autoMode) {
             val rampMs = if (hasSpeech) AUTO_ATTACK_MS else AUTO_RELEASE_MS
-            (output.size * 1000f / GtcrnProcessor.SAMPLE_RATE / rampMs).coerceAtMost(1f)
+            (output.size * 1000f / modelSampleRate / rampMs).coerceAtMost(1f)
         } else {
             1f
         }

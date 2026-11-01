@@ -1108,7 +1108,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                                 )
                                 queueControl.onWritten(written)
                                 tracer.onWritten(track, shortBuffer, written)
-                                if (voiceIsolationBuffer.onBlock(track, engine.isVoiceIsolationActive()))
+                                if (voiceIsolationBuffer.onBlock(track, engine.isVoiceIsolationActive(), engine.voiceIsolationHopMs()))
                                     Timber.d("${engine.voiceIsolationStats()} buffer=${voiceIsolationBuffer.status}")
                             }
                         }
@@ -1179,7 +1179,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                                 )
                                 queueControl.onWritten(written)
                                 tracer.onWritten(track, floatBuffer, written)
-                                if (voiceIsolationBuffer.onBlock(track, engine.isVoiceIsolationActive()))
+                                if (voiceIsolationBuffer.onBlock(track, engine.isVoiceIsolationActive(), engine.voiceIsolationHopMs()))
                                     Timber.d("${engine.voiceIsolationStats()} buffer=${voiceIsolationBuffer.status}")
                             }
                         }

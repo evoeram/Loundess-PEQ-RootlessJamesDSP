@@ -242,6 +242,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
             cache.select(Constants.PREF_VOICE_ISOLATION)
             val voiceIsolationEnabled = cache.get(R.string.key_voice_isolation_enable, false)
+            val voiceIsolationModel = cache.get(R.string.key_voice_isolation_model, "gtcrn")
             val voiceIsolationReduction = cache.get(R.string.key_voice_isolation_reduction, 65f).toDouble()
             val voiceIsolationBoost = cache.get(R.string.key_voice_isolation_boost, 0f).toDouble()
             val voiceIsolationAuto = cache.get(R.string.key_voice_isolation_auto, false)
@@ -454,7 +455,8 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                     Constants.PREF_VOICE_ISOLATION -> {
                         setVoiceIsolation(
                             voiceIsolationEnabled, sampleRate.toDouble(),
-                            voiceIsolationReduction, voiceIsolationBoost, voiceIsolationAuto
+                            voiceIsolationReduction, voiceIsolationBoost, voiceIsolationAuto,
+                            voiceIsolationModel
                         )
                     }
                     Constants.PREF_CONVOLVER -> {
@@ -929,14 +931,15 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         mixPct: Double
     ): Boolean = false
 
-    // Voice isolation: streaming GTCRN enhancer (rootless engine only).
+    // Voice isolation: streaming ML enhancer (rootless engine only).
     // reductionPct: 0..100 background attenuation, boostDb: 0..6 voice gain.
     open fun setVoiceIsolation(
         enable: Boolean,
         sampleRate: Double,
         reductionPct: Double,
         boostDb: Double,
-        autoMode: Boolean
+        autoMode: Boolean,
+        modelKey: String
     ): Boolean = false
 
     /** Whether this engine can run the ML Voice Isolation stage in its own process. */
@@ -944,6 +947,9 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
     /** True while the Voice Isolation stage is actually processing blocks. */
     open fun isVoiceIsolationActive(): Boolean = false
+
+    /** Duration of one enhancer hop in milliseconds; 0 when the stage is inactive. */
+    open fun voiceIsolationHopMs(): Float = 0f
 
     // Enable/disable automatic system media volume tracking for loudness correction.
     open fun setLoudnessAutoVolume(enable: Boolean) {}

@@ -15,7 +15,7 @@ class HopPipelineTest {
     private val settings = VoiceIsolationSettings()
 
     private fun identity(sampleRate: Int, hops: MutableList<Int> = mutableListOf()) =
-        HopPipeline(sampleRate) { dry, mixed, _ ->
+        HopPipeline(sampleRate, GtcrnProcessor.SAMPLE_RATE, GtcrnProcessor.HOP_SIZE) { dry, mixed, _ ->
             hops += 1
             dry.copyInto(mixed)
         }
@@ -123,7 +123,7 @@ class HopPipelineTest {
     @Test
     fun latencyAnnouncesTheDelayTheFramingActuallyIntroduces() {
         val pipeline = identity(48_000)
-        val hopOutput = StftProcessor.HOP_SIZE * 48_000 / GtcrnProcessor.SAMPLE_RATE
+        val hopOutput = GtcrnProcessor.HOP_SIZE * 48_000 / GtcrnProcessor.SAMPLE_RATE
         // 49 samples of decimator delay + one hop + 51 samples of interpolator delay + the cushion
         val expectedFrames = 49 + hopOutput + 51 + 2 * hopOutput
 

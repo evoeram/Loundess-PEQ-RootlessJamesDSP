@@ -36,3 +36,6 @@ tools/golden/build/
 
 # golden result wavs are artifacts, keep only hashes
 tools/golden/results/**/*.wav
+
+# Local test logs
+spl_test_logcat.txt

@@ -27,9 +27,10 @@ class PlaybackBufferAdapter(private val sampleRate: Int) {
 
     /**
      * Call once per processed block; the track is only visited every [STATS_INTERVAL_MS].
+     * [hopMs] is the duration of one enhancer hop, which sets the granularity of the growth steps.
      * Returns true on such a tick, so the caller can report module statistics with the same cadence.
      */
-    fun onBlock(track: AudioTrack, active: Boolean): Boolean {
+    fun onBlock(track: AudioTrack, active: Boolean, hopMs: Float): Boolean {
         if (!active || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             controller = null
             lastStatsAt = 0L
@@ -39,7 +40,7 @@ class PlaybackBufferAdapter(private val sampleRate: Int) {
         if (lastStatsAt != 0L && now - lastStatsAt < STATS_INTERVAL_MS) return false
         lastStatsAt = now
 
-        val hopFrames = (sampleRate * StftProcessor.HOP_SIZE / GtcrnProcessor.SAMPLE_RATE.toFloat())
+        val hopFrames = (sampleRate * hopMs.coerceAtLeast(DEFAULT_HOP_MS) / 1000f)
             .toInt().coerceAtLeast(1)
         val current = controller ?: AdaptiveBufferController(
             initialBufferFrames = track.bufferSizeInFrames.coerceAtLeast(1),
@@ -61,6 +62,7 @@ class PlaybackBufferAdapter(private val sampleRate: Int) {
     companion object {
         private const val MAXIMUM_BUFFER_MULTIPLIER = 4
         private const val STATS_INTERVAL_MS = 1000L
+        private const val DEFAULT_HOP_MS = 10f
         private val STABILITY_NAMES = arrayOf("Normal", "Buffered", "Safe")
     }
 }

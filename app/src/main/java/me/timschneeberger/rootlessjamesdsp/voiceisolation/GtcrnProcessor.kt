@@ -16,12 +16,12 @@ import kotlin.math.abs
  * The model emits the enhanced voice only; background suppression is done downstream by
  * [IsolationIntensityMixer].
  */
-internal class GtcrnProcessor(model: ByteArray) : AutoCloseable {
+internal class GtcrnProcessor(model: ByteArray) : EnhancerBackend {
     private val environment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
-    private val stft = StftProcessor()
+    private val stft = StftProcessor(FFT_SIZE, HOP_SIZE, WindowType.SqrtHann)
 
-    private val mixBuffer = directFloatBuffer(StftProcessor.SPECTRUM_SIZE)
+    private val mixBuffer = directFloatBuffer(SPECTRUM_SIZE)
     private val convolutionCache = directFloatBuffer(CONVOLUTION_CACHE_SIZE)
     private val attentionCache = directFloatBuffer(ATTENTION_CACHE_SIZE)
     private val recurrentCache = directFloatBuffer(RECURRENT_CACHE_SIZE)
@@ -32,12 +32,14 @@ internal class GtcrnProcessor(model: ByteArray) : AutoCloseable {
     private val recurrentTensor: OnnxTensor
     private val inputs: Map<String, OnnxTensor>
 
-    private val inputSpectrum = FloatArray(StftProcessor.SPECTRUM_SIZE)
-    private val enhancedSpectrum = FloatArray(StftProcessor.SPECTRUM_SIZE)
-    private val interleavedSpectrum = FloatArray(StftProcessor.SPECTRUM_SIZE)
-    private val outputFrame = FloatArray(StftProcessor.HOP_SIZE)
+    private val inputSpectrum = FloatArray(SPECTRUM_SIZE)
+    private val enhancedSpectrum = FloatArray(SPECTRUM_SIZE)
+    private val interleavedSpectrum = FloatArray(SPECTRUM_SIZE)
 
     private var smoothedInferenceMs = 0f
+
+    override val modelSampleRate: Int = SAMPLE_RATE
+    override val hopSize: Int = HOP_SIZE
 
     init {
         val options = OrtSession.SessionOptions().apply {
@@ -59,15 +61,14 @@ internal class GtcrnProcessor(model: ByteArray) : AutoCloseable {
         )
     }
 
-    /** Runs one [StftProcessor.HOP_SIZE]-sample frame and returns the enhanced frame (same array each call). */
-    fun process(inputFrame: FloatArray): FloatArray {
-        require(inputFrame.size == StftProcessor.HOP_SIZE)
-        stft.analyze(inputFrame, inputSpectrum)
+    override fun process(input: FloatArray, output: FloatArray) {
+        require(input.size == HOP_SIZE && output.size == HOP_SIZE)
+        stft.analyze(input, inputSpectrum)
 
         mixBuffer.clear()
-        for (bin in 0 until StftProcessor.BIN_COUNT) {
+        for (bin in 0 until BIN_COUNT) {
             mixBuffer.put(inputSpectrum[bin])
-            mixBuffer.put(inputSpectrum[bin + StftProcessor.BIN_COUNT])
+            mixBuffer.put(inputSpectrum[bin + BIN_COUNT])
         }
         mixBuffer.rewind()
 
@@ -78,25 +79,19 @@ internal class GtcrnProcessor(model: ByteArray) : AutoCloseable {
             copyTensor(result, "tra_cache_out", attentionCache)
             copyTensor(result, "inter_cache_out", recurrentCache)
         }
-        val inferenceMs = (System.nanoTime() - startedAt) / 1_000_000f
-        smoothedInferenceMs = if (smoothedInferenceMs == 0f) {
-            inferenceMs
-        } else {
-            smoothedInferenceMs * 0.9f + inferenceMs * 0.1f
-        }
+        trackInferenceTime(startedAt)
 
-        for (bin in 0 until StftProcessor.BIN_COUNT) {
+        for (bin in 0 until BIN_COUNT) {
             enhancedSpectrum[bin] = interleavedSpectrum[bin * 2]
-            enhancedSpectrum[bin + StftProcessor.BIN_COUNT] = interleavedSpectrum[bin * 2 + 1]
+            enhancedSpectrum[bin + BIN_COUNT] = interleavedSpectrum[bin * 2 + 1]
         }
-        stft.synthesize(enhancedSpectrum, outputFrame)
-        limit(outputFrame)
-        return outputFrame
+        stft.synthesize(enhancedSpectrum, output)
+        limit(output)
     }
 
-    fun inferenceMs(): Float = smoothedInferenceMs
+    override fun inferenceMs(): Float = smoothedInferenceMs
 
-    fun reset() {
+    override fun reset() {
         clearBuffer(convolutionCache)
         clearBuffer(attentionCache)
         clearBuffer(recurrentCache)
@@ -110,6 +105,15 @@ internal class GtcrnProcessor(model: ByteArray) : AutoCloseable {
         attentionTensor.close()
         recurrentTensor.close()
         session.close()
+    }
+
+    private fun trackInferenceTime(startedAtNanos: Long) {
+        val inferenceMs = (System.nanoTime() - startedAtNanos) / 1_000_000f
+        smoothedInferenceMs = if (smoothedInferenceMs == 0f) {
+            inferenceMs
+        } else {
+            smoothedInferenceMs * 0.9f + inferenceMs * 0.1f
+        }
     }
 
     private fun copyTensor(result: OrtSession.Result, name: String, destination: FloatArray) {
@@ -154,6 +158,10 @@ internal class GtcrnProcessor(model: ByteArray) : AutoCloseable {
 
     companion object {
         const val SAMPLE_RATE = 16_000
+        const val FFT_SIZE = 512
+        const val HOP_SIZE = 256
+        const val BIN_COUNT = FFT_SIZE / 2 + 1
+        const val SPECTRUM_SIZE = BIN_COUNT * 2
         internal const val MODEL_ASSET = "gtcrn.onnx"
         private const val CONVOLUTION_CACHE_SIZE = 2 * 1 * 16 * 16 * 33
         private const val ATTENTION_CACHE_SIZE = 2 * 3 * 1 * 1 * 16

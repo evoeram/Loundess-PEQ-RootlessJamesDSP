@@ -13,16 +13,16 @@ import kotlin.math.sin
  * sample-aligned with the dry signal and the background subtraction does not comb-filter the voice.
  */
 class StftProcessorTest {
-    private val hop = StftProcessor.HOP_SIZE
+    private val hop = GtcrnProcessor.HOP_SIZE
 
     private fun sine(frequency: Double, count: Int): FloatArray =
         FloatArray(count) { sin(2.0 * PI * frequency * it / GtcrnProcessor.SAMPLE_RATE).toFloat() }
 
     @Test
     fun analysisAndSynthesisReconstructThePreviousHopExactly() {
-        val stft = StftProcessor()
+        val stft = gtcrnStft()
         val input = sine(440.0, hop * 6)
-        val spectrum = FloatArray(StftProcessor.SPECTRUM_SIZE)
+        val spectrum = FloatArray(GtcrnProcessor.SPECTRUM_SIZE)
         val output = FloatArray(hop)
 
         var previous: FloatArray? = null
@@ -47,8 +47,8 @@ class StftProcessorTest {
 
     @Test
     fun synthesisLagsAnalysisByExactlyOneHop() {
-        val stft = StftProcessor()
-        val spectrum = FloatArray(StftProcessor.SPECTRUM_SIZE)
+        val stft = gtcrnStft()
+        val spectrum = FloatArray(GtcrnProcessor.SPECTRUM_SIZE)
         val output = FloatArray(hop)
         val empty = FloatArray(hop)
         val click = FloatArray(hop).also { it[hop - 1] = 1f }
@@ -71,8 +71,8 @@ class StftProcessorTest {
 
     @Test
     fun resetClearsTheOverlapHistory() {
-        val stft = StftProcessor()
-        val spectrum = FloatArray(StftProcessor.SPECTRUM_SIZE)
+        val stft = gtcrnStft()
+        val spectrum = FloatArray(GtcrnProcessor.SPECTRUM_SIZE)
         val output = FloatArray(hop)
         val loud = sine(1000.0, hop)
         val nearSilent = FloatArray(hop) { it * 1e-6f }
@@ -90,4 +90,42 @@ class StftProcessorTest {
         val leftover = output.maxOf { abs(it) }
         assertTrue("leftover energy after reset: $leftover", leftover < 1e-3f)
     }
+
+    /**
+     * The 48 kHz enhancers use a 960-point transform, which is not a power of two, and a Vorbis
+     * window. Both have to give the same one-hop-delayed perfect reconstruction, otherwise the
+     * model would hear a signal shaped by the framing instead of the audio.
+     */
+    @Test
+    fun theVorbisPairReconstructsTheNonPowerOfTwoFrameExactly() {
+        val stft = StftProcessor(960, 480, WindowType.Vorbis)
+        val frames = 8
+        val input = FloatArray(480 * frames) { index ->
+            sin(2.0 * PI * 1300.0 * index / 48_000.0).toFloat() +
+                0.5f * sin(2.0 * PI * 5100.0 * index / 48_000.0).toFloat()
+        }
+        val spectrum = FloatArray(stft.spectrumSize)
+        val output = FloatArray(480)
+
+        var previous: FloatArray? = null
+        var worst = 0f
+        for (frame in 0 until frames) {
+            val dry = FloatArray(480)
+            input.copyInto(dry, 0, frame * 480, (frame + 1) * 480)
+            stft.analyze(dry, spectrum)
+            stft.synthesize(spectrum, output)
+
+            val delayed = previous
+            if (delayed != null) {
+                for (sample in 0 until 480) {
+                    worst = maxOf(worst, abs(delayed[sample] - output[sample]))
+                }
+            }
+            previous = dry
+        }
+        assertTrue("worst reconstruction error: $worst", worst < 2e-3f)
+    }
+
+    private fun gtcrnStft() =
+        StftProcessor(GtcrnProcessor.FFT_SIZE, GtcrnProcessor.HOP_SIZE, WindowType.SqrtHann)
 }

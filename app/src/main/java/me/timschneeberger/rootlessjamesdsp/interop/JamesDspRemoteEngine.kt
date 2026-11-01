@@ -608,7 +608,8 @@ class JamesDspRemoteEngine(
         sampleRate: Double,
         reductionPct: Double,
         boostDb: Double,
-        autoMode: Boolean
+        autoMode: Boolean,
+        modelKey: String
     ): Boolean {
         if (enable) Timber.i("Voice Isolation is unavailable in the root engine; keeping audio untouched")
         return !enable
