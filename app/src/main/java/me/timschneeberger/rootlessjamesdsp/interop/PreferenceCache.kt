@@ -54,7 +54,13 @@ class PreferenceCache(val context: Context) {
             context: Context,
             namespace: String,
         ): SharedPreferences {
-            return context.getSharedPreferences(namespace, Context.MODE_PRIVATE)
+            // MODE_MULTI_PROCESS is load-bearing despite the deprecation:
+            // preset/profile loads and reset-to-default replace or delete the
+            // backing XML outside the SharedPreferences API, and only this
+            // mode makes getSharedPreferences re-stat and reload the file.
+            // With MODE_PRIVATE the cached in-memory map is served forever
+            // and the engine never sees the new values.
+            return context.getSharedPreferences(namespace, Context.MODE_MULTI_PROCESS)
         }
 
         @Suppress("UNCHECKED_CAST")

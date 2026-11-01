@@ -447,14 +447,24 @@ object ContextExtensions {
         return File(cacheDir, name).apply { isDirectory || mkdirs() }
     }
 
+    @SuppressLint("ApplySharedPref")
     fun Context.restoreDspSettings(silent: Boolean = false) {
-        // Delete DSP settings
+        // Reset DSP settings. SharedPreferences instances are cached in-memory
+        // process-wide, so deleting the backing XML files would leave every
+        // live instance (UI fragments, engine) serving stale values — and the
+        // next apply() on any of them would resurrect the whole map onto disk.
+        // Clear through the API instead: it updates the in-memory maps and
+        // notifies listeners. Commit synchronously so the broadcast-driven
+        // fragment restarts and the engine sync observe the defaults.
         Timber.d("Reverting dsp preferences")
         File(applicationInfo.dataDir + "/shared_prefs")
             .listFiles()?.forEach next@ { f ->
                 if(!f.name.startsWith("dsp_") || f.extension != "xml" || f.isDirectory)
                     return@next
-                f.delete()
+                getSharedPreferences(f.nameWithoutExtension, Context.MODE_PRIVATE)
+                    .edit()
+                    .clear()
+                    .commit()
             }
 
         if(!silent) {

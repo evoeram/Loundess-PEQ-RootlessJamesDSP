@@ -66,8 +66,9 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             if (key == context?.resources?.getString(R.string.key_squig_enable)) {
                 val enabled = preferenceManager.sharedPreferences
                     ?.getBoolean(key, false) ?: false
+                @Suppress("DEPRECATION")
                 val squigPrefs = context?.getSharedPreferences(
-                    Constants.PREF_SQUIG, Context.MODE_PRIVATE
+                    Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS
                 )
                 squigPrefs?.edit()
                     ?.putBoolean(
@@ -114,8 +115,11 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         val args = requireArguments()
         preferenceManager.sharedPreferencesName = args.getString(BUNDLE_PREF_NAME)
+        // MODE_MULTI_PROCESS: preset/profile loads and reset-to-default change
+        // the backing XML outside the API; only this mode makes the cached
+        // instance re-stat and reload the file (see PreferenceCache).
         @Suppress("DEPRECATION")
-        preferenceManager.sharedPreferencesMode = Context.MODE_PRIVATE
+        preferenceManager.sharedPreferencesMode = Context.MODE_MULTI_PROCESS
         addPreferencesFromResource(args.getInt(BUNDLE_XML_RES))
 
         requireContext().registerLocalReceiver(receiver, IntentFilter().apply {

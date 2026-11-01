@@ -178,8 +178,9 @@ class SquigLiveFragment : Fragment() {
     // ── Persistence + real-time preview state ────────────────────────────
 
     /** SharedPreferences namespace for Squig Live plugin state. */
+    @Suppress("DEPRECATION")
     private val squigPrefs: SharedPreferences?
-        get() = context?.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_PRIVATE)
+        get() = context?.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
 
     /** Saved instance/target/phone names restored from prefs; applied once the
      *  async spinner loaders finish populating their adapters. */
@@ -1197,7 +1198,8 @@ class SquigLiveFragment : Fragment() {
         // Also sync key_squig_enable so the card switch turns off.
         val ctx = context ?: return
         try {
-            val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_PRIVATE)
+            @Suppress("DEPRECATION")
+            val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
             squigPref.edit()
                 .putBoolean(getString(R.string.key_squig_peq_enable), false)
                 .putBoolean(getString(R.string.key_squig_enable), false)
@@ -1318,7 +1320,8 @@ class SquigLiveFragment : Fragment() {
         try {
             // preamp: workingPreamp если был Live EQ, иначе autoEqPreamp
             val preamp = workingPreamp
-            val prefs = requireContext().getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_PRIVATE)
+            @Suppress("DEPRECATION")
+            val prefs = requireContext().getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
             prefs.edit()
                 .putString(getString(R.string.key_squig_peq_bands), bands.serialize())
                 .putFloat(getString(R.string.key_squig_peq_preamp), preamp.toFloat())
@@ -1682,7 +1685,8 @@ class SquigLiveFragment : Fragment() {
             val usePreamp = preamp ?: workingPreamp
             val effectiveBands = if (enable && useBands.isNotEmpty()) useBands else ParametricEqBandList()
             val effectivePreamp = if (enable) usePreamp else 0.0
-            val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_PRIVATE)
+            @Suppress("DEPRECATION")
+            val squigPref = ctx.getSharedPreferences(Constants.PREF_SQUIG, Context.MODE_MULTI_PROCESS)
             // Sync both keys: key_squig_enable (card switch) and key_squig_peq_enable (engine)
             val effectiveEnable = enable && effectiveBands.isNotEmpty()
             squigPref.edit()
