@@ -13,6 +13,7 @@ import androidx.annotation.XmlRes
 import androidx.appcompat.app.AlertDialog
 import androidx.preference.Preference
 import androidx.preference.Preference.SummaryProvider
+import androidx.preference.ListPreference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceScreen
 import androidx.recyclerview.widget.RecyclerView
@@ -39,6 +40,7 @@ import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.re
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.unregisterLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
+import me.timschneeberger.rootlessjamesdsp.voiceisolation.VoiceIsolationPreset
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import timber.log.Timber
@@ -55,6 +57,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
     private var recyclerView: RecyclerView? = null
     private var reportedProcessingSampleRate: Int? = null
     private var convolverStatusUpdater: (() -> Unit)? = null
+    private var applyingVoiceIsolationPreset = false
 
     private val listener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -76,6 +79,14 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
                         enabled
                     )?.apply()
                 context?.sendLocalBroadcast(Intent(Constants.ACTION_SQUIG_PEQ_CHANGED))
+            }
+
+            // Voice Isolation: moving a slider away from a preset's endpoints switches the
+            // preset selector to Custom (a preset application sets the flag and is skipped).
+            if (!applyingVoiceIsolationPreset &&
+                (key == context?.resources?.getString(R.string.key_voice_isolation_reduction) ||
+                        key == context?.resources?.getString(R.string.key_voice_isolation_boost))) {
+                syncVoiceIsolationPresetSelection()
             }
         }
 
@@ -140,6 +151,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             R.xml.dsp_agc_preferences -> setupExtrasLabels()
             R.xml.dsp_cure_preferences -> setupExtrasLabels()
             R.xml.dsp_tape_preferences -> setupTapeLabels()
+            R.xml.dsp_voice_isolation_preferences -> setupVoiceIsolation()
             R.xml.dsp_compander_preferences -> {
                 findPreference<MaterialSeekbarPreference>(getString(R.string.key_compander_granularity))?.valueLabelOverride =
                     fun(it: Float): String {
@@ -680,6 +692,44 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             fun(it: Float): String { return "%.1f dB".format(it / 10f) }
         findPreference<MaterialSeekbarPreference>(getString(R.string.key_tape_mix))?.valueLabelOverride =
             fun(it: Float): String { return "%.0f %%".format(it) }
+    }
+
+    /**
+     * Voice Isolation: a preset writes both mix endpoints, editing an endpoint returns the module
+     * to Custom. Boost is stored in dB, the engine converts it to the linear voice gain.
+     */
+    private fun setupVoiceIsolation() {
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_voice_isolation_reduction))?.valueLabelOverride =
+            fun(it: Float): String { return "%.0f %%".format(it) }
+        findPreference<MaterialSeekbarPreference>(getString(R.string.key_voice_isolation_boost))?.valueLabelOverride =
+            fun(it: Float): String { return "%.1f dB".format(it) }
+
+        findPreference<ListPreference>(getString(R.string.key_voice_isolation_preset))
+            ?.setOnPreferenceChangeListener { _, newValue ->
+                val preset = VoiceIsolationPreset.fromStorageValue(newValue as? String)
+                if (preset != VoiceIsolationPreset.Custom) {
+                    applyingVoiceIsolationPreset = true
+                    findPreference<MaterialSeekbarPreference>(
+                        getString(R.string.key_voice_isolation_reduction))?.setValue(preset.reductionPct)
+                    findPreference<MaterialSeekbarPreference>(
+                        getString(R.string.key_voice_isolation_boost))?.setValue(preset.boostDb)
+                    applyingVoiceIsolationPreset = false
+                }
+                true
+            }
+    }
+
+    private fun syncVoiceIsolationPresetSelection() {
+        val prefs = preferenceManager.sharedPreferences ?: return
+        val presetKey = getString(R.string.key_voice_isolation_preset)
+        val reduction = prefs.getFloat(getString(R.string.key_voice_isolation_reduction), 65f)
+        val boost = prefs.getFloat(getString(R.string.key_voice_isolation_boost), 0f)
+        val matching = VoiceIsolationPreset.matching(reduction, boost).storageValue
+        if (prefs.getString(presetKey, null) == matching) return
+
+        val preference = findPreference<ListPreference>(presetKey)
+        if (preference != null) preference.value = matching
+        else prefs.edit().putString(presetKey, matching).apply()
     }
 
     /**

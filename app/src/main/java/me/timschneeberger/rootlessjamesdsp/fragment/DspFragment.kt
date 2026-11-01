@@ -17,6 +17,7 @@ import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.audio.ProcessingMode
 import me.timschneeberger.rootlessjamesdsp.databinding.FragmentDspBinding
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
+import me.timschneeberger.rootlessjamesdsp.utils.isRootless
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
 import org.koin.android.ext.android.inject
 import timber.log.Timber
@@ -180,6 +181,10 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
                 R.id.card_tape, PreferenceGroupFragment.newInstance(Constants.PREF_TAPE,
                     R.xml.dsp_tape_preferences
                 ))
+            .replace(
+                R.id.card_voice_isolation, PreferenceGroupFragment.newInstance(Constants.PREF_VOICE_ISOLATION,
+                    R.xml.dsp_voice_isolation_preferences
+                ))
             .commit()
 
         // Load initial preferences
@@ -236,6 +241,8 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
         binding.cardAgc.isVisible = !directMode
         binding.cardCure.isVisible = !directMode
         binding.cardTape.isVisible = !directMode
+        // The enhancer runs in this process, so the root HAL engine cannot host it
+        binding.cardVoiceIsolation.isVisible = !directMode && isRootless()
         // Output control (limiter) тоже не работает без capture loop
         binding.cardOutputControl.isVisible = !directMode
         // Measurement (MEOW) бесполезен без capture loop

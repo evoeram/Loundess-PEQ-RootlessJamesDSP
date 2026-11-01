@@ -46,6 +46,7 @@ import me.timschneeberger.rootlessjamesdsp.loopback.LoopbackCaptureUserService
 import me.timschneeberger.rootlessjamesdsp.latency.LatencyTracer
 import me.timschneeberger.rootlessjamesdsp.latency.LatencyTuning
 import me.timschneeberger.rootlessjamesdsp.latency.QueueController
+import me.timschneeberger.rootlessjamesdsp.voiceisolation.PlaybackBufferAdapter
 import me.timschneeberger.rootlessjamesdsp.flavor.CrashlyticsImpl
 import me.timschneeberger.rootlessjamesdsp.interop.JamesDspLocalEngine
 import me.timschneeberger.rootlessjamesdsp.interop.ProcessorMessageHandler
@@ -817,6 +818,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         // QueueController (только для Low-latency: maxQueueFrames > 0)
         val queueControl = QueueController(tuning.maxQueueFrames)
+        // Voice Isolation grows the playback buffer when the enhancer stage starves the track
+        val voiceIsolationBuffer = PlaybackBufferAdapter(sampleRate)
 
         // LatencyTracer (PEQHUB approach: AudioTimestamp-based, marker detection)
         val tracer = LatencyTracer(sampleRate, tuning.trace)
@@ -1105,6 +1108,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                                 )
                                 queueControl.onWritten(written)
                                 tracer.onWritten(track, shortBuffer, written)
+                                if (voiceIsolationBuffer.onBlock(track, engine.isVoiceIsolationActive()))
+                                    Timber.d("${engine.voiceIsolationStats()} buffer=${voiceIsolationBuffer.status}")
                             }
                         }
                     }
@@ -1174,6 +1179,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                                 )
                                 queueControl.onWritten(written)
                                 tracer.onWritten(track, floatBuffer, written)
+                                if (voiceIsolationBuffer.onBlock(track, engine.isVoiceIsolationActive()))
+                                    Timber.d("${engine.voiceIsolationStats()} buffer=${voiceIsolationBuffer.status}")
                             }
                         }
                     }

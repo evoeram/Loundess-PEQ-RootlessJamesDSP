@@ -135,6 +135,11 @@ android {
         getByName("debug").res.srcDirs("src/debug/res")
     }
 
+    androidResources {
+        // The Voice Isolation model is read as a whole stream from assets
+        noCompress += "onnx"
+    }
+
     // Export multiple CPU architecture split apks
     splits {
         abi {
@@ -227,6 +232,9 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.retrofit2:converter-scalars:2.9.0")
+
+    // Voice Isolation: streaming GTCRN enhancer (rootless engine only)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
 
     // Logging
     implementation("com.jakewharton.timber:timber:5.0.1")

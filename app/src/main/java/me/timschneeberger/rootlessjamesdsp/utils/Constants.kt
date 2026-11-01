@@ -25,6 +25,7 @@ object Constants {
     const val PREF_AGC = "dsp_agc"
     const val PREF_CURE = "dsp_cure"
     const val PREF_TAPE = "dsp_tape"
+    const val PREF_VOICE_ISOLATION = "dsp_voice_isolation"
     const val PREF_OUTPUT = "dsp_output_control"
     const val PREF_REVERB = "dsp_reverb"
     const val PREF_STEREOWIDE = "dsp_stereowide"

@@ -602,6 +602,18 @@ class JamesDspRemoteEngine(
         return configResult && enableResult
     }
 
+    // Voice Isolation needs an in-process ML runtime, which the system effect process cannot host
+    override fun setVoiceIsolation(
+        enable: Boolean,
+        sampleRate: Double,
+        reductionPct: Double,
+        boostDb: Double,
+        autoMode: Boolean
+    ): Boolean {
+        if (enable) Timber.i("Voice Isolation is unavailable in the root engine; keeping audio untouched")
+        return !enable
+    }
+
     // ---- Auto system volume tracking (root/remote engine) ----
 
     private var volumeReceiverRegistered = false

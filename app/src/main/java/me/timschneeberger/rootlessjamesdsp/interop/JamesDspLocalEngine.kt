@@ -8,6 +8,8 @@ import android.media.AudioManager
 import android.os.Build
 import me.timschneeberger.rootlessjamesdsp.interop.structure.EelVmVariable
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
+import me.timschneeberger.rootlessjamesdsp.voiceisolation.VoiceIsolationProcessor
+import me.timschneeberger.rootlessjamesdsp.voiceisolation.VoiceIsolationSettings
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import timber.log.Timber
 import java.util.Timer
@@ -16,6 +18,9 @@ import kotlin.math.log10
 
 class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspCallbacks? = null) : JamesDspBaseEngine(context, callbacks) {
     var handle: JamesDspHandle = JamesDspWrapper.alloc(callbacks ?: DummyCallbacks())
+
+    @Volatile
+    private var voiceIsolation: VoiceIsolationProcessor? = null
 
     override var sampleRate: Float
         set(value) {
@@ -33,6 +38,9 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
 
     override fun close() {
         setLoudnessAutoVolume(false)
+
+        voiceIsolation?.close()
+        voiceIsolation = null
 
         val oldHandle = handle
         handle = 0
@@ -59,6 +67,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         }
         else {
             JamesDspWrapper.processInt16(handle, input, output, offset, length)
+            processVoiceIsolation(output, offset, length)
         }
     }
 
@@ -93,7 +102,74 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         }
         else {
             JamesDspWrapper.processFloat(handle, input, output, offset, length)
+            processVoiceIsolation(output, offset, length)
         }
+    }
+
+    // Voice Isolation runs in this process (ONNX Runtime), after the native JamesDSP chain
+    private fun processVoiceIsolation(buffer: ShortArray, offset: Int, length: Int) {
+        val processor = voiceIsolation ?: return
+        if (!processor.enabled) return
+        val start = if (offset < 0) 0 else offset
+        val samples = if (offset < 0 && length < 0) buffer.size else length.coerceAtMost(buffer.size - start)
+        processor.processShort(buffer, samples / 2, start)
+    }
+
+    private fun processVoiceIsolation(buffer: FloatArray, offset: Int, length: Int) {
+        val processor = voiceIsolation ?: return
+        if (!processor.enabled) return
+        val start = if (offset < 0) 0 else offset
+        val samples = if (offset < 0 && length < 0) buffer.size else length.coerceAtMost(buffer.size - start)
+        processor.processFloat(buffer, samples / 2, start)
+    }
+
+    override fun supportsVoiceIsolation(): Boolean = true
+
+    override fun isVoiceIsolationActive(): Boolean = voiceIsolation?.enabled == true
+
+    /** Real-time budget report of the Voice Isolation stage, for logcat verification. */
+    fun voiceIsolationStats(): String {
+        val processor = voiceIsolation ?: return "voiceIsolation=off"
+        val inference = processor.inferenceMs()
+        val budget = processor.hopBudgetMs()
+        return (
+            "voiceIsolation: inference=%.2fms budget=%.2fms rtf=%.2f latency=%.1fms speech=%s " +
+                "reduction=%.0f%% out=%.0fdB"
+            ).format(
+                inference, budget, inference / budget, processor.latencyMs,
+                processor.speechDetected(), processor.effectiveReduction() * 100f,
+                processor.takeOutputLevelDb(),
+            )
+    }
+
+    override fun setVoiceIsolation(
+        enable: Boolean,
+        sampleRate: Double,
+        reductionPct: Double,
+        boostDb: Double,
+        autoMode: Boolean
+    ): Boolean {
+        if (!enable) {
+            voiceIsolation?.enabled = false
+            return true
+        }
+        val processor = voiceIsolation ?: VoiceIsolationProcessor(context).also { voiceIsolation = it }
+        if (!processor.available) {
+            Timber.w("setVoiceIsolation: skipping, enhancer model is not available")
+            return false
+        }
+        if (sampleRate <= 0.0) {
+            Timber.w("setVoiceIsolation: skipping, sample rate not yet known ($sampleRate)")
+            return false
+        }
+        processor.configure(sampleRate.toInt())
+        processor.settings = VoiceIsolationSettings(
+            backgroundReduction = (reductionPct / 100.0).toFloat(),
+            voiceGain = VoiceIsolationSettings.boostDbToGain(boostDb.toFloat()),
+            autoMode = autoMode,
+        )
+        processor.enabled = true
+        return true
     }
 
     // Effect config

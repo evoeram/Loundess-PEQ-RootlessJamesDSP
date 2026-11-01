@@ -226,6 +226,21 @@
         <item>2</item>
     </string-array>
 
+    <string-array name="voice_isolation_presets" translatable="false">
+        <item>@string/voice_isolation_preset_podcast</item>
+        <item>@string/voice_isolation_preset_film</item>
+        <item>@string/voice_isolation_preset_gaming</item>
+        <item>@string/voice_isolation_preset_maximum</item>
+        <item>@string/voice_isolation_preset_custom</item>
+    </string-array>
+    <string-array name="voice_isolation_presets_values" translatable="false">
+        <item>podcast</item>
+        <item>film</item>
+        <item>gaming</item>
+        <item>maximum</item>
+        <item>custom</item>
+    </string-array>
+
     <string-array name="cure_levels" translatable="false">
         <item>@string/cure_level_0</item>
         <item>@string/cure_level_1</item>

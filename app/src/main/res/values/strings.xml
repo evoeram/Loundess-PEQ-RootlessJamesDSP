@@ -320,6 +320,18 @@
     <string name="tape_bias_summary">Negative: brighter, more distortion. Positive: duller. Zero: flat</string>
     <string name="tape_headbump">Head bump</string>
     <string name="tape_mix">Mix</string>
+    <string name="voice_isolation_enable">Voice Isolation</string>
+    <string name="voice_isolation_summary">On-device enhancer that keeps speech and attenuates the estimated background of media audio. Adds about 50 ms of latency</string>
+    <string name="voice_isolation_preset">Preset</string>
+    <string name="voice_isolation_preset_podcast">Podcast</string>
+    <string name="voice_isolation_preset_film">Film</string>
+    <string name="voice_isolation_preset_gaming">Gaming</string>
+    <string name="voice_isolation_preset_maximum">Maximum</string>
+    <string name="voice_isolation_preset_custom">Custom</string>
+    <string name="voice_isolation_reduction">Reduce background</string>
+    <string name="voice_isolation_boost">Boost voice</string>
+    <string name="voice_isolation_auto">Auto mode</string>
+    <string name="voice_isolation_auto_summary">Softens background reduction between speech passages</string>
 
     <string name="geq_enable">Arbitrary response equalizer</string>
     <string name="geq_nodes">Magnitude response</string>

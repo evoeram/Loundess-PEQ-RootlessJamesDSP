@@ -421,3 +421,64 @@ Copyright (c) alienware377 and contributors
 
 This port remains under the GNU General Public License v3.0, like the rest of
 this repository.
+
+Voice Isolation (GTCRN speech enhancer)
+----------------------------------------
+Files:
+  app/src/main/assets/gtcrn.onnx
+  app/src/main/java/me/timschneeberger/rootlessjamesdsp/voiceisolation/
+  app/src/test/java/me/timschneeberger/rootlessjamesdsp/voiceisolation/
+
+The streaming GTCRN enhancer (GtcrnProcessor with its cached conv/transformer
+state, StftProcessor's 512/256 sqrt-Hann analysis and synthesis), the intensity
+mixer that reconstructs the background as dry minus isolated, the speech
+activity detector that rides the auto-mode ramps, and the adaptive buffer
+controller are ported from android-realtime-voice-isolation,
+https://github.com/sk2andy/android-realtime-voice-isolation, by André Naumann.
+
+Copyright (c) 2026 André Naumann (source app, MIT)
+
+The model file app/src/main/assets/gtcrn.onnx is copied unmodified from
+Xiaobin-Rong/gtcrn, https://github.com/Xiaobin-Rong/gtcrn
+(stream/onnx_models/gtcrn.onnx, upstream commit
+3862c44808dca492ea5a8a145d2dc2a1028d08c8,
+SHA-256 f648b02f2d7ff96ebcb0eec2219688a08ed12fe7e3d50f248605a90eba8cad17).
+
+Copyright (c) 2024 Rong Xiaobin (GTCRN model, MIT)
+
+Inference runs through com.microsoft.onnxruntime:onnxruntime-android:1.20.0
+(https://github.com/microsoft/onnxruntime, MIT).
+
+Unlike the source, the enhancer is a stage of this app's rootless playback
+engine rather than a standalone privileged audio service: the stream arrives at
+the device sample rate in blocks whose size is unrelated to the enhancer's hop,
+so the port adds SincResampler/HopPipeline to decimate to 16 kHz, carry partial
+hops across blocks and re-emit an exact frame count per block, and the adaptive
+buffer is driven by the output AudioTrack's underrun counter instead of a
+capture loop of its own. The source's single intensity control is split into
+independent background-reduction and voice-boost controls, its presets are
+re-expressed as pairs of those endpoints, and the root (AudioEffect) path stays
+transparent because it cannot host the model.
+
+Both MIT permissions are reproduced below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+This port remains under the GNU General Public License v3.0, like the rest of
+this repository.

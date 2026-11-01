@@ -240,6 +240,12 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val tapeHeadBump = cache.get(R.string.key_tape_headbump, 30f) / 10.0
             val tapeMix = cache.get(R.string.key_tape_mix, 100f).toDouble()
 
+            cache.select(Constants.PREF_VOICE_ISOLATION)
+            val voiceIsolationEnabled = cache.get(R.string.key_voice_isolation_enable, false)
+            val voiceIsolationReduction = cache.get(R.string.key_voice_isolation_reduction, 65f).toDouble()
+            val voiceIsolationBoost = cache.get(R.string.key_voice_isolation_boost, 0f).toDouble()
+            val voiceIsolationAuto = cache.get(R.string.key_voice_isolation_auto, false)
+
             cache.select(Constants.PREF_CONVOLVER)
             val convolverEnabled = cache.get(R.string.key_convolver_enable, false)
             val convolverFile = cache.get(R.string.key_convolver_file, "")
@@ -443,6 +449,12 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                             tapeEnabled, sampleRate.toDouble(),
                             tapeWow, tapeFlutter, tapeSaturation,
                             tapeBias, tapeHeadBump, tapeMix
+                        )
+                    }
+                    Constants.PREF_VOICE_ISOLATION -> {
+                        setVoiceIsolation(
+                            voiceIsolationEnabled, sampleRate.toDouble(),
+                            voiceIsolationReduction, voiceIsolationBoost, voiceIsolationAuto
                         )
                     }
                     Constants.PREF_CONVOLVER -> {
@@ -916,6 +928,22 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         headBumpDb: Double,
         mixPct: Double
     ): Boolean = false
+
+    // Voice isolation: streaming GTCRN enhancer (rootless engine only).
+    // reductionPct: 0..100 background attenuation, boostDb: 0..6 voice gain.
+    open fun setVoiceIsolation(
+        enable: Boolean,
+        sampleRate: Double,
+        reductionPct: Double,
+        boostDb: Double,
+        autoMode: Boolean
+    ): Boolean = false
+
+    /** Whether this engine can run the ML Voice Isolation stage in its own process. */
+    open fun supportsVoiceIsolation(): Boolean = false
+
+    /** True while the Voice Isolation stage is actually processing blocks. */
+    open fun isVoiceIsolationActive(): Boolean = false
 
     // Enable/disable automatic system media volume tracking for loudness correction.
     open fun setLoudnessAutoVolume(enable: Boolean) {}
