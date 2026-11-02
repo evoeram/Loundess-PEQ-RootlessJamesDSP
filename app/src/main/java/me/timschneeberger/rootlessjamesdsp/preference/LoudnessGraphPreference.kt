@@ -11,6 +11,7 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceViewHolder
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.interop.PreferenceCache
+import me.timschneeberger.rootlessjamesdsp.utils.AudioSampleRateDetector
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.LoudnessCurveCalculator
 import me.timschneeberger.rootlessjamesdsp.view.LoudnessSurface
@@ -144,8 +145,22 @@ class LoudnessGraphPreference : Preference, SharedPreferences.OnSharedPreference
             qFactor = prefs.getFloat(context.getString(R.string.key_loudness_subsonic_q), 707f).toDouble() / 1000.0
         )
 
-        val result = LoudnessCurveCalculator.compute(mode, refLevel, refOffset, attenuation, volume, tuning, subsonic)
+        // BUG-09: use the actual output rate so the ISO cascade peak/preamp on
+        // the graph matches the audio path; fall back to 48 kHz when undetectable.
+        val sampleRate = outputSampleRate()
+        val result = LoudnessCurveCalculator.compute(
+            mode, refLevel, refOffset, attenuation, volume, tuning, subsonic,
+            sampleRate = sampleRate
+        )
         s.setCurve(result.frequencies, result.gains, result.preampDb)
+    }
+
+    /** Best-effort output sample rate for the graph; 48 kHz when undetectable. */
+    private fun outputSampleRate(): Double {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+            ?: return 48000.0
+        return AudioSampleRateDetector.getActiveOutputSampleRate(audioManager).toDouble()
+            .takeIf { it > 0 } ?: 48000.0
     }
 
     private fun getSystemVolumeDb(): Double {
