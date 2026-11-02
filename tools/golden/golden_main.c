@@ -784,6 +784,23 @@ static void eqImpulse(JamesDSPLib *lib, float *outL, float *outR)
 	memcpy(outR, lib->tmpBuffer[1], EQ_N * sizeof(float));
 }
 
+/* Capture the complete filter, not only its first block. This checks the
+   impulse that actually leaves the partitioned convolver, including the FIR
+   centre at 8191 and the symmetric tail after it. */
+static void eqImpulseLong(JamesDSPLib *lib, float *outL, float *outR, int len)
+{
+	eqImpulse(lib, outL, outR);
+	for (int pos = EQ_N; pos < len; pos += EQ_N)
+	{
+		memset(lib->tmpBuffer[0], 0, EQ_N * sizeof(float));
+		memset(lib->tmpBuffer[1], 0, EQ_N * sizeof(float));
+		ArbitraryResponseEqualizerProcess(lib, EQ_N);
+		int count = len - pos < EQ_N ? len - pos : EQ_N;
+		memcpy(outL + pos, lib->tmpBuffer[0], count * sizeof(float));
+		memcpy(outR + pos, lib->tmpBuffer[1], count * sizeof(float));
+	}
+}
+
 static double eqAsymmetry(const float *h, int n)
 {
 	double peak = 0.0, worst = 0.0;
@@ -947,6 +964,18 @@ static int firEqRun(void)
 		memcpy(hFull, h, lib->arbMag.instance.filterLen * sizeof(float));
 		double asymLin = eqAsymmetry(hFull, (int)lib->arbMag.instance.filterLen);
 		eqCheck("linear impulse is symmetric", asymLin, 0.0, 1e-3);
+		static float hOutL[16384], hOutR[16384];
+		eqImpulseLong(lib, hOutL, hOutR, (int)lib->arbMag.instance.filterLen);
+		eqCheck("convolved linear impulse is symmetric", eqAsymmetry(hOutL, 16383), 0.0, 1e-3);
+		int peakPos = -1;
+		float peak = 0.0f;
+		for (int i = 0; i < 16383; i++)
+			if (fabs(hOutL[i]) > peak)
+			{
+				peak = (float)fabs(hOutL[i]);
+				peakPos = i;
+			}
+		eqCheck("convolved linear delay is 8191 samples", peakPos, 8191.0, 8191.0);
 		eqCheck("minimum impulse is not symmetric", asymMin, 0.01, 2.0);
 		for (int i = 0; i < 4; i++)
 		{

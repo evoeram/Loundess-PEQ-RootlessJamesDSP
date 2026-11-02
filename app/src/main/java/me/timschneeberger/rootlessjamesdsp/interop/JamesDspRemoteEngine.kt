@@ -32,6 +32,8 @@ class JamesDspRemoteEngine(
 ) : JamesDspBaseEngine(context, callbacks) {
 
     private var convolverSampleRate = 0
+    private var lastEqLinearPhase: Boolean? = null
+    private var forceGraphicEqUpload = false
 
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -316,9 +318,10 @@ class JamesDspRemoteEngine(
         val currentCrc = bands.crc()
 
         Timber.i("GraphicEQ hash before: $prevCrc, current: $currentCrc")
-        if (prevCrc != currentCrc && enable) {
+        if ((forceGraphicEqUpload || prevCrc != currentCrc) && enable) {
             effect.setParameterCharBuffer(12001, 10006, bands)
             effect.setParameter(25000, currentCrc) // Commit hash
+            forceGraphicEqUpload = false
         }
 
         return effect.setParameter(1210, enable.toShort()) == AudioEffect.SUCCESS
@@ -336,15 +339,16 @@ class JamesDspRemoteEngine(
         return setGraphicEqInternal(enable, bandsLeft)
     }
 
-    /**
-     * The root-mode effect library exposes no phase-mode parameter, so a
-     * linear-phase request cannot be honoured there; the curve keeps being
-     * applied with whatever phase the loaded library was built for.
-     */
     override fun setEqPhaseMode(linearPhase: Boolean): Boolean {
-        if (linearPhase)
-            Timber.w("setEqPhaseMode: root mode has no phase-mode parameter; keeping the library default")
-        return false
+        val result = effect.setParameter(1227, linearPhase.toShort()) == AudioEffect.SUCCESS
+        if (result && lastEqLinearPhase != linearPhase) {
+            // SetPhaseMode clears the coefficient generator. BaseEngine sends
+            // the curve next, but the unchanged CRC would normally suppress
+            // that upload and leave the old convolver in place.
+            forceGraphicEqUpload = true
+            lastEqLinearPhase = linearPhase
+        }
+        return result
     }
 
     override fun setLiveprogInternal(enable: Boolean, name: String, script: String): Boolean {
