@@ -338,7 +338,7 @@ Independent of the three processing modes above, the capture **source** itself c
 - Requires **Shizuku** running (wireless debugging, or root so it survives reboot); Android 13+
 - Dynamic AudioPolicy is an AOSP mechanism — not guaranteed on every vendor ROM
 
-See [docs/PRIVILEGED_LOOPBACK_DESIGN.md](docs/PRIVILEGED_LOOPBACK_DESIGN.md) for the full design, and [docs/PROCESSING_MODES.md](docs/PROCESSING_MODES.md) for processing-mode technical details.
+See [docs/PRIVILEGED_LOOPBACK.md](docs/PRIVILEGED_LOOPBACK.md) for a full rundown of the capture problems this mode solves (including **all apps processing** — no ReVanced patch needed), [docs/PRIVILEGED_LOOPBACK_DESIGN.md](docs/PRIVILEGED_LOOPBACK_DESIGN.md) for the internal design, and [docs/PROCESSING_MODES.md](docs/PROCESSING_MODES.md) for processing-mode technical details.
 
 ---
 
@@ -529,6 +529,7 @@ For other apps: enable "Show universal patches" in ReVanced settings, select you
 ## New Documentation (docs/)
 
 - `PROCESSING_MODES.md` — processing mode architecture and latency optimization
+- `PRIVILEGED_LOOPBACK.md` — what the privileged capture mode solves (all-apps processing, no burst, no projection side effects)
 - `PRIVILEGED_LOOPBACK_DESIGN.md` — Shizuku privileged loopback capture design
 - `FAQ_FIR_EQ.md` — FIR equalizer (MultiEQ) setup guide
 - `AIDL_SUPPORT.md` — AIDL audio effect HAL support status (Android 14+)
