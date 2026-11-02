@@ -5,7 +5,7 @@
   <br>
 </h1>
 
-<h4 align="center">System-wide JamesDSP with PEQ biquad cascade, loudness correction, acoustic measurement, Squig Live AutoEQ, harmonic expander, NOS R2R simulator, smooth volume, and device presets — for non-rooted and rooted Android</h4>
+<h4 align="center">System-wide JamesDSP with PEQ biquad cascade, loudness correction, voice isolation, acoustic measurement, Squig Live AutoEQ, harmonic expander, NOS R2R simulator, smooth volume, and device presets — for non-rooted and rooted Android</h4>
 
 <p align="center">
   <a href="https://github.com/evoeram/Loundess-PEQ-RootlessJamesDSP/releases">
@@ -24,6 +24,7 @@
 
 <p align="center">
   <a href="#key-features">Features</a> •
+  <a href="#-voice-isolation--vocal-reduction">Voice Isolation</a> •
   <a href="#processing-modes">Processing Modes</a> •
   <a href="#auto-eq--measurement-wizard-meow">Auto-EQ</a> •
   <a href="#squig-live--autoeq-from-squiglink-database">Squig Live</a> •
@@ -55,7 +56,11 @@
   <img alt="Sub-Harmonic Expander" width="200" src="img/SubHExpander.jpg">
   <img alt="NOS R2R Simulator" width="200" src="img/NOSR2R.jpg">
 </p>
-<p align="center"><sub>Parametric EQ · Loudness Correction · Manual SPL Calibration · MEOW Wizard · Device Preset Selector · Ask on Connection · LiveEQ Channel Switch · GraphEQ Import/Export · GraphEQ→PEQ Converter · Squig Live · Harmonic Expander · Sub-Harmonic Expander · NOS R2R Simulator</sub></p>
+<p align="center">
+  <img alt="Voice Isolation" width="200" src="img/VoiceIsolation.jpg">
+  <img alt="Choose Audio Mode Onboarding" width="200" src="img/AudioMode.jpg">
+</p>
+<p align="center"><sub>Parametric EQ · Loudness Correction · Manual SPL Calibration · MEOW Wizard · Device Preset Selector · Ask on Connection · LiveEQ Channel Switch · GraphEQ Import/Export · GraphEQ→PEQ Converter · Squig Live · Harmonic Expander · Sub-Harmonic Expander · NOS R2R Simulator · Voice Isolation · Audio Mode Onboarding</sub></p>
 
 ---
 
@@ -71,8 +76,9 @@
 6. **NOS R2R Simulator** — Non-Oversampling R2R DAC simulator with adjustable bit depth, resistor tolerance, and jitter
 7. **Smooth Volume** — ~200-step 0.5 dB volume control via AccessibilityService, replacing Android's ~15 steps
 8. **Device Presets** — automatic preset switching when audio devices connect
+9. **Voice Isolation** — real-time on-device speech enhancement with pluggable **GTCRN / DeepFilterNet3 / DPDFNet2 / DPDFNet8** backends (ONNX Runtime) and a **vocal reduction** mode, ported from the open-source `android-realtime-voice-isolation` project (MIT)
 
-The app works on **non-rooted devices** (via MediaProjection audio capture) and **rooted devices** (via Magisk/KernelSU/SukiSU/APatch module with direct AudioFlinger integration).
+The app works on **non-rooted devices** (via MediaProjection audio capture, or a Shizuku-powered privileged loopback route without screen-capture side effects) and **rooted devices** (via Magisk/KernelSU/SukiSU/APatch module with direct AudioFlinger integration).
 
 ### Requirements
 
@@ -80,6 +86,7 @@ The app works on **non-rooted devices** (via MediaProjection audio capture) and 
 |---|---|---|
 | Android version | 10 (API 29) | 12+ |
 | For Direct Mode | 9 (API 28, DynamicsProcessing) | 12+ |
+| For loopback capture (Shizuku) | 13 (API 33) | — |
 | For root mode | Magisk / KernelSU / SukiSU / APatch | — |
 
 ---
@@ -117,6 +124,29 @@ At low listening volume, the human ear is less sensitive to bass and treble. Thi
 - **Manual SPL mode** — user measures SPL with an external SPL meter and enters the value
 - Noise channel selection: Left / Right / Both
 - Continuous pink noise generation (no looping artifacts)
+
+### 🎙️ Voice Isolation / Vocal Reduction
+
+Real-time, fully on-device speech enhancement for media audio: it keeps dialogue audible in movies, podcasts, and game audio while attenuating the estimated background — and in **vocal reduction** mode it does the inverse, suppressing the voice to turn any track into a karaoke/backing version. Ported from the open-source [`android-realtime-voice-isolation`](https://github.com/sk2andy/android-realtime-voice-isolation) project (MIT); neural inference runs via **ONNX Runtime** on the app's audio path.
+
+**Pluggable enhancer backends** (`EnhancerBackend` — switchable at runtime, no reinstall):
+
+| Model | Sample rate | Profile |
+|---|---|---|
+| **GTCRN** | 16 kHz | light, lowest latency (default) |
+| **DeepFilterNet3** | 48 kHz | full-band, +20 ms latency |
+| **DPDFNet2** | 48 kHz | heavier, higher quality |
+| **DPDFNet8** | 48 kHz | heaviest, maximum isolation |
+
+- **Presets** — Podcast / Film / Gaming / Maximum / Custom (per-preset reduction & gain maps)
+- **Reduce background** (0–100 %) — attenuation of the estimated background of media audio
+- **Reduce vocal** (0–100 %) — vocal reduction mode for karaoke-style listening
+- **Boost voice** (0–6 dB)
+- **Auto mode** — speech-activity-driven control that softens background reduction between speech passages
+- **A/V sync kept** — `VoiceDelayEstimator` measures the effective per-model latency and compensates the delay
+- Adaptive STFT/hop pipeline with adaptive buffer controller and sinc resampling
+
+![Voice Isolation](img/VoiceIsolation.jpg)
 
 ### 🎯 Auto-EQ & Measurement Wizard (MEOW)
 
@@ -298,7 +328,17 @@ Optimized capture loop with:
 - `QueueController` — dynamic queue management: fade-out → drop excess frames → fade-in when output backlog exceeds 60 ms
 - ADB-tunable parameters via `LatencyTuning` (debug builds)
 
-See [docs/PROCESSING_MODES.md](docs/PROCESSING_MODES.md) for full technical details.
+### Privileged Loopback Capture (Shizuku)
+
+Independent of the three processing modes above, the capture **source** itself can also be switched from the classic MediaProjection loop to a **Shizuku-powered privileged loopback route** — a dynamic `AudioPolicy` with a pure `ROUTE_FLAG_LOOP_BACK` mix, built inside a Shizuku UserService running with shell/root UID. Matched players are removed from normal rendering entirely, so the media mix flows only through JamesDSP:
+
+- **No screen-capture side effects** — no projection dialog, no "screen sharing" privacy side effects on Android 15+, and feed apps (Shorts/Reels) can't pop a loud burst before the mute attaches
+- Per-app selection via `AudioMixingRule` UID filters (`USAGE_MEDIA` / `GAME` / `UNKNOWN` only)
+- Same DSP engine, silence gate, and queue control — only the PCM source changes
+- Requires **Shizuku** running (wireless debugging, or root so it survives reboot); Android 13+
+- Dynamic AudioPolicy is an AOSP mechanism — not guaranteed on every vendor ROM
+
+See [docs/PRIVILEGED_LOOPBACK_DESIGN.md](docs/PRIVILEGED_LOOPBACK_DESIGN.md) for the full design, and [docs/PROCESSING_MODES.md](docs/PROCESSING_MODES.md) for processing-mode technical details.
 
 ---
 
@@ -338,7 +378,7 @@ Install via Magisk → Modules → Install from storage, then reboot.
 
 ## Differences from Upstream
 
-This fork adds **40+ commits, 130+ files changed, ~18,000 lines** on top of [RootlessJamesDSP](https://github.com/timschneeb/RootlessJamesDSP). Upstream has no new commits since the divergence point.
+This fork adds **150+ commits, 370+ files changed, ~73,000 lines** on top of [RootlessJamesDSP](https://github.com/timschneeb/RootlessJamesDSP). Upstream has no new commits since the divergence point.
 
 ### New subsystems
 
@@ -368,9 +408,17 @@ This fork adds **40+ commits, 130+ files changed, ~18,000 lines** on top of [Roo
 | GraphEQ import/export | ❌ | ✅ File-based preset management |
 | GraphEQ → PEQ converter | ❌ | ✅ Greedy biquad fitting (Nelder-Mead, RBJ Cookbook) |
 | LiveEQ channel switch | ❌ | ✅ L / L+R / R per-band in interactive editor |
+| Voice Isolation | ❌ | ✅ GTCRN / DeepFilterNet3 / DPDFNet2 / DPDFNet8 via ONNX Runtime |
+| Vocal reduction mode | ❌ | ✅ Karaoke-style voice attenuation |
+| Privileged loopback capture | ❌ | ✅ Shizuku dynamic AudioPolicy (no MediaProjection side effects) |
+| App selection for capture | Blocklist only | ✅ Blocklist **or** allowlist + 20 s digital-silence gate |
+| PEQ cutoff (low/high-pass) slopes | 12 dB/oct single biquad | ✅ Butterworth cascade 12–96 dB/oct (up to 8 sections) |
+| FIR equalizer (MultiEQ) | ❌ | ✅ Phase mode (minimum/linear) + per-ear curves |
+| Crash resilience | ❌ | ✅ Native crash recorder (CrashGuard) + JVM crash history |
+| Feed-app (Shorts/Reels) coverage | Reactive mute attach only | ✅ Prediction pool + adaptive mute depth |
 | Magisk module | Basic | Enhanced with PEQ+Loudness `.so`, multi-SoC configs |
 | libjamesdsp submodule | upstream james34602 | [evoeram fork](https://github.com/evoeram/JamesDSPManager) (branch `extensions`) |
-| Unit tests | Minimal | 6 test classes (AutoEq, AndroidEqFitter, MicCalibration, TargetCurve, PEQ Response, PEQ BandList) |
+| Unit tests | Minimal | ✅ 37 test classes (AutoEq, AndroidEqFitter, MicCalibration, TargetCurve, PEQ response/bandlist, full voice-isolation pipeline) |
 | Latency telemetry | ❌ | ✅ LatencyTracer (logcat, debug builds) |
 
 ### UI/UX additions
@@ -382,6 +430,8 @@ This fork adds **40+ commits, 130+ files changed, ~18,000 lines** on top of [Roo
 - Number input box custom view
 - EEL `printf()` from LiveProg scripts → logcat
 - Russian localization
+- Enabled effect cards pinned to the top of the DSP screen (stable sort, reapplied on every toggle)
+- First-run onboarding with audio-mode selector (Direct vs full-effects capture) and guided Shizuku/ADB setup
 
 ---
 
@@ -479,6 +529,7 @@ For other apps: enable "Show universal patches" in ReVanced settings, select you
 ## New Documentation (docs/)
 
 - `PROCESSING_MODES.md` — processing mode architecture and latency optimization
+- `PRIVILEGED_LOOPBACK_DESIGN.md` — Shizuku privileged loopback capture design
 - `FAQ_FIR_EQ.md` — FIR equalizer (MultiEQ) setup guide
 - `AIDL_SUPPORT.md` — AIDL audio effect HAL support status (Android 14+)
 - `TROUBLESHOOTING_ANDROID16.md` — troubleshooting on Android 16 / new devices
@@ -488,6 +539,7 @@ For other apps: enable "Show universal patches" in ReVanced settings, select you
 - `androideq/` — AndroidEq / AndroidEqFitter tests (Direct Mode)
 - `measurement/` — measurement pipeline tests
 - `model/` — model tests
+- `voiceisolation/` — enhancer intensity mixer, voice delay estimator, settings tests
 - `utils/ParametricEqResponseCalculatorTest.kt` — PEQ frequency response calculator tests
 
 ---
