@@ -97,6 +97,9 @@ class LoopbackCaptureClient(private val context: Context) {
     /** Привязать UserService и поднять захват. Требует живого Shizuku с грантом. */
     fun start() {
         check(isShizukuReady()) { "Shizuku binder is not alive or permission not granted" }
+        // Переоткрываем источник: предыдущий stop() закрыл его для пробуждения
+        // читателей, а offer() в закрытое состояние данные не принимает
+        pcmSource.clear()
         startRequested.set(true)
         Shizuku.bindUserService(userServiceArgs(), serviceConnection)
     }
@@ -108,7 +111,9 @@ class LoopbackCaptureClient(private val context: Context) {
             serviceRef = null
         }
         runCatching { Shizuku.unbindUserService(userServiceArgs(), serviceConnection, true) }
-        pcmSource.clear()
+        // close(), а не clear(): заблокированный в read() capture-поток должен
+        // проснуться и завершиться, а не висеть на lock.wait() (BUG-02)
+        pcmSource.close()
     }
 
     private fun userServiceArgs(): Shizuku.UserServiceArgs =
@@ -134,20 +139,25 @@ class LoopbackPcmSource {
     private var remainder: ShortArray = ShortArray(0)
     private val lock = Object()
 
+    /** Закрытый источник будит заблокированных читателей и отдаёт -1 (BUG-02). */
+    private var closed = false
+
     fun offer(pcm: ShortArray) {
         synchronized(lock) {
+            if (closed) return
             queue.addLast(pcm)
             while (queue.size > MAX_BLOCKS) queue.removeFirst()
             lock.notifyAll()
         }
     }
 
-    /** Блокирующее чтение; возвращает число написанных фреймов-сэмплов. */
+    /** Блокирующее чтение; возвращает число написанных фреймов-сэмплов, -1 после close(). */
     fun read(destination: ShortArray, offset: Int, size: Int): Int {
         synchronized(lock) {
-            while (queue.isEmpty() && remainder.isEmpty()) {
+            while (!closed && queue.isEmpty() && remainder.isEmpty()) {
                 lock.wait()
             }
+            if (closed && queue.isEmpty() && remainder.isEmpty()) return -1
             var written = 0
             while (written < size) {
                 if (remainder.isNotEmpty()) {
@@ -167,10 +177,21 @@ class LoopbackPcmSource {
         }
     }
 
+    /** Сброс буфера без закрытия: очередь пустеет, читатели будятся, источник снова пригоден к чтению. */
     fun clear() {
         synchronized(lock) {
             queue.clear()
             remainder = ShortArray(0)
+            closed = false
+            lock.notifyAll()
+        }
+    }
+
+    /** Остановка источника: будит заблокированный read(), который вернёт -1. */
+    fun close() {
+        synchronized(lock) {
+            closed = true
+            lock.notifyAll()
         }
     }
 

@@ -39,6 +39,7 @@
 #include "../biquad/BiQuad.h"
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 /* Loudness compensation mode */
@@ -47,6 +48,49 @@
 
 /* Number of ISO 226 frequency bands */
 #define ISO226_NUM_BANDS 29
+
+/* First-order RC high-pass (6 dB/oct) used as the trailing stage of an
+ * odd-order subsonic cascade: y[n] = alpha * (y[n-1] + x[n] - x[n-1])
+ * with alpha = rc / (rc + dt), rc = 1 / (2*pi*fc), dt = 1/sampleRate.
+ * The first-order stage runs FIRST in the cascade (closest to the input).
+ * Shared spec between C (peq_loudness.c), C++ and Kotlin
+ * (LoudnessCurveCalculator). */
+struct FirstOrderHighPass
+{
+    double alpha;
+    double x1, y1;
+    bool active;
+
+    FirstOrderHighPass() : alpha(0.0), x1(0.0), y1(0.0), active(false) {}
+
+    void configure(double cutoffHz, double sampleRate, bool enable)
+    {
+        active = enable;
+        x1 = 0.0;
+        y1 = 0.0;
+        alpha = 0.0;
+        if (!enable)
+            return;
+        double rc = 1.0 / (2.0 * M_PI * cutoffHz);
+        double dt = 1.0 / sampleRate;
+        alpha = rc / (rc + dt);
+    }
+
+    inline double process(double sample)
+    {
+        double result = alpha * (y1 + sample - x1);
+        x1 = sample;
+        y1 = result;
+        return result;
+    }
+
+    inline void removeDenormals()
+    {
+        const double denorm_limit = 2.2250738585072014e-308; // DBL_MIN
+        if (std::abs(x1) < denorm_limit) x1 = 0.0;
+        if (std::abs(y1) < denorm_limit) y1 = 0.0;
+    }
+};
 
 class LoudnessCorrectionProcessor
 {
@@ -89,8 +133,10 @@ public:
 
     // Set subsonic (infrasonic) high-pass filter parameters.
     //   enable  — whether the subsonic filter is active
-    //   freq    — cutoff frequency (Hz, 10–100)
-    //   order   — filter order 1–8 (each step = 12 dB/oct, 2nd-order biquad stages)
+    //   freq    — cutoff frequency (Hz, 5–200)
+    //   order   — filter order 1–8, 6 dB/oct per order. Implemented as
+    //             floor(order/2) 2nd-order biquad stages plus one first-order
+    //             stage for odd orders (shared spec with C and Kotlin UI).
     //   qFactor — Q of each 2nd-order stage (0.1–2.0, Butterworth = 0.707)
     void setSubsonicFilter(bool enable, double freq, int order, double qFactor);
 
@@ -103,27 +149,43 @@ public:
     void processDeinterleaved(float* left, float* right, size_t numFrames);
 
 private:
-    // Base parameters (set from config thread, read-only on audio thread
-    // after configure() completes)
-    double sampleRate;
-    double referenceLevel;
-    double referenceOffset;
-    double attenuation;
-    int mode;
+    // ---- Config snapshot (BUG-06) ----
+    // Written by the config thread under configMutex; the audio thread copies
+    // it under the same short lock before recomputing coefficients. Setters
+    // never touch biquads directly, and the audio thread never reads
+    // half-written parameters, so no torn coefficients are possible.
+    struct ConfigParams
+    {
+        double sampleRate;
+        double referenceLevel;
+        double referenceOffset;
+        double attenuation;
+        int mode;
+        double lsFreq, lsSlope, lsRatio;
+        double hsFreq, hsSlope, hsRatio;
+        double isoBasePhon, isoQ;
+        bool subsonicEnabled;
+        double subsonicFreq;
+        int subsonicOrder;
+        double subsonicQ;
+    };
+    ConfigParams config;
+    std::mutex configMutex;
 
     // Current volume — written from config thread, read on audio thread
     std::atomic<double> volumeDb;
-    // Last volume for which coefficients were computed (audio thread only)
-    double lastComputedVolume;
     // Flag: parameters changed and coefficients need recomputation
     std::atomic<bool> coeffsDirty;
 
-    bool enabled;
+    std::atomic<bool> enabled;
 
-    // Pre-amp linear gain factor applied between low and high shelf
+    // ---- Coefficient block: written only by recomputeCoefficients() on the
+    // audio thread, read only by process*() on the audio thread ----
     double attFactor;
-    // Whether the correction is near-zero (bypass for best quality)
     bool neutral;
+    int activeMode;
+    int activeSubsonicStages;
+    bool activeSubsonicFirstOrder;
 
     // Per-channel biquads (stereo)
     BiQuad lowShelfL;
@@ -131,29 +193,16 @@ private:
     BiQuad highShelfL;
     BiQuad highShelfR;
 
-    // ---- User-tunable parameters (defaults match original hardcoded values) ----
-    double lsFreq;     // low shelf frequency (Hz)
-    double lsSlope;    // low shelf S slope
-    double lsRatio;    // low shelf gain ratio
-    double hsFreq;     // high shelf frequency (Hz)
-    double hsSlope;    // high shelf S slope
-    double hsRatio;    // high shelf gain ratio
-    double isoBasePhon; // ISO 226 base phon level
-    double isoQ;       // ISO 226 peaking Q
-
     // ---- Subsonic (infrasonic) high-pass filter ----
-    bool subsonicEnabled;
-    double subsonicFreq;    // cutoff Hz
-    int subsonicOrder;      // 1–8 (biquad stages = ceil(order/2))
-    double subsonicQ;       // Q per 2nd-order stage
     static const int MAX_SUBSONIC_STAGES = 4; // 4 biquads = 8th order
     BiQuad subsonicL[MAX_SUBSONIC_STAGES];
     BiQuad subsonicR[MAX_SUBSONIC_STAGES];
+    FirstOrderHighPass subsonicFirstL; // odd-order trailing stage
+    FirstOrderHighPass subsonicFirstR;
 
     // ---- ISO 226 mode: 29-band peaking EQ cascade ----
     BiQuad isoBandsL[ISO226_NUM_BANDS];
     BiQuad isoBandsR[ISO226_NUM_BANDS];
-    double isoGains[ISO226_NUM_BANDS];
     double isoPreampLinear;
     int isoActiveBandCount;
 
@@ -163,18 +212,22 @@ private:
 
     // Compute shelf gains from the volume difference.
     // Mirrors getLShelfParamter / getHShelfParamter from the original.
-    void getLowShelfParams(double volume, double& freq, double& s,
-                           double& gain, double& preAmp);
-    void getHighShelfParams(double volume, double& freq, double& s,
-                            double& gain);
+    void getLowShelfParams(const ConfigParams& cfg, double volume,
+                           double& freq, double& s, double& gain, double& preAmp);
+    void getHighShelfParams(const ConfigParams& cfg, double volume,
+                            double& freq, double& s, double& gain);
 
     // Recompute biquad coefficients from the current volume + parameters.
-    // Audio-thread only.
-    void recomputeCoefficients(double volume);
+    // Audio-thread only; [cfg] is the config snapshot copied under
+    // configMutex. Filter state policy: biquads are rebuilt with cleared
+    // state (same as the pre-BUG-06 behaviour), which is applied between
+    // audio blocks — a click-free boundary.
+    void recomputeCoefficients(double volume, const ConfigParams& cfg);
 
     // Compute ISO 226:2023 loudness correction gains for all 29 bands.
     // Returns the max positive gain (for pre-amp computation).
-    double computeIso226Gains(double volume, double gains[ISO226_NUM_BANDS]);
+    double computeIso226Gains(const ConfigParams& cfg, double volume,
+                              double gains[ISO226_NUM_BANDS]);
 
     // ISO 226:2023 Table 1 data (29 one-third-octave bands)
     static const double iso226Freqs[ISO226_NUM_BANDS];

@@ -108,58 +108,101 @@ class BackupManager(private val context: Context): KoinComponent {
     fun restoreBackup(uri: Uri, dirty: Boolean) {
         Timber.d("Restoring backup from $uri")
 
-        context.contentResolver.openInputStream(uri)!!.source().gzip().buffer().inputStream().use { stream ->
-            val targetFolder = File(context.cacheDir, "restore")
-            val metadata = Tar.Reader(stream, ::isKnownFile).extract(targetFolder)
-            if(metadata == null) {
-                targetFolder.deleteRecursively()
-                throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_format))
-            }
-
-            if(BuildConfig.VERSION_CODE < (metadata[META_MIN_VERSION_CODE]?.toIntOrNull() ?: 0)) {
-                targetFolder.deleteRecursively()
-                throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_version_too_new))
-            }
-
-            // Clean restore
-            if(!dirty) {
-                // Remove profiles
-                File(context.applicationInfo.dataDir + "/files/profiles").deleteRecursively()
-
-                // Remove shared dsp prefs
-                File(context.applicationInfo.dataDir + "/shared_prefs").listFiles { file: File ->
-                    file.name.startsWith("dsp_") && file.extension == "xml"
-                }?.forEach { it.delete() }
-                // Remove external files
-                context.getExternalFilesDir(null)
-                    ?.absoluteFile
-                    ?.listFiles()
-                    ?.forEach { it.deleteRecursively() }
-            }
-
-            var enableDeviceProfiles = false
-            targetFolder.listFiles()?.forEach { file ->
-                if(file.isDirectory && file.name == "shared_prefs")
-                    file.copyRecursively(File(context.applicationInfo.dataDir + "/shared_prefs"), true)
-                else if(file.isDirectory && file.name == "profiles") {
-                    enableDeviceProfiles = true
-                    file.copyRecursively(
-                        File(context.applicationInfo.dataDir + "/files/profiles"),
-                        true
-                    )
+        val staging = File(context.cacheDir, "restore_staging")
+        val rollback = File(context.cacheDir, "restore_rollback")
+        try {
+            context.contentResolver.openInputStream(uri)!!.source().gzip().buffer().inputStream().use { stream ->
+                val metadata = Tar.Reader(stream, ::isKnownFile).extract(staging)
+                if(metadata == null) {
+                    throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_format))
                 }
-                else if(file.isDirectory && FileLibraryPreference.types.any { file.name.startsWith(it.key) }) {
-                    file.copyRecursively(File(context.getExternalFilesDir(null)!!.absolutePath + "/" + file.name), true)
+
+                if(BuildConfig.VERSION_CODE < (metadata[META_MIN_VERSION_CODE]?.toIntOrNull() ?: 0)) {
+                    throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_version_too_new))
+                }
+
+                // Clean restore: move existing data aside first so a failure
+                // mid-restore can roll back instead of leaving the user
+                // without their previous settings.
+                if(!dirty) {
+                    rollback.deleteRecursively()
+                    moveExistingDataAside(rollback)
+                }
+
+                try {
+                    var enableDeviceProfiles = false
+                    staging.listFiles()?.forEach { file ->
+                        if(file.isDirectory && file.name == "shared_prefs")
+                            file.copyRecursively(File(context.applicationInfo.dataDir + "/shared_prefs"), true)
+                        else if(file.isDirectory && file.name == "profiles") {
+                            enableDeviceProfiles = true
+                            file.copyRecursively(
+                                File(context.applicationInfo.dataDir + "/files/profiles"),
+                                true
+                            )
+                        }
+                        else if(file.isDirectory && file.name in FileLibraryPreference.types.keys) {
+                            file.copyRecursively(File(context.getExternalFilesDir(null)!!.absolutePath + "/" + file.name), true)
+                        }
+                    }
+
+                    context.broadcastPresetLoadEvent()
+                    context.sendLocalBroadcast(Intent(Constants.ACTION_BACKUP_RESTORED))
+
+                    if(enableDeviceProfiles)
+                        preferences.set(R.string.key_device_profiles_enable, true)
+                } catch (e: Exception) {
+                    if(!dirty) {
+                        Timber.e(e, "Restore failed; rolling back to previous data")
+                        restoreRollbackData(rollback)
+                    }
+                    throw e
                 }
             }
+        } finally {
+            staging.deleteRecursively()
+            rollback.deleteRecursively()
+        }
+    }
 
-            targetFolder.deleteRecursively()
+    /** Moves the data a clean restore would overwrite into [rollbackDir]. */
+    private fun moveExistingDataAside(rollbackDir: File) {
+        val sharedPrefs = File(context.applicationInfo.dataDir, "shared_prefs")
+        sharedPrefs.listFiles { file: File ->
+            file.name.startsWith("dsp_") && file.extension == "xml"
+        }?.forEach { moveToRollback(it, File(rollbackDir, "shared_prefs")) }
 
-            context.broadcastPresetLoadEvent()
-            context.sendLocalBroadcast(Intent(Constants.ACTION_BACKUP_RESTORED))
+        moveToRollback(File(context.applicationInfo.dataDir, "files/profiles"), File(rollbackDir, "profiles"))
 
-            if(enableDeviceProfiles)
-                preferences.set(R.string.key_device_profiles_enable, true)
+        context.getExternalFilesDir(null)?.listFiles()?.forEach {
+            moveToRollback(it, File(rollbackDir, "ext"))
+        }
+    }
+
+    private fun moveToRollback(source: File, rollbackSub: File) {
+        if (!source.exists()) return
+        val destination = File(rollbackSub, source.name)
+        if (source.renameTo(destination)) return
+        try {
+            // Cross-filesystem fallback (e.g. external storage on adoptable media)
+            source.copyRecursively(destination, overwrite = true)
+            source.deleteRecursively()
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to move ${source.absolutePath} aside for rollback")
+        }
+    }
+
+    /** Copies the pre-restore snapshot back into place after a failed restore. */
+    private fun restoreRollbackData(rollbackDir: File) {
+        File(rollbackDir, "shared_prefs").listFiles()?.forEach {
+            it.copyRecursively(File(context.applicationInfo.dataDir, "shared_prefs/${it.name}"), overwrite = true)
+        }
+        File(rollbackDir, "profiles").listFiles()?.forEach {
+            it.copyRecursively(File(context.applicationInfo.dataDir, "files/profiles/${it.name}"), overwrite = true)
+        }
+        val external = context.getExternalFilesDir(null)
+        File(rollbackDir, "ext").listFiles()?.forEach {
+            external?.let { dir -> it.copyRecursively(File(dir, it.name), overwrite = true) }
         }
     }
 
@@ -169,10 +212,36 @@ class BackupManager(private val context: Context): KoinComponent {
         private const val META_HAS_DEVICE_PROFILES = "has_device_profiles"
         const val META_IS_BACKUP = "is_backup"
 
-        private fun isKnownFile(name: String): Boolean {
-            return (name.contains("dsp_") && name.endsWith(".xml")) ||
-                    name.startsWith("profiles/") ||
-                    FileLibraryPreference.types.any { name.contains(it.key) && it.value.any { ext -> name.endsWith(ext) } }
+        /**
+         * Strict allowlist matching the layout [createBackup] produces:
+         * `shared_prefs/dsp_*.xml` (flat), any path under `profiles/`, and
+         * `<LibraryDir>/<file with known extension>` (flat). Everything else —
+         * including `profiles/../../…`-style names — is rejected here and by
+         * the canonical-path check in [Tar.Reader.extract].
+         */
+        internal fun isKnownFile(name: String): Boolean {
+            val normalized = name.replace('\\', '/')
+            if (normalized.isEmpty() || normalized.startsWith("/")) return false
+            // Never allow parent-directory segments under any backup root;
+            // Tar.Reader re-checks this, but the allowlist must be exact too.
+            if (normalized.split('/').any { it == ".." }) return false
+
+            if (normalized.startsWith("shared_prefs/")) {
+                val fileName = normalized.removePrefix("shared_prefs/")
+                return fileName.startsWith("dsp_") && fileName.endsWith(".xml") &&
+                        !fileName.contains('/')
+            }
+
+            if (normalized == "profiles" || normalized.startsWith("profiles/")) {
+                return normalized.removePrefix("profiles/").isNotEmpty()
+            }
+
+            return FileLibraryPreference.types.any { (dir, extensions) ->
+                if (normalized == dir) return@any false
+                if (!normalized.startsWith("$dir/")) return@any false
+                val fileName = normalized.removePrefix("$dir/")
+                !fileName.contains('/') && extensions.any { fileName.endsWith(it) }
+            }
         }
 
         fun getBackupFilename(): String {

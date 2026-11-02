@@ -63,6 +63,9 @@ object LoudnessCurveCalculator {
      * @param attenuation correction strength [0..2]
      * @param volumeDb current playback volume (dB)
      * @param tuning user-tunable shelf/contour parameters (null = defaults)
+     * @param sampleRate actual output sample rate of the audio path; drives the
+     *  ISO cascade peak/preamp estimate (BUG-09: was hardcoded to 48 kHz, so
+     *  the graph could disagree with what is heard at 44.1/96 kHz)
      * @param numPoints resolution of the output curve
      * @return curve result with frequencies and gains in dB
      */
@@ -74,6 +77,7 @@ object LoudnessCurveCalculator {
         volumeDb: Double,
         tuning: TuningParams? = null,
         subsonic: SubsonicParams? = null,
+        sampleRate: Double = 48000.0,
         numPoints: Int = 200
     ): CurveResult {
         val t = tuning ?: TuningParams()
@@ -99,7 +103,7 @@ object LoudnessCurveCalculator {
         }
 
         val result = if (mode == 1) {
-            computeIso226(volDiff, att, t, numPoints)
+            computeIso226(volDiff, att, t, sampleRate, numPoints)
         } else {
             computeClassic(volDiff, att, t, numPoints)
         }
@@ -135,13 +139,15 @@ object LoudnessCurveCalculator {
 
     /**
      * Build the frequency response (dB) of a cascaded high-pass filter.
-     * Each 2nd-order stage uses an RBJ biquad HP response.
-     * Total attenuation at DC = order × 6 dB.
+     * Spec shared with the C/C++ audio path: floor(order/2) 2nd-order RBJ
+     * biquad stages plus one first-order RC stage for odd orders
+     * (each order = 6 dB/oct; total DC attenuation = order × 6 dB).
      */
     private fun buildSubsonicResponse(s: SubsonicParams, numPoints: Int): DoubleArray {
         val freqs = logSpace(20.0, 20000.0, numPoints)
         val response = DoubleArray(numPoints)
-        val numStages = (s.order + 1) / 2 // ceil(order/2)
+        val order = s.order.coerceIn(1, 8)
+        val numStages = order / 2 // floor(order/2)
         val f = s.freq.coerceIn(1.0, 20000.0)
         val q = s.qFactor.coerceIn(0.1, 10.0)
 
@@ -151,7 +157,7 @@ object LoudnessCurveCalculator {
                 gainDb += highPassBiquadResponseDb(freqs[i], f, q)
             }
             // For odd order, add a 1st-order RC response (−6 dB/oct)
-            if (s.order % 2 == 1) {
+            if (order % 2 == 1) {
                 gainDb += firstOrderHighPassDb(freqs[i], f)
             }
             response[i] = gainDb
@@ -223,7 +229,9 @@ object LoudnessCurveCalculator {
         if (hsVol > 0.0) {
             hsGain = hsVol * t.hsRatio * kotlin.math.exp(-hsVol / 100.0) * att
         } else if (hsVol < 0.0) {
-            hsGain = hsVol * 0.175 * kotlin.math.exp(hsVol / 80.0) * att
+            // BUG-09: same spec as the C path (peq_loudness.c) and the C++
+            // processor: hsRatio * 0.778 (0.225 * 0.778 = 0.175 by default).
+            hsGain = hsVol * t.hsRatio * 0.778 * kotlin.math.exp(hsVol / 80.0) * att
         }
 
         // Approximate the combined shelf response at each frequency
@@ -268,7 +276,7 @@ object LoudnessCurveCalculator {
 
     // ---- ISO 226:2023 mode ----
 
-    private fun computeIso226(volDiff: Double, att: Double, t: TuningParams, numPoints: Int): CurveResult {
+    private fun computeIso226(volDiff: Double, att: Double, t: TuningParams, pathSampleRate: Double, numPoints: Int): CurveResult {
         val refPhon = t.isoBasePhon
         val curPhon = (t.isoBasePhon - volDiff).coerceIn(20.0, 90.0)
 
@@ -286,55 +294,69 @@ object LoudnessCurveCalculator {
         // Pre-amp: offset by the ACTUAL peak of the combined cascade.
         // Adjacent peaking filters overlap and sum, so the cascade peak
         // is higher than any individual band gain.
-        val sr = 48000.0
+        val sr = pathSampleRate.coerceIn(8000.0, 384000.0)
         val q = t.isoQ
         val nyquist = sr * 0.5
+
+        // BUG-09: the displayed curve must be the ACTUAL biquad cascade
+        // response — the same math the audio path applies — not an
+        // interpolation of the raw ISO band gains. Interpolation peaks at
+        // the max individual band gain, while the cascade peak sits between
+        // bands; the old curve could be off by several dB from what is heard.
+        fun cascadeResponseDb(f: Double): Double {
+            val w = 2.0 * PI * f / sr
+            var total = 0.0
+            for (j in isoFreqs.indices) {
+                val gain = isoGains[j]
+                if (abs(gain) < 0.05) continue
+                if (isoFreqs[j] > nyquist * 0.98) continue
+                val w0 = 2.0 * PI * isoFreqs[j] / sr
+                val A = 10.0.pow(gain / 40.0)
+                val alpha = sin(w0) / (2.0 * q)
+                val b0 = 1.0 + alpha * A
+                val b1 = -2.0 * cos(w0)
+                val b2 = 1.0 - alpha * A
+                val a0 = 1.0 + alpha / A
+                val a1 = -2.0 * cos(w0)
+                val a2 = 1.0 - alpha / A
+                val cosw = cos(w); val cos2w = cos(2.0 * w)
+                val sinw = sin(w); val sin2w = sin(2.0 * w)
+                val numRe = b0 + b1 * cosw + b2 * cos2w
+                val numIm = b1 * sinw + b2 * sin2w
+                val denRe = a0 + a1 * cosw + a2 * cos2w
+                val denIm = a1 * sinw + a2 * sin2w
+                val numSq = numRe * numRe + numIm * numIm
+                val denSq = denRe * denRe + denIm * denIm
+                if (denSq > 1e-20 && numSq > 0.0)
+                    total += 10.0 * log10(numSq / denSq)
+            }
+            return total
+        }
+
         var cascadePeak = maxGain // floor: at least the max individual gain
         for (i in isoFreqs.indices) {
-            // Test at band center and geometric mean with next band
+            // Denser probe grid — center plus geometric means with both
+            // neighbours — mirroring the C++ peak search so neither path
+            // can under-report the cascade peak between probes.
             val testFreqs = mutableListOf(isoFreqs[i])
+            if (i > 0)
+                testFreqs.add(sqrt(isoFreqs[i - 1] * isoFreqs[i]))
             if (i < isoFreqs.size - 1)
                 testFreqs.add(sqrt(isoFreqs[i] * isoFreqs[i + 1]))
             for (f in testFreqs) {
                 if (f <= 0.0) continue
-                val w = 2.0 * PI * f / sr
-                var total = 0.0
-                for (j in isoFreqs.indices) {
-                    val gain = isoGains[j]
-                    if (abs(gain) < 0.05) continue
-                    if (isoFreqs[j] > nyquist * 0.98) continue
-                    val w0 = 2.0 * PI * isoFreqs[j] / sr
-                    val A = 10.0.pow(gain / 40.0)
-                    val alpha = sin(w0) / (2.0 * q)
-                    val b0 = 1.0 + alpha * A
-                    val b1 = -2.0 * cos(w0)
-                    val b2 = 1.0 - alpha * A
-                    val a0 = 1.0 + alpha / A
-                    val a1 = -2.0 * cos(w0)
-                    val a2 = 1.0 - alpha / A
-                    val cosw = cos(w); val cos2w = cos(2.0 * w)
-                    val sinw = sin(w); val sin2w = sin(2.0 * w)
-                    val numRe = b0 + b1 * cosw + b2 * cos2w
-                    val numIm = b1 * sinw + b2 * sin2w
-                    val denRe = a0 + a1 * cosw + a2 * cos2w
-                    val denIm = a1 * sinw + a2 * sin2w
-                    val numSq = numRe * numRe + numIm * numIm
-                    val denSq = denRe * denRe + denIm * denIm
-                    if (denSq > 1e-20 && numSq > 0.0)
-                        total += 10.0 * log10(numSq / denSq)
-                }
+                val total = cascadeResponseDb(f)
                 if (total > cascadePeak) cascadePeak = total
             }
         }
         val preAmpDb = -cascadePeak
 
-        // Interpolate to a smooth curve from 20 Hz to 20 kHz.
-        // ISO data only goes to 12.5 kHz — extrapolate beyond that
-        // using the slope of the last two bands (log-linear).
+        // Curve from the same cascade response, so the graph and the applied
+        // correction share one frequency response (small residual between the
+        // log-spaced samples and the true peak is absorbed by the caller's
+        // peak normalization).
         val freqs = logSpace(20.0, 20000.0, numPoints)
-        val gains = DoubleArray(numPoints) { i ->
-            interpolateGainExtrapolated(freqs[i], isoFreqs, isoGains) + preAmpDb
-        }
+        val gains = DoubleArray(numPoints) { i -> cascadeResponseDb(freqs[i]) + preAmpDb }
 
         return CurveResult(freqs, gains, preAmpDb)
     }
@@ -346,38 +368,6 @@ object LoudnessCurveCalculator {
         val inner = term1 + term2
         if (inner <= 0.0) return 0.0
         return (10.0 / af) * log10(inner) - lu
-    }
-
-    private fun interpolateGainExtrapolated(freq: Double, freqs: DoubleArray, gains: DoubleArray): Double {
-        if (freqs.isEmpty()) return 0.0
-        if (freqs.size == 1) return gains[0]
-
-        // Below first point: hold first value
-        if (freq <= freqs[0]) return gains[0]
-
-        // Above last point: extrapolate using slope of last two points
-        if (freq >= freqs[freqs.size - 1]) {
-            val n = freqs.size
-            val logF = log10(freq)
-            val logF0 = log10(freqs[n - 2])
-            val logF1 = log10(freqs[n - 1])
-            if (logF1 <= logF0) return gains[n - 1]
-            val slope = (gains[n - 1] - gains[n - 2]) / (logF1 - logF0)
-            return gains[n - 1] + slope * (logF - logF1)
-        }
-
-        // Between points: log-linear interpolation
-        for (i in 0 until freqs.size - 1) {
-            if (freq in freqs[i]..freqs[i + 1]) {
-                val logF = log10(freq)
-                val logF0 = log10(freqs[i])
-                val logF1 = log10(freqs[i + 1])
-                if (logF1 <= logF0) return gains[i]
-                val t = (logF - logF0) / (logF1 - logF0)
-                return gains[i] + t * (gains[i + 1] - gains[i])
-            }
-        }
-        return 0.0
     }
 
     private fun logSpace(min: Double, max: Double, n: Int): DoubleArray {

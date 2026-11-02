@@ -89,7 +89,10 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_alloc(JNIEnv *e
 {
     auto* self = new JamesDspWrapper();
     self->callbackInterface = env->NewGlobalRef(callback);
-    self->env = env;
+    /* BUG-07: store the JavaVM, not this thread's JNIEnv*. The stdout
+     * callback fires on whatever thread executes the EEL code (often the
+     * audio thread), where no JNIEnv exists; it must attach on demand. */
+    env->GetJavaVM(&self->vm);
     self->parametricEq = new ParametricEqProcessor();
     self->loudnessCorrection = new LoudnessCorrectionProcessor();
     self->dynamicEq = new dynamicEq_t();
@@ -468,11 +471,28 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt24Pac
     DECLARE_DSP(inputObj)
 
     auto inputLength = env->GetArrayLength(inputObj);
+    /* BUG-12: the multiplexed PCM24 entry point takes a FRAME count.
+     * Interleaved stereo packed PCM24 = 3 bytes per sample x 2 channels
+     * = 6 bytes per frame; the previous inputLength/2 tripled it. */
+    if (inputLength < 6 || (inputLength % 6) != 0)
+    {
+        LOGE("JamesDspWrapper::processInt24Packed: length %d is not a whole number of stereo frames", (int)inputLength);
+        return inputObj;
+    }
     auto outputObj = env->NewBooleanArray(inputLength);
+    if (outputObj == nullptr)
+        return nullptr;
 
     auto input = env->GetBooleanArrayElements(inputObj, nullptr);
+    if (input == nullptr)
+        return outputObj;
     auto output = env->GetBooleanArrayElements(outputObj, nullptr);
-    dsp->processInt24PackedMultiplexd(dsp, input, output, inputLength / 2);
+    if (output == nullptr)
+    {
+        env->ReleaseBooleanArrayElements(inputObj, input, JNI_ABORT);
+        return outputObj;
+    }
+    dsp->processInt24PackedMultiplexd(dsp, input, output, inputLength / 6);
     env->ReleaseBooleanArrayElements(inputObj, input, JNI_ABORT);
     env->ReleaseBooleanArrayElements(outputObj, output, 0);
     return outputObj;
@@ -1170,13 +1190,49 @@ void receiveLiveprogStdOut(const char *buffer, void* userData)
     __android_log_print(ANDROID_LOG_INFO, "LiveProg", "%s", buffer);
 
     auto* self = static_cast<JamesDspWrapper*>(userData);
-    if(self == nullptr)
+    if(self == nullptr || self->vm == nullptr || self->callbackInterface == nullptr)
     {
         LOGE("JamesDspWrapper::receiveLiveprogStdOut: Self reference is NULL");
         return;
     }
 
-    self->env->CallVoidMethod(self->callbackInterface, self->callbackOnLiveprogOutput, self->env->NewStringUTF(buffer));
+    /* BUG-07: obtain a JNIEnv for the CURRENT thread. The callback can fire
+     * on the audio thread, which is not attached to the VM; using a JNIEnv
+     * captured at alloc() time is a JNI error and crashed or leaked on some
+     * devices. */
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    jint res = self->vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+    if (res == JNI_EDETACHED)
+    {
+        if (self->vm->AttachCurrentThread(&env, nullptr) != JNI_OK)
+        {
+            LOGE("JamesDspWrapper::receiveLiveprogStdOut: AttachCurrentThread failed");
+            return;
+        }
+        attached = true;
+    }
+    else if (res != JNI_OK || env == nullptr)
+    {
+        LOGE("JamesDspWrapper::receiveLiveprogStdOut: GetEnv failed (%d)", res);
+        return;
+    }
+
+    jstring msg = env->NewStringUTF(buffer);
+    if (msg != nullptr)
+    {
+        env->CallVoidMethod(self->callbackInterface, self->callbackOnLiveprogOutput, msg);
+        env->DeleteLocalRef(msg);
+        if (env->ExceptionCheck())
+        {
+            LOGE("JamesDspWrapper::receiveLiveprogStdOut: exception in onLiveprogOutput");
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+        }
+    }
+
+    if (attached)
+        self->vm->DetachCurrentThread();
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

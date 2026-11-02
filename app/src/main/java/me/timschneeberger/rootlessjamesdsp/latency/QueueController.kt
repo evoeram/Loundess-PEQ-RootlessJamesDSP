@@ -18,6 +18,9 @@ class QueueController(private val maxQueueFrames: Int) {
 
     val enabled get() = maxQueueFrames > 0
 
+    /** Total frames handed to the track since [onTrackStarted] (test hook). */
+    internal val totalFramesWritten get() = framesWritten
+
     fun onTrackStarted() {
         framesWritten = 0
         dropNext = false

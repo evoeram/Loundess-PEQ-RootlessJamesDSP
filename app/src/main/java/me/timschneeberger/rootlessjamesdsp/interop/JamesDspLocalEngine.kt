@@ -13,20 +13,44 @@ import me.timschneeberger.rootlessjamesdsp.voiceisolation.VoiceIsolationProcesso
 import me.timschneeberger.rootlessjamesdsp.voiceisolation.VoiceIsolationSettings
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import timber.log.Timber
-import java.util.Timer
-import kotlin.concurrent.schedule
+import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.math.log10
 
 class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspCallbacks? = null) : JamesDspBaseEngine(context, callbacks) {
     var handle: JamesDspHandle = JamesDspWrapper.alloc(callbacks ?: DummyCallbacks())
 
+    /**
+     * Lifecycle lock для native handle (BUG-03). Все JNI-вызовы выполняются под
+     * read-lock; close() берёт write-lock, что детерминированно дожидается
+     * завершения in-flight process и set вызовов и только затем вызывает free().
+     * Заменяет старый Timer().schedule(100), который не доказывал завершение
+     * активных вызовов.
+     */
+    private val handleLock = ReentrantReadWriteLock()
+
+    @Volatile
+    private var handleClosed = false
+
     @Volatile
     private var voiceIsolation: VoiceIsolationProcessor? = null
+
+    /** Выполняет [block] с живым handle под read-lock; null после close(). */
+    private inline fun <T> withNativeHandle(crossinline block: (JamesDspHandle) -> T): T? {
+        if (handleClosed) return null
+        val readLock = handleLock.readLock()
+        readLock.lock()
+        try {
+            if (handleClosed) return null
+            return block(handle)
+        } finally {
+            readLock.unlock()
+        }
+    }
 
     override var sampleRate: Float
         set(value) {
             super.sampleRate = value
-            JamesDspWrapper.setSamplingRate(handle, value, false)
+            withNativeHandle { JamesDspWrapper.setSamplingRate(it, value, false) }
             context.sendLocalBroadcast(Intent(Constants.ACTION_SAMPLE_RATE_UPDATED))
         }
         get() = super.sampleRate
@@ -38,73 +62,120 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     }
 
     override fun close() {
+        // Отключаем трекинг громкости и ML-стадию до закрытия handle:
+        // receiver и worker не должны обращаться к native после free()
         setLoudnessAutoVolume(false)
 
         voiceIsolation?.close()
         voiceIsolation = null
 
-        val oldHandle = handle
-        handle = 0
+        // Отменяет syncScope: новые syncWithPreferences() больше не запускаются,
+        // уже запущенная синхронизация завершится под read-lock ниже
+        super.close()
 
-        // Make sure ongoing async calls to native have enough time to finish
-        Timer().schedule(100) {
-            JamesDspWrapper.free(oldHandle)
-            Timber.d("Handle $oldHandle has been freed")
+        // Write-lock: запрет новых JNI-вызовов -> ожидание активных -> free()
+        val writeLock = handleLock.writeLock()
+        writeLock.lock()
+        try {
+            val oldHandle = handle
+            handle = 0
+            handleClosed = true
+            if (oldHandle != 0L) {
+                JamesDspWrapper.free(oldHandle)
+                Timber.d("Handle $oldHandle has been freed")
+            }
+        } finally {
+            writeLock.unlock()
         }
     }
 
     // Processing
-    fun processInt16(input: ShortArray, output: ShortArray, offset: Int = -1, length: Int = -1)
-    {
-        if(!enabled || handle == 0L)
-        {
-            if (input === output) return
-            if(offset < 0 && length < 0) {
-                input.copyInto(output)
-            }
-            else {
-                input.copyInto(output, 0, offset, offset + length)
-            }
+    private fun passthroughCopy(input: ShortArray, output: ShortArray, offset: Int, length: Int) {
+        if (input === output) return
+        if(offset < 0 && length < 0) {
+            input.copyInto(output)
         }
         else {
-            JamesDspWrapper.processInt16(handle, input, output, offset, length)
-            processVoiceIsolation(output, offset, length)
+            input.copyInto(output, 0, offset, offset + length)
         }
+    }
+
+    private fun passthroughCopy(input: IntArray, output: IntArray, offset: Int, length: Int) {
+        if (input === output) return
+        if(offset < 0 && length < 0) {
+            input.copyInto(output)
+        }
+        else {
+            input.copyInto(output, 0, offset, offset + length)
+        }
+    }
+
+    private fun passthroughCopy(input: FloatArray, output: FloatArray, offset: Int, length: Int) {
+        if (input === output) return
+        if(offset < 0 && length < 0) {
+            input.copyInto(output)
+        }
+        else {
+            input.copyInto(output, 0, offset, offset + length)
+        }
+    }
+
+    fun processInt16(input: ShortArray, output: ShortArray, offset: Int = -1, length: Int = -1)
+    {
+        if(!enabled || handleClosed) {
+            passthroughCopy(input, output, offset, length)
+            return
+        }
+        // Read-lock удерживается, пока активен JNI-вызов: close() не сможет
+        // освободить handle из-под обрабатываемого блока (BUG-03)
+        handleLock.readLock().lock()
+        try {
+            if (handleClosed) {
+                passthroughCopy(input, output, offset, length)
+                return
+            }
+            JamesDspWrapper.processInt16(handle, input, output, offset, length)
+        } finally {
+            handleLock.readLock().unlock()
+        }
+        processVoiceIsolation(output, offset, length)
     }
 
     fun processInt32(input: IntArray, output: IntArray, offset: Int = -1, length: Int = -1)
     {
-        if(!enabled || handle == 0L)
-        {
-            if (input === output) return
-            if(offset < 0 && length < 0) {
-                input.copyInto(output)
-            }
-            else {
-                input.copyInto(output, 0, offset, offset + length)
-            }
+        if(!enabled || handleClosed) {
+            passthroughCopy(input, output, offset, length)
+            return
         }
-        else {
+        handleLock.readLock().lock()
+        try {
+            if (handleClosed) {
+                passthroughCopy(input, output, offset, length)
+                return
+            }
             JamesDspWrapper.processInt32(handle, input, output, offset, length)
+        } finally {
+            handleLock.readLock().unlock()
         }
     }
 
     fun processFloat(input: FloatArray, output: FloatArray, offset: Int = -1, length: Int = -1)
     {
-        if(!enabled || handle == 0L)
-        {
-            if (input === output) return
-            if(offset < 0 && length < 0) {
-                input.copyInto(output)
-            }
-            else {
-                input.copyInto(output, 0, offset, offset + length)
-            }
+        if(!enabled || handleClosed) {
+            passthroughCopy(input, output, offset, length)
+            return
         }
-        else {
+        handleLock.readLock().lock()
+        try {
+            if (handleClosed) {
+                passthroughCopy(input, output, offset, length)
+                return
+            }
             JamesDspWrapper.processFloat(handle, input, output, offset, length)
-            processVoiceIsolation(output, offset, length)
+        } finally {
+            handleLock.readLock().unlock()
         }
+        processVoiceIsolation(output, offset, length)
     }
 
     // Voice Isolation runs in this process (ONNX Runtime), after the native JamesDSP chain
@@ -181,51 +252,53 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
 
     // Effect config
     override fun setOutputControl(enable: Boolean, threshold: Float, release: Float, postGain: Float): Boolean {
-        return JamesDspWrapper.setLimiter(handle, enable, threshold, release) and JamesDspWrapper.setPostGain(handle, postGain)
+        val limiterSet = withNativeHandle { JamesDspWrapper.setLimiter(it, enable, threshold, release) } ?: return false
+        val postGainSet = withNativeHandle { JamesDspWrapper.setPostGain(it, postGain) } ?: return false
+        return limiterSet && postGainSet
     }
 
     override fun setSmoothVolumeDb(db: Double): Boolean {
-        return JamesDspWrapper.setSmoothVolumeGain(handle, db)
+        return withNativeHandle { JamesDspWrapper.setSmoothVolumeGain(it, db) } ?: false
     }
 
     override fun setReverb(enable: Boolean, preset: Int): Boolean
     {
-        return JamesDspWrapper.setReverb(handle, enable, preset)
+        return withNativeHandle { JamesDspWrapper.setReverb(it, enable, preset) } ?: false
     }
 
     override fun setCrossfeed(enable: Boolean, mode: Int): Boolean
     {
-        return JamesDspWrapper.setCrossfeed(handle, enable, mode, 0, 0)
+        return withNativeHandle { JamesDspWrapper.setCrossfeed(it, enable, mode, 0, 0) } ?: false
     }
 
     override fun setCrossfeedCustom(enable: Boolean, fcut: Int, feed: Int): Boolean
     {
-        return JamesDspWrapper.setCrossfeed(handle, enable, 99, fcut, feed)
+        return withNativeHandle { JamesDspWrapper.setCrossfeed(it, enable, 99, fcut, feed) } ?: false
     }
 
     override fun setBassBoost(enable: Boolean, maxGain: Float): Boolean
     {
-        return JamesDspWrapper.setBassBoost(handle, enable, maxGain)
+        return withNativeHandle { JamesDspWrapper.setBassBoost(it, enable, maxGain) } ?: false
     }
 
     override fun setStereoEnhancement(enable: Boolean, level: Float): Boolean
     {
-        return JamesDspWrapper.setStereoEnhancement(handle, enable, level)
+        return withNativeHandle { JamesDspWrapper.setStereoEnhancement(it, enable, level) } ?: false
     }
 
     override fun setVacuumTube(enable: Boolean, level: Float): Boolean
     {
-        return JamesDspWrapper.setVacuumTube(handle, enable, level)
+        return withNativeHandle { JamesDspWrapper.setVacuumTube(it, enable, level) } ?: false
     }
 
     override fun setHarmonicExpander(enable: Boolean, harmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean
     {
-        return JamesDspWrapper.setHarmonicExpander(handle, enable, harmonicGains, crossoverFreq, mix)
+        return withNativeHandle { JamesDspWrapper.setHarmonicExpander(it, enable, harmonicGains, crossoverFreq, mix) } ?: false
     }
 
     override fun setSubHarmonicExpander(enable: Boolean, subHarmonicGains: FloatArray, crossoverFreq: Float, mix: Float): Boolean
     {
-        return JamesDspWrapper.setSubHarmonicExpander(handle, enable, subHarmonicGains, crossoverFreq, mix)
+        return withNativeHandle { JamesDspWrapper.setSubHarmonicExpander(it, enable, subHarmonicGains, crossoverFreq, mix) } ?: false
     }
 
     override fun setNosR2R(enable: Boolean, targetRate: Double, bitDepth: Int,
@@ -233,9 +306,11 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
                            harmony: Int, serialNumber: Long,
                            jitterAmount: Double, harmonicsAmount: Double, invertPhase: Boolean): Boolean
     {
-        return JamesDspWrapper.setNosR2R(handle, enable, targetRate, bitDepth,
-            resistorTolerance, deviationGrowth, harmony, serialNumber,
-            jitterAmount, harmonicsAmount, invertPhase)
+        return withNativeHandle {
+            JamesDspWrapper.setNosR2R(it, enable, targetRate, bitDepth,
+                resistorTolerance, deviationGrowth, harmony, serialNumber,
+                jitterAmount, harmonicsAmount, invertPhase)
+        } ?: false
     }
 
     override fun setMultiEqualizerInternal(
@@ -244,7 +319,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         interpolationMode: Int,
         bands: DoubleArray
     ): Boolean {
-        return JamesDspWrapper.setMultiEqualizer(handle, enable, filterType, interpolationMode, bands)
+        return withNativeHandle { JamesDspWrapper.setMultiEqualizer(it, enable, filterType, interpolationMode, bands) } ?: false
     }
 
     override fun setCompanderInternal(
@@ -254,11 +329,11 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         tfTransforms: Int,
         bands: DoubleArray
     ): Boolean {
-        return JamesDspWrapper.setCompander(handle, enable, timeConstant, granularity, tfTransforms, bands)
+        return withNativeHandle { JamesDspWrapper.setCompander(it, enable, timeConstant, granularity, tfTransforms, bands) } ?: false
     }
 
     override fun setVdcInternal(enable: Boolean, vdc: String): Boolean {
-        return JamesDspWrapper.setVdc(handle, enable, vdc)
+        return withNativeHandle { JamesDspWrapper.setVdc(it, enable, vdc) } ?: false
     }
 
     override fun setConvolverInternal(
@@ -269,11 +344,11 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         irCrc: Int,
         irSampleRate: Int,
     ): Boolean {
-        return JamesDspWrapper.setConvolver(handle, enable, impulseResponse, irChannels, irFrames)
+        return withNativeHandle { JamesDspWrapper.setConvolver(it, enable, impulseResponse, irChannels, irFrames) } ?: false
     }
 
     override fun setEqPhaseMode(linearPhase: Boolean): Boolean =
-        JamesDspWrapper.setEqPhaseMode(handle, linearPhase)
+        withNativeHandle { JamesDspWrapper.setEqPhaseMode(it, linearPhase) } ?: false
 
     override fun setGraphicEqInternal(enable: Boolean, bands: String): Boolean {
         // Передаём EQ-кривую в AndroidEq (Direct Mode) — поддерживает per-channel стерео
@@ -286,10 +361,10 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         if (bands.contains(JamesDspBaseEngine.STEREO_GRAPHIC_EQ_SPLIT)) {
             val left = bands.substringBefore(JamesDspBaseEngine.STEREO_GRAPHIC_EQ_SPLIT)
             val right = bands.substringAfter(JamesDspBaseEngine.STEREO_GRAPHIC_EQ_SPLIT)
-            return JamesDspWrapper.setGraphicEqStereo(handle, enable, left, right)
+            return withNativeHandle { JamesDspWrapper.setGraphicEqStereo(it, enable, left, right) } ?: false
         }
 
-        return JamesDspWrapper.setGraphicEq(handle, enable, bands)
+        return withNativeHandle { JamesDspWrapper.setGraphicEq(it, enable, bands) } ?: false
     }
 
     override fun setGraphicEqStereoInternal(enable: Boolean, bandsLeft: String, bandsRight: String): Boolean {
@@ -300,11 +375,11 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
                 enable,
                 buildStereoGraphicEqPayload(bandsLeft, bandsRight))
 
-        return JamesDspWrapper.setGraphicEqStereo(handle, enable, bandsLeft, bandsRight)
+        return withNativeHandle { JamesDspWrapper.setGraphicEqStereo(it, enable, bandsLeft, bandsRight) } ?: false
     }
 
     override fun setLiveprogInternal(enable: Boolean, name: String, script: String): Boolean {
-        return JamesDspWrapper.setLiveprog(handle, enable, name, script)
+        return withNativeHandle { JamesDspWrapper.setLiveprog(it, enable, name, script) } ?: false
     }
 
     override fun setParametricEqCascade(
@@ -322,11 +397,12 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         }
 
         if (!enable || bands.isEmpty()) {
-            return JamesDspWrapper.setParametricEq(
-                handle, false, sampleRate, preampDb,
-                DoubleArray(0), DoubleArray(0), DoubleArray(0),
-                IntArray(0), IntArray(0)
-            )
+            return withNativeHandle {
+                JamesDspWrapper.setParametricEq(it, false, sampleRate, preampDb,
+                    DoubleArray(0), DoubleArray(0), DoubleArray(0),
+                    IntArray(0), IntArray(0)
+                )
+            } ?: false
         }
 
         val freq = DoubleArray(bands.size)
@@ -343,10 +419,11 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
             chan[i] = band.channel.code
         }
 
-        return JamesDspWrapper.setParametricEq(
-            handle, true, sampleRate, preampDb,
-            freq, gain, q, type, chan
-        )
+        return withNativeHandle {
+            JamesDspWrapper.setParametricEq(it, true, sampleRate, preampDb,
+                freq, gain, q, type, chan
+            )
+        } ?: false
     }
 
     override fun setDynamicEq(
@@ -365,14 +442,15 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
 
         val bandList = me.timschneeberger.rootlessjamesdsp.model.DynamicEqBandList()
         bandList.addAll(bands)
-        return JamesDspWrapper.setDynamicEq(
-            handle,
-            enable && bands.isNotEmpty(),
-            sampleRate,
-            bandList.toNativeConfig(),
-            mix,
-            msMode
-        )
+        return withNativeHandle {
+            JamesDspWrapper.setDynamicEq(it,
+                enable && bands.isNotEmpty(),
+                sampleRate,
+                bandList.toNativeConfig(),
+                mix,
+                msMode
+            )
+        } ?: false
     }
 
     // Feature support
@@ -403,15 +481,16 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
             return false
         }
 
-        return JamesDspWrapper.setLoudnessCorrection(
-            handle, enable, sampleRate,
-            referenceLevel, referenceOffset, attenuation, currentVolumeDb, mode
-        )
+        return withNativeHandle {
+            JamesDspWrapper.setLoudnessCorrection(it, enable, sampleRate,
+                referenceLevel, referenceOffset, attenuation, currentVolumeDb, mode
+            )
+        } ?: false
     }
 
     override fun setLoudnessCorrectionVolume(currentVolumeDb: Double): Boolean {
         if (handle == 0L) return false
-        return JamesDspWrapper.setLoudnessCorrectionVolume(handle, currentVolumeDb)
+        return withNativeHandle { JamesDspWrapper.setLoudnessCorrectionVolume(it, currentVolumeDb) } ?: false
     }
 
     override fun setLoudnessTuning(
@@ -420,17 +499,18 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         isoBasePhon: Double, isoQ: Double
     ): Boolean {
         if (handle == 0L) return false
-        return JamesDspWrapper.setLoudnessTuning(
-            handle, lsFreq, lsSlope, lsRatio,
-            hsFreq, hsSlope, hsRatio, isoBasePhon, isoQ
-        )
+        return withNativeHandle {
+            JamesDspWrapper.setLoudnessTuning(it, lsFreq, lsSlope, lsRatio,
+                hsFreq, hsSlope, hsRatio, isoBasePhon, isoQ
+            )
+        } ?: false
     }
 
     override fun setLoudnessSubsonic(
         enable: Boolean, freq: Double, order: Int, qFactor: Double
     ): Boolean {
         if (handle == 0L) return false
-        return JamesDspWrapper.setLoudnessSubsonic(handle, enable, freq, order, qFactor)
+        return withNativeHandle { JamesDspWrapper.setLoudnessSubsonic(it, enable, freq, order, qFactor) } ?: false
     }
 
     override fun setLufsNormalizer(
@@ -447,9 +527,10 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
             return false
         }
         if (handle == 0L) return false
-        return JamesDspWrapper.setLufsNormalizer(
-            handle, enable, sampleRate, targetLufs, maxGainDb, mode
-        )
+        return withNativeHandle {
+            JamesDspWrapper.setLufsNormalizer(it, enable, sampleRate, targetLufs, maxGainDb, mode
+            )
+        } ?: false
     }
 
     override fun setFetCompressor(
@@ -468,9 +549,10 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
             return false
         }
         if (handle == 0L) return false
-        return JamesDspWrapper.setFetCompressor(
-            handle, enable, sampleRate, thresholdDb, ratio, attackMs, releaseMs, makeupDb
-        )
+        return withNativeHandle {
+            JamesDspWrapper.setFetCompressor(it, enable, sampleRate, thresholdDb, ratio, attackMs, releaseMs, makeupDb
+            )
+        } ?: false
     }
 
     override fun setViperClarity(
@@ -484,7 +566,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
             return false
         }
         if (handle == 0L) return false
-        return JamesDspWrapper.setViperClarity(handle, enable, sampleRate, mode, gainDb)
+        return withNativeHandle { JamesDspWrapper.setViperClarity(it, enable, sampleRate, mode, gainDb) } ?: false
     }
 
     override fun setFieldSurround(
@@ -493,7 +575,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         midImagePct: Double
     ): Boolean {
         if (handle == 0L) return false
-        return JamesDspWrapper.setFieldSurround(handle, enable, strengthPct, midImagePct)
+        return withNativeHandle { JamesDspWrapper.setFieldSurround(it, enable, strengthPct, midImagePct) } ?: false
     }
 
     override fun setViperAgc(
@@ -507,7 +589,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
             return false
         }
         if (handle == 0L) return false
-        return JamesDspWrapper.setViperAgc(handle, enable, sampleRate, targetPct, maxBoostDb)
+        return withNativeHandle { JamesDspWrapper.setViperAgc(it, enable, sampleRate, targetPct, maxBoostDb) } ?: false
     }
 
     override fun setCure(
@@ -520,7 +602,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
             return false
         }
         if (handle == 0L) return false
-        return JamesDspWrapper.setCure(handle, enable, sampleRate, level)
+        return withNativeHandle { JamesDspWrapper.setCure(it, enable, sampleRate, level) } ?: false
     }
 
     override fun setTape(
@@ -540,10 +622,11 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
             return false
         }
         if (handle == 0L) return false
-        return JamesDspWrapper.setTape(
-            handle, enable, sampleRate, wowPct, flutterPct,
-            saturationPct, biasPct, headBumpDb, mixPct
-        )
+        return withNativeHandle {
+            JamesDspWrapper.setTape(it, enable, sampleRate, wowPct, flutterPct,
+                saturationPct, biasPct, headBumpDb, mixPct
+            )
+        } ?: false
     }
 
     // ---- Auto system volume tracking ----
@@ -557,7 +640,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         override fun onReceive(ctx: Context?, intent: Intent?) {
             if (intent?.action == VOLUME_CHANGED_ACTION) {
                 val volDb = getCurrentMediaVolumeDb()
-                JamesDspWrapper.setLoudnessCorrectionVolume(handle, volDb)
+                withNativeHandle { JamesDspWrapper.setLoudnessCorrectionVolume(it, volDb) }
             }
         }
     }
@@ -574,7 +657,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
             volumeReceiverRegistered = true
             // Push initial volume
             val volDb = getCurrentMediaVolumeDb()
-            JamesDspWrapper.setLoudnessCorrectionVolume(handle, volDb)
+            withNativeHandle { JamesDspWrapper.setLoudnessCorrectionVolume(it, volDb) }
             Timber.d("Loudness auto-volume tracking enabled (vol=%.1f dB)", volDb)
         } else if (!enable && volumeReceiverRegistered) {
             try {
@@ -599,17 +682,17 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     // EEL VM utilities
     override fun enumerateEelVariables(): ArrayList<EelVmVariable>
     {
-        return JamesDspWrapper.enumerateEelVariables(handle)
+        return withNativeHandle { JamesDspWrapper.enumerateEelVariables(it) } ?: ArrayList()
     }
 
     override fun manipulateEelVariable(name: String, value: Float): Boolean
     {
-        return JamesDspWrapper.manipulateEelVariable(handle, name, value)
+        return withNativeHandle { JamesDspWrapper.manipulateEelVariable(it, name, value) } ?: false
     }
 
     override fun freezeLiveprogExecution(freeze: Boolean)
     {
-        JamesDspWrapper.freezeLiveprogExecution(handle, freeze)
+        withNativeHandle { JamesDspWrapper.freezeLiveprogExecution(it, freeze) }
     }
 
     companion object {

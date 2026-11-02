@@ -27,6 +27,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicLong
 import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import androidx.lifecycle.Observer
@@ -34,6 +35,7 @@ import androidx.lifecycle.asLiveData
 import dev.rikka.tools.refine.Refine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
@@ -45,6 +47,7 @@ import me.timschneeberger.rootlessjamesdsp.loopback.LoopbackPcmSource
 import me.timschneeberger.rootlessjamesdsp.loopback.LoopbackCaptureUserService
 import me.timschneeberger.rootlessjamesdsp.latency.LatencyTracer
 import me.timschneeberger.rootlessjamesdsp.latency.LatencyTuning
+import me.timschneeberger.rootlessjamesdsp.latency.PcmWriteUnits
 import me.timschneeberger.rootlessjamesdsp.latency.QueueController
 import me.timschneeberger.rootlessjamesdsp.voiceisolation.PlaybackBufferAdapter
 import me.timschneeberger.rootlessjamesdsp.flavor.CrashlyticsImpl
@@ -207,6 +210,18 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     // Processing
     private var recreateRecorderRequested = false
     private var recorderThread: Thread? = null
+
+    // BUG-02: per-run cancellation token. Каждый запуск capture-потока получает
+    // уникальный generation; stopRecording() инвалидирует текущее поколение, и
+    // цикл завершается детерминированно, не полагаясь на interrupt() (read()/
+    // write()/Future.get() его не прерывают). captureLock охраняет ссылку потока.
+    private val captureGeneration = AtomicLong(0)
+    private val captureLock = Any()
+
+    // Текущие ресурсы capture-потока: нужны stopRecording(), чтобы снять
+    // блокирующие IO-вызовы до join (иначе поток не завершится за timeout)
+    @Volatile
+    private var activeAudioRecord: AudioRecord? = null
     private var activeContentSampleRate = 0
     private var activeUsbHardwareSampleRate = 0
     private var lastUsbSourceSampleRate = 0
@@ -448,6 +463,12 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             clearPreferredUsbMixer()
         }
         engine.close()
+
+        // BUG-02: после onDestroy не должно остаться callbacks/coroutines,
+        // способных перезапустить capture loop (usbRouteRestart, отложенные
+        // определения ставок, detector-корутины)
+        mainHandler.removeCallbacksAndMessages(null)
+        applicationScope.cancel()
 
         // Stop foreground service
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -723,6 +744,13 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     // Start recording thread
     @SuppressLint("BinaryOperationInTimber")
     private fun startRecording() {
+        synchronized(captureLock) {
+            if (recorderThread?.isAlive == true) {
+                // BUG-02: два живых capture loop не должны существовать одновременно
+                Timber.e("startRecording: capture thread already running; ignoring start request")
+                return
+            }
+        }
         // Direct Mode: capture loop не запускается.
         // AndroidEq создаёт DynamicsProcessing для каждой сессии приложения.
         // RECORD_AUDIO permission не требуется в Direct Mode.
@@ -738,16 +766,25 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             // Синхронизируем настройки: supportsParametricEqCascade() теперь false → PEQ через fallback
             engine.syncWithPreferences()
             sessionManager?.pollOnce(false)
-            recorderThread = Thread {
-                while (!isProcessorDisposing) {
-                    try {
-                        Thread.sleep(1000)
-                    } catch (e: InterruptedException) {
-                        break
+            synchronized(captureLock) {
+                if (recorderThread?.isAlive == true) {
+                    Timber.e("Direct Mode: capture thread already running; ignoring start request")
+                    return
+                }
+                // Токен выделяем до создания потока: stop() инкрементит generation
+                // после нас, и только что созданный поток гарантированно его увидит
+                val runGeneration = captureGeneration.incrementAndGet()
+                recorderThread = Thread {
+                    while (captureGeneration.get() == runGeneration) {
+                        try {
+                            Thread.sleep(1000)
+                        } catch (e: InterruptedException) {
+                            break
+                        }
                     }
                 }
+                recorderThread!!.start()
             }
-            recorderThread!!.start()
             return
         }
 
@@ -858,6 +895,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 tuning,
             )
             activeAudioTrack = track
+            activeAudioRecord = recorder
             // Apply current smooth volume if enabled
             if (smoothVolumeEnabled) {
                 applySmoothVolume()
@@ -889,7 +927,14 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         // TODO Move all audio-related code to C++
         val pcmSource: LoopbackPcmSource? = loopbackClient?.pcmSource
-        recorderThread = Thread {
+        // Клиент своего поколения: finally не должен остановить чужой (новый)
+        // клиент после restart (BUG-02)
+        val ownLoopbackClient = loopbackClient
+        // Уникальный токен поколения выделяем до создания потока: stopRecording()
+        // инкрементит generation после нас, и поток гарантированно увидит остановку.
+        // Цикл завершается даже если interrupt() не достигнут блокирующим вызовом.
+        val runGeneration = captureGeneration.incrementAndGet()
+        val captureThread = Thread {
             try {
                 // Rebuilding the processing pipeline must not overwrite the current
                 // session-aware notification with a false "idle" state.
@@ -973,7 +1018,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     return true
                 }
 
-                while (!isProcessorDisposing) {
+                while (captureGeneration.get() == runGeneration) {
                     if(recreateRecorderRequested) {
                         recreateRecorderRequested = false
                         Timber.d("Recreating recorder without stopping thread...")
@@ -1190,35 +1235,71 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 Timber.w(e)
                 // ignore
             } catch (e: Exception) {
-                Timber.e("Exception in recorderThread raised")
-                Timber.e(e)
-                stopSelf()
+                if (captureGeneration.get() != runGeneration || isServiceDisposing) {
+                    // Ожидаемая остановка: ресурсы снимал stopRecording() (BUG-02).
+                    // Не считаем ошибкой — иначе каждый restart убивал бы сервис.
+                    Timber.d("Capture thread interrupted during planned shutdown: ${e.message}")
+                } else {
+                    Timber.e("Exception in recorderThread raised")
+                    Timber.e(e)
+                    stopSelf()
+                }
             } finally {
-                // Clean up recorder and track
+                // Clean up recorder and track — только ресурсы этого поколения (BUG-02)
                 if(!loopbackCapture && recorder?.state != AudioRecord.STATE_UNINITIALIZED) {
-                    recorder?.stop()
+                    runCatching { recorder?.stop() }
                 }
                 if(track.state != AudioTrack.STATE_UNINITIALIZED) {
-                    track.stop()
+                    runCatching { track.stop() }
                 }
 
-                recorder?.release()
-                track.release()
-                activeAudioTrack = null
-                loopbackClient?.stop()
+                runCatching { recorder?.release() }
+                runCatching { track.release() }
+                if (activeAudioRecord === recorder) activeAudioRecord = null
+                if (activeAudioTrack === track) activeAudioTrack = null
+                ownLoopbackClient?.stop()
             }
         }
-        recorderThread!!.start()
+        synchronized(captureLock) {
+            recorderThread = captureThread
+            captureThread.start()
+        }
     }
 
-    // Terminate recording thread
-    fun stopRecording() {
-        if (recorderThread != null) {
-            isProcessorDisposing = true
-            recorderThread!!.interrupt()
-            recorderThread!!.join(500)
+    // Terminate recording thread. Детерминированная остановка (BUG-02):
+    // сначала снимаем блокировки ввода-вывода (recorder/track/PCM source),
+    // затем дожидаемся завершения потока. Возвращает false, если поток не
+    // завершился за timeout — вызывающий код обязан НЕ сбрасывать флаги и
+    // НЕ запускать новый поток, пока старый жив.
+    fun stopRecording(): Boolean {
+        val thread: Thread
+        synchronized(captureLock) {
+            thread = recorderThread ?: return true
             recorderThread = null
         }
+        isProcessorDisposing = true
+        captureGeneration.incrementAndGet()
+
+        // read()/write()/Future.get() непрерываемы: interrupt() из них не выводит.
+        // Остановка источников разблокирует поток, и он увидит смену generation.
+        runCatching { activeAudioRecord?.stop() }
+        activeAudioTrack?.let {
+            runCatching { if (it.state != AudioTrack.STATE_UNINITIALIZED) it.stop() }
+        }
+        loopbackClient?.pcmSource?.close()
+
+        thread.interrupt()
+        thread.join(500)
+        if (thread.isAlive) {
+            Timber.e("stopRecording: capture thread did not terminate within 500 ms")
+            // Возвращаем ссылку: повторный stopRecording сможет дождаться потока,
+            // а isRunning/startRecording будут видеть живой поток и не запустят второй
+            synchronized(captureLock) {
+                if (recorderThread == null) recorderThread = thread
+            }
+            return false
+        }
+        return true
     }
 
     // Hard restart recording thread
@@ -1228,7 +1309,12 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             return
         }
 
-        stopRecording()
+        if (!stopRecording()) {
+            // Старый поток жив: не сбрасываем флаги и не стартуем новый —
+            // иначе два capture loop работают параллельно (BUG-02)
+            Timber.e("restartRecording: previous capture thread did not stop; aborting restart")
+            return
+        }
         isProcessorDisposing = false
         recreateRecorderRequested = false
 
@@ -1317,11 +1403,10 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         // Release our own USB stream so AudioFlinger exposes the rate selected by the
         // captured source application's remaining (silenced) hardware stream.
-        stopRecording()
+        val captureStopped = stopRecording()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             clearPreferredUsbMixer()
         }
-        isProcessorDisposing = false
 
         mainHandler.postDelayed({
             applicationScope.launch(Dispatchers.IO) {
@@ -1331,6 +1416,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 mainHandler.post {
                     usbHardwareRateReconfigurationPending = false
                     if (isServiceDisposing) return@post
+                    // Флаг сбрасываем только если поток реально завершился (BUG-02)
+                    if (captureStopped) isProcessorDisposing = false
                     activeUsbHardwareSampleRate = hardwareRate
                     startRecording()
                 }
@@ -1437,7 +1524,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     putPcmSample(packedBuffer, outputEncoding, samples[index])
                 }
                 packedBuffer.flip()
-                track.write(packedBuffer, packedBuffer.remaining(), AudioTrack.WRITE_BLOCKING)
+                writePackedAndCountSamples(track, packedBuffer, outputEncoding)
             }
             else -> error("Unsupported USB output encoding $outputEncoding")
         }
@@ -1467,10 +1554,20 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     putPcmSample(packedBuffer, outputEncoding, samples[index] / 32768f)
                 }
                 packedBuffer.flip()
-                track.write(packedBuffer, packedBuffer.remaining(), AudioTrack.WRITE_BLOCKING)
+                writePackedAndCountSamples(track, packedBuffer, outputEncoding)
             }
             else -> error("Unsupported USB output encoding $outputEncoding")
         }
+    }
+
+    /**
+     * Writes a packed [ByteBuffer] and converts the byte count returned by
+     * `AudioTrack.write(ByteBuffer, …)` into interleaved samples so all
+     * output paths share one unit system (see [PcmWriteUnits]).
+     */
+    private fun writePackedAndCountSamples(track: AudioTrack, buffer: ByteBuffer, encoding: Int): Int {
+        val bytesWritten = track.write(buffer, buffer.remaining(), AudioTrack.WRITE_BLOCKING)
+        return PcmWriteUnits.bytesToSamples(bytesWritten, bytesPerSample(encoding))
     }
 
     private fun putPcmSample(buffer: ByteBuffer, encoding: Int, value: Float) {

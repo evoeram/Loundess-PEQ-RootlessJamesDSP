@@ -206,6 +206,13 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
                 pending.get()
             } catch (e: ExecutionException) {
                 throw e.cause as? Exception ?: e
+            } catch (e: InterruptedException) {
+                // Остановка из close() во время ожидания worker (BUG-02):
+                // отменяем задачу и пропускаем блок — не ловим Exception ниже,
+                // иначе close выглядел бы как сбой обработки
+                pending.cancel(true)
+                Thread.currentThread().interrupt()
+                return
             }
             var index = offset
             val last = offset + frames * 2
@@ -225,7 +232,12 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
         }
 
         override fun close() {
+            // BUG-02: будим поток, заблокированный в Future.get(): shutdown()
+            // сам по себе ожидание не прерывает
             worker.shutdown()
+            if (!worker.awaitTermination(200, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                worker.shutdownNow()
+            }
             channels.forEach { it.close() }
         }
     }
@@ -246,7 +258,7 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
 
         /** HopPipeline includes the STFT hop; the mixer reports any additional measured delay. */
         val extraLatencyMs: Float
-            get() = (mixer.detectedDelayHops - 1) * 1000f / backend.modelSampleRate
+            get() = mixerExtraLatencyMs(mixer.detectedDelayHops, backend.hopSize, backend.modelSampleRate)
 
         val latencyMs: Float get() = framing.latencyMs + extraLatencyMs
 
@@ -270,3 +282,12 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
         private const val SILENCE_DB = -120f
     }
 }
+
+/**
+ * Additional latency beyond the STFT hop reported by the mixer, in milliseconds.
+ * [detectedDelayHops] counts hops of [hopSize] samples at [modelSampleRate], so a hop
+ * is `hopSize * 1000 / modelSampleRate` ms — not `1000 / modelSampleRate` ms (BUG-08).
+ * One hop is already accounted for by `HopPipeline.latencyMs`, hence the `-1`.
+ */
+internal fun mixerExtraLatencyMs(detectedDelayHops: Int, hopSize: Int, modelSampleRate: Int): Float =
+    (detectedDelayHops - 1).coerceAtLeast(0) * hopSize * 1000f / modelSampleRate

@@ -19,7 +19,7 @@ class LoudnessCorrectionProcessor;
 typedef struct
 {
     void* dsp;
-    JNIEnv* env;
+    JavaVM* vm;
     jobject callbackInterface;
     jmethodID callbackOnLiveprogOutput;
     jmethodID callbackOnLiveprogExec;

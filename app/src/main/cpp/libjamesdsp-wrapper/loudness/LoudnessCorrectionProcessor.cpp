@@ -15,34 +15,34 @@
 #endif
 
 LoudnessCorrectionProcessor::LoudnessCorrectionProcessor()
-    : sampleRate(48000.0)
-    , referenceLevel(0.0)
-    , referenceOffset(0.0)
-    , attenuation(1.0)
-    , mode(LOUDNESS_MODE_CLASSIC)
-    , volumeDb(0.0)
-    , lastComputedVolume(0.0)
+    : volumeDb(0.0)
     , coeffsDirty(true)
     , enabled(false)
     , attFactor(1.0)
     , neutral(true)
-    , lsFreq(75.0)
-    , lsSlope(0.52)
-    , lsRatio(0.55)
-    , hsFreq(10000.0)
-    , hsSlope(0.90)
-    , hsRatio(0.225)
-    , isoBasePhon(80.0)
-    , isoQ(4.318)
+    , activeMode(LOUDNESS_MODE_CLASSIC)
+    , activeSubsonicStages(0)
+    , activeSubsonicFirstOrder(false)
     , isoPreampLinear(1.0)
     , isoActiveBandCount(0)
-    , subsonicEnabled(false)
-    , subsonicFreq(20.0)
-    , subsonicOrder(4)
-    , subsonicQ(0.707)
 {
-    for (int i = 0; i < ISO226_NUM_BANDS; i++)
-        isoGains[i] = 0.0;
+    config.sampleRate = 48000.0;
+    config.referenceLevel = 0.0;
+    config.referenceOffset = 0.0;
+    config.attenuation = 1.0;
+    config.mode = LOUDNESS_MODE_CLASSIC;
+    config.lsFreq = 75.0;
+    config.lsSlope = 0.52;
+    config.lsRatio = 0.55;
+    config.hsFreq = 10000.0;
+    config.hsSlope = 0.90;
+    config.hsRatio = 0.225;
+    config.isoBasePhon = 80.0;
+    config.isoQ = 4.318;
+    config.subsonicEnabled = false;
+    config.subsonicFreq = 20.0;
+    config.subsonicOrder = 4;
+    config.subsonicQ = 0.707;
 }
 
 LoudnessCorrectionProcessor::~LoudnessCorrectionProcessor()
@@ -53,32 +53,18 @@ void LoudnessCorrectionProcessor::configure(double sr, double refLevel,
                                             double refOffset, double att,
                                             int modeParam)
 {
-    sampleRate = sr;
-    referenceLevel = refLevel;
-    referenceOffset = refOffset;
-    attenuation = (att < 0.0) ? 0.0 : (att > 2.0 ? 2.0 : att);
-    mode = (modeParam == LOUDNESS_MODE_ISO226) ? LOUDNESS_MODE_ISO226
-                                                 : LOUDNESS_MODE_CLASSIC;
+    std::lock_guard<std::mutex> lock(configMutex);
+    config.sampleRate = sr;
+    config.referenceLevel = refLevel;
+    config.referenceOffset = refOffset;
+    config.attenuation = (att < 0.0) ? 0.0 : (att > 2.0 ? 2.0 : att);
+    config.mode = (modeParam == LOUDNESS_MODE_ISO226) ? LOUDNESS_MODE_ISO226
+                                                      : LOUDNESS_MODE_CLASSIC;
 
-    // Reset biquad state (clears history)
-    lowShelfL = BiQuad();
-    lowShelfR = BiQuad();
-    highShelfL = BiQuad();
-    highShelfR = BiQuad();
-    for (int i = 0; i < ISO226_NUM_BANDS; i++)
-    {
-        isoBandsL[i] = BiQuad();
-        isoBandsR[i] = BiQuad();
-        isoGains[i] = 0.0;
-    }
-    isoPreampLinear = 1.0;
-    isoActiveBandCount = 0;
-
-    attFactor = 1.0;
-    neutral = true;
-
-    // Force coefficient recomputation on next process() call
-    lastComputedVolume = 1e30; // impossible value → always "changed"
+    // Коэффициенты и biquad-state здесь не трогаем (BUG-06): аудио-поток
+    // сам пересчитает их по dirty-флагу из целостного снапшота. До пересчёта
+    // продолжают звучать старые коэффициенты — переход между блоками, без
+    // обращения к полурасписанным параметрам.
     coeffsDirty.store(true, std::memory_order_release);
 }
 
@@ -90,7 +76,7 @@ void LoudnessCorrectionProcessor::setVolume(double vol)
 
 void LoudnessCorrectionProcessor::setEnabled(bool en)
 {
-    enabled = en;
+    enabled.store(en, std::memory_order_release);
 }
 
 void LoudnessCorrectionProcessor::setTuningParams(
@@ -98,44 +84,47 @@ void LoudnessCorrectionProcessor::setTuningParams(
     double pHsFreq, double pHsSlope, double pHsRatio,
     double pIsoBasePhon, double pIsoQ)
 {
-    lsFreq     = (pLsFreq < 1.0)     ? 1.0     : pLsFreq;
-    lsSlope    = (pLsSlope < 0.05)   ? 0.05    : (pLsSlope > 1.0 ? 1.0 : pLsSlope);
-    lsRatio    = (pLsRatio < 0.0)    ? 0.0     : (pLsRatio > 1.0 ? 1.0 : pLsRatio);
-    hsFreq     = (pHsFreq < 1.0)     ? 1.0     : pHsFreq;
-    hsSlope    = (pHsSlope < 0.05)   ? 0.05    : (pHsSlope > 1.0 ? 1.0 : pHsSlope);
-    hsRatio    = (pHsRatio < 0.0)    ? 0.0     : (pHsRatio > 1.0 ? 1.0 : pHsRatio);
-    isoBasePhon = (pIsoBasePhon < 20.0) ? 20.0 : (pIsoBasePhon > 90.0 ? 90.0 : pIsoBasePhon);
-    isoQ       = (pIsoQ < 0.1)       ? 0.1    : (pIsoQ > 24.0 ? 24.0 : pIsoQ);
+    std::lock_guard<std::mutex> lock(configMutex);
+    config.lsFreq     = (pLsFreq < 1.0)     ? 1.0     : pLsFreq;
+    config.lsSlope    = (pLsSlope < 0.05)   ? 0.05    : (pLsSlope > 1.0 ? 1.0 : pLsSlope);
+    config.lsRatio    = (pLsRatio < 0.0)    ? 0.0     : (pLsRatio > 1.0 ? 1.0 : pLsRatio);
+    config.hsFreq     = (pHsFreq < 1.0)     ? 1.0     : pHsFreq;
+    config.hsSlope    = (pHsSlope < 0.05)   ? 0.05    : (pHsSlope > 1.0 ? 1.0 : pHsSlope);
+    config.hsRatio    = (pHsRatio < 0.0)    ? 0.0     : (pHsRatio > 1.0 ? 1.0 : pHsRatio);
+    config.isoBasePhon = (pIsoBasePhon < 20.0) ? 20.0 : (pIsoBasePhon > 90.0 ? 90.0 : pIsoBasePhon);
+    config.isoQ       = (pIsoQ < 0.1)       ? 0.1    : (pIsoQ > 24.0 ? 24.0 : pIsoQ);
     coeffsDirty.store(true, std::memory_order_release);
 }
 
 void LoudnessCorrectionProcessor::setSubsonicFilter(bool enable, double freq, int order, double qFactor)
 {
-    subsonicEnabled = enable;
-    subsonicFreq    = (freq < 5.0)     ? 5.0     : (freq > 200.0 ? 200.0 : freq);
-    subsonicOrder   = (order < 1)      ? 1       : (order > 8 ? 8 : order);
-    subsonicQ       = (qFactor < 0.1)  ? 0.1     : (qFactor > 2.0 ? 2.0 : qFactor);
+    std::lock_guard<std::mutex> lock(configMutex);
+    config.subsonicEnabled = enable;
+    config.subsonicFreq    = (freq < 5.0)     ? 5.0     : (freq > 200.0 ? 200.0 : freq);
+    config.subsonicOrder   = (order < 1)      ? 1       : (order > 8 ? 8 : order);
+    config.subsonicQ       = (qFactor < 0.1)  ? 0.1     : (qFactor > 2.0 ? 2.0 : qFactor);
     coeffsDirty.store(true, std::memory_order_release);
 }
 
-void LoudnessCorrectionProcessor::getLowShelfParams(double volume, double& freq,
+void LoudnessCorrectionProcessor::getLowShelfParams(const ConfigParams& cfg,
+                                                     double volume, double& freq,
                                                      double& s, double& gain,
                                                      double& preAmp)
 {
-    freq = lsFreq;
-    s = lsSlope;
-    double volDiff = referenceLevel - referenceOffset - volume;
+    freq = cfg.lsFreq;
+    s = cfg.lsSlope;
+    double volDiff = cfg.referenceLevel - cfg.referenceOffset - volume;
     if (volDiff > 0.0)
     {
         // Below reference: boost bass.
-        gain = volDiff * lsRatio / (1.0 - lsRatio) * attenuation;
+        gain = volDiff * cfg.lsRatio / (1.0 - cfg.lsRatio) * cfg.attenuation;
         preAmp = -gain;
     }
     else if (volDiff < 0.0)
     {
         // Above reference: gentle bass cut.
         preAmp = 0.0;
-        gain = volDiff * lsRatio * std::exp(volDiff / 90.0) * attenuation;
+        gain = volDiff * cfg.lsRatio * std::exp(volDiff / 90.0) * cfg.attenuation;
     }
     else
     {
@@ -144,21 +133,26 @@ void LoudnessCorrectionProcessor::getLowShelfParams(double volume, double& freq,
     }
 }
 
-void LoudnessCorrectionProcessor::getHighShelfParams(double volume, double& freq,
+void LoudnessCorrectionProcessor::getHighShelfParams(const ConfigParams& cfg,
+                                                      double volume, double& freq,
                                                       double& s, double& gain)
 {
-    freq = hsFreq;
-    s = hsSlope;
-    double volDiff = referenceLevel - referenceOffset - volume;
+    freq = cfg.hsFreq;
+    s = cfg.hsSlope;
+    double volDiff = cfg.referenceLevel - cfg.referenceOffset - volume;
     if (volDiff > 0.0)
     {
         // Below reference: boost treble (less aggressive than bass).
-        gain = volDiff * hsRatio * std::exp(-volDiff / 100.0) * attenuation;
+        gain = volDiff * cfg.hsRatio * std::exp(-volDiff / 100.0) * cfg.attenuation;
     }
     else if (volDiff < 0.0)
     {
         // Above reference: gentle treble cut.
-        gain = volDiff * 0.175 * std::exp(volDiff / 80.0) * attenuation;
+        /* BUG-09: share one spec with the C path (peq_loudness.c) and the UI
+         * curve (LoudnessCurveCalculator). With the default hsRatio = 0.225
+         * this is 0.175, which is why the constant was invisible until a
+         * user changed hsRatio. */
+        gain = volDiff * cfg.hsRatio * 0.778 * std::exp(volDiff / 80.0) * cfg.attenuation;
     }
     else
     {
@@ -166,19 +160,21 @@ void LoudnessCorrectionProcessor::getHighShelfParams(double volume, double& freq
     }
 }
 
-void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
+void LoudnessCorrectionProcessor::recomputeCoefficients(double volume,
+                                                        const ConfigParams& cfg)
 {
-    if (mode == LOUDNESS_MODE_ISO226)
+    if (cfg.mode == LOUDNESS_MODE_ISO226)
     {
         // ---- ISO 226:2023 mode ----
         // Compute the loudness correction gains for all 29 bands.
-        double maxGain = computeIso226Gains(volume, isoGains);
+        double isoGains[ISO226_NUM_BANDS];
+        double maxGain = computeIso226Gains(cfg, volume, isoGains);
 
         // Check if correction is near-zero (bypass for best quality)
         double maxAbs = 0.0;
         for (int i = 0; i < ISO226_NUM_BANDS; i++)
         {
-            double absGain = std::abs(isoGains[i] * attenuation);
+            double absGain = std::abs(isoGains[i] * cfg.attenuation);
             if (absGain > maxAbs)
                 maxAbs = absGain;
         }
@@ -186,13 +182,13 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
 
         /* Build peaking biquads for each band */
         /* Q for 1/3-octave: Q = sqrt(2^(1/3)) / (2^(1/3) - 1) ≈ 4.318 */
-        const double qThirdOctave = isoQ;
-        double nyquist = sampleRate * 0.5;
+        const double qThirdOctave = cfg.isoQ;
+        double nyquist = cfg.sampleRate * 0.5;
 
         isoActiveBandCount = 0;
         for (int i = 0; i < ISO226_NUM_BANDS; i++)
         {
-            double gain = isoGains[i] * attenuation;
+            double gain = isoGains[i] * cfg.attenuation;
             if (std::abs(gain) < 0.05)
             {
                 // Skip near-zero bands
@@ -206,9 +202,9 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
             if (freq > nyquist * 0.98) freq = nyquist * 0.98;
 
             // Q mode (isBandwidthOrS = false)
-            isoBandsL[i] = BiQuad(BiQuad::PEAKING, gain, freq, sampleRate,
+            isoBandsL[i] = BiQuad(BiQuad::PEAKING, gain, freq, cfg.sampleRate,
                                   qThirdOctave, false);
-            isoBandsR[i] = BiQuad(BiQuad::PEAKING, gain, freq, sampleRate,
+            isoBandsR[i] = BiQuad(BiQuad::PEAKING, gain, freq, cfg.sampleRate,
                                   qThirdOctave, false);
             isoActiveBandCount++;
         }
@@ -222,23 +218,28 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
         {
             for (int i = 0; i < ISO226_NUM_BANDS; i++)
             {
-                // Test at band center and geometric mean with next band
-                double testFreqs[2] = {iso226Freqs[i], 0.0};
+                /* BUG-09: evaluate on a denser probe grid (center plus the
+                 * geometric means with both neighbours). With only "center +
+                 * mean to the right" the peak estimate could sit in a dead
+                 * zone between probes and under-report the cascade peak. */
+                double testFreqs[3] = {iso226Freqs[i], 0.0, 0.0};
+                if (i > 0)
+                    testFreqs[1] = std::sqrt(iso226Freqs[i - 1] * iso226Freqs[i]);
                 if (i < ISO226_NUM_BANDS - 1)
-                    testFreqs[1] = std::sqrt(iso226Freqs[i] * iso226Freqs[i + 1]);
+                    testFreqs[2] = std::sqrt(iso226Freqs[i] * iso226Freqs[i + 1]);
 
-                for (int tf = 0; tf < 2; tf++)
+                for (int tf = 0; tf < 3; tf++)
                 {
                     double f = testFreqs[tf];
                     if (f <= 0.0) continue;
-                    double w = 2.0 * M_PI * f / sampleRate;
+                    double w = 2.0 * M_PI * f / cfg.sampleRate;
                     double total = 0.0;
                     for (int j = 0; j < ISO226_NUM_BANDS; j++)
                     {
-                        double gain = isoGains[j] * attenuation;
+                        double gain = isoGains[j] * cfg.attenuation;
                         if (std::abs(gain) < 0.05) continue;
                         if (iso226Freqs[j] > nyquist * 0.98) continue;
-                        double w0 = 2.0 * M_PI * iso226Freqs[j] / sampleRate;
+                        double w0 = 2.0 * M_PI * iso226Freqs[j] / cfg.sampleRate;
                         double A = std::pow(10.0, gain / 40.0);
                         double alpha = std::sin(w0) / (2.0 * qThirdOctave);
                         double b0 = 1.0 + alpha * A;
@@ -276,15 +277,15 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
     double freqLS, sLS, gainLS, preAmp;
     double freqHS, sHS, gainHS;
 
-    getLowShelfParams(volume, freqLS, sLS, gainLS, preAmp);
+    getLowShelfParams(cfg, volume, freqLS, sLS, gainLS, preAmp);
     attFactor = std::exp(preAmp / 6.0 * std::log(2.0));
 
-    getHighShelfParams(volume + preAmp, freqHS, sHS, gainHS);
+    getHighShelfParams(cfg, volume + preAmp, freqHS, sHS, gainHS);
 
     neutral = std::max(std::abs(gainLS), std::abs(gainHS)) < 0.2;
 
     // Clamp frequencies to valid range for the sample rate
-    double nyquist = sampleRate * 0.5;
+    double nyquist = cfg.sampleRate * 0.5;
     if (freqLS < 1.0) freqLS = 1.0;
     if (freqLS > nyquist * 0.98) freqLS = nyquist * 0.98;
     if (freqHS < 1.0) freqHS = 1.0;
@@ -293,28 +294,30 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
     // Construct fresh biquads with S-slope shelf mode (isBandwidthOrS = true).
     // This produces coefficient math identical to the original's
     // upDateBiquadCoefficients() runtime path.
-    lowShelfL = BiQuad(BiQuad::LOW_SHELF, gainLS, freqLS, sampleRate, sLS, true);
-    lowShelfR = BiQuad(BiQuad::LOW_SHELF, gainLS, freqLS, sampleRate, sLS, true);
-    highShelfL = BiQuad(BiQuad::HIGH_SHELF, gainHS, freqHS, sampleRate, sHS, true);
-    highShelfR = BiQuad(BiQuad::HIGH_SHELF, gainHS, freqHS, sampleRate, sHS, true);
+    lowShelfL = BiQuad(BiQuad::LOW_SHELF, gainLS, freqLS, cfg.sampleRate, sLS, true);
+    lowShelfR = BiQuad(BiQuad::LOW_SHELF, gainLS, freqLS, cfg.sampleRate, sLS, true);
+    highShelfL = BiQuad(BiQuad::HIGH_SHELF, gainHS, freqHS, cfg.sampleRate, sHS, true);
+    highShelfR = BiQuad(BiQuad::HIGH_SHELF, gainHS, freqHS, cfg.sampleRate, sHS, true);
     }
 
     // ---- Subsonic (infrasonic) high-pass filter ----
     // Rebuild regardless of mode; applied before loudness correction.
-    if (subsonicEnabled)
+    // Spec: floor(order/2) 2nd-order biquads + one first-order stage for
+    // odd orders (each order = 6 dB/oct), identical in C and Kotlin.
+    if (cfg.subsonicEnabled)
     {
-        double nyquist = sampleRate * 0.5;
-        double f = subsonicFreq;
+        double nyquist = cfg.sampleRate * 0.5;
+        double f = cfg.subsonicFreq;
         if (f < 1.0) f = 1.0;
         if (f > nyquist * 0.98) f = nyquist * 0.98;
 
-        int numStages = (subsonicOrder + 1) / 2; // ceil(order/2)
+        int numStages = cfg.subsonicOrder / 2; // floor(order/2)
         for (int i = 0; i < numStages && i < MAX_SUBSONIC_STAGES; i++)
         {
-            subsonicL[i] = BiQuad(BiQuad::HIGH_PASS, 0.0, f, sampleRate,
-                                  subsonicQ, false);
-            subsonicR[i] = BiQuad(BiQuad::HIGH_PASS, 0.0, f, sampleRate,
-                                  subsonicQ, false);
+            subsonicL[i] = BiQuad(BiQuad::HIGH_PASS, 0.0, f, cfg.sampleRate,
+                                  cfg.subsonicQ, false);
+            subsonicR[i] = BiQuad(BiQuad::HIGH_PASS, 0.0, f, cfg.sampleRate,
+                                  cfg.subsonicQ, false);
         }
         // Clear unused stages
         for (int i = numStages; i < MAX_SUBSONIC_STAGES; i++)
@@ -322,7 +325,21 @@ void LoudnessCorrectionProcessor::recomputeCoefficients(double volume)
             subsonicL[i] = BiQuad();
             subsonicR[i] = BiQuad();
         }
+
+        bool firstOrder = (cfg.subsonicOrder % 2) != 0;
+        subsonicFirstL.configure(f, cfg.sampleRate, firstOrder);
+        subsonicFirstR.configure(f, cfg.sampleRate, firstOrder);
     }
+    else
+    {
+        subsonicFirstL.configure(20.0, cfg.sampleRate, false);
+        subsonicFirstR.configure(20.0, cfg.sampleRate, false);
+    }
+
+    // Publish mirror state for the per-sample hot path (audio-thread only)
+    activeMode = cfg.mode;
+    activeSubsonicStages = cfg.subsonicEnabled ? cfg.subsonicOrder / 2 : 0;
+    activeSubsonicFirstOrder = cfg.subsonicEnabled && (cfg.subsonicOrder % 2) != 0;
 }
 
 void LoudnessCorrectionProcessor::processInterleaved(float* data, size_t numFrames)
@@ -333,14 +350,23 @@ void LoudnessCorrectionProcessor::processInterleaved(float* data, size_t numFram
     // Lazily recompute coefficients if volume or parameters changed
     if (coeffsDirty.load(std::memory_order_acquire))
     {
+        ConfigParams cfg;
+        {
+            std::lock_guard<std::mutex> lock(configMutex);
+            cfg = config;
+        }
         double vol = volumeDb.load(std::memory_order_acquire);
-        recomputeCoefficients(vol);
-        lastComputedVolume = vol;
+        recomputeCoefficients(vol, cfg);
         coeffsDirty.store(false, std::memory_order_release);
     }
 
-    if (neutral)
-        return; // near-zero correction: bypass for best quality
+    // The subsonic filter runs even when the loudness correction is neutral,
+    // so bypass only when there is nothing to apply at all.
+    int numSubsonicStages = activeSubsonicStages;
+    bool subsonicFirstOrderActive = activeSubsonicFirstOrder;
+
+    if (neutral && numSubsonicStages == 0 && !subsonicFirstOrderActive)
+        return; // near-zero correction and no subsonic filter: bypass
 
     // Ensure temp buffers are large enough
     if (tmpL.size() < numFrames)
@@ -376,18 +402,21 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
     // directly, check dirty flag here too.
     if (coeffsDirty.load(std::memory_order_acquire))
     {
+        ConfigParams cfg;
+        {
+            std::lock_guard<std::mutex> lock(configMutex);
+            cfg = config;
+        }
         double vol = volumeDb.load(std::memory_order_acquire);
-        recomputeCoefficients(vol);
-        lastComputedVolume = vol;
+        recomputeCoefficients(vol, cfg);
         coeffsDirty.store(false, std::memory_order_release);
     }
 
     // Subsonic filter runs independently of loudness neutral/bypass
-    int numSubsonicStages = 0;
-    if (subsonicEnabled)
-        numSubsonicStages = (subsonicOrder + 1) / 2;
+    int numSubsonicStages = activeSubsonicStages;
+    bool subsonicFirstOrderActive = activeSubsonicFirstOrder;
 
-    if (neutral && numSubsonicStages == 0)
+    if (neutral && numSubsonicStages == 0 && !subsonicFirstOrderActive)
         return;
 
     // If only subsonic is active (neutral loudness), apply just the HP cascade
@@ -397,6 +426,11 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
         {
             double sL = left[i];
             double sR = right[i];
+            if (subsonicFirstOrderActive)
+            {
+                sL = subsonicFirstL.process(sL);
+                sR = subsonicFirstR.process(sR);
+            }
             for (int s = 0; s < numSubsonicStages && s < MAX_SUBSONIC_STAGES; s++)
             {
                 sL = subsonicL[s].process(sL);
@@ -405,6 +439,8 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
             left[i]  = (float)sL;
             right[i] = (float)sR;
         }
+        subsonicFirstL.removeDenormals();
+        subsonicFirstR.removeDenormals();
         for (int s = 0; s < numSubsonicStages && s < MAX_SUBSONIC_STAGES; s++)
         {
             subsonicL[s].removeDenormals();
@@ -413,7 +449,7 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
         return;
     }
 
-    if (mode == LOUDNESS_MODE_ISO226)
+    if (activeMode == LOUDNESS_MODE_ISO226)
     {
         // ISO 226 mode: 29-band peaking EQ cascade with pre-amp
         if (isoActiveBandCount == 0)
@@ -426,6 +462,11 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
             double sampleR = right[i];
 
             // Subsonic HP filter before loudness correction
+            if (subsonicFirstOrderActive)
+            {
+                sampleL = subsonicFirstL.process(sampleL);
+                sampleR = subsonicFirstR.process(sampleR);
+            }
             for (int s = 0; s < numSubsonicStages && s < MAX_SUBSONIC_STAGES; s++)
             {
                 sampleL = subsonicL[s].process(sampleL);
@@ -446,6 +487,8 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
         }
 
         // Remove denormals periodically
+        subsonicFirstL.removeDenormals();
+        subsonicFirstR.removeDenormals();
         for (int b = 0; b < ISO226_NUM_BANDS; b++)
         {
             isoBandsL[b].removeDenormals();
@@ -466,6 +509,11 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
         double sampleR = right[i];
 
         // Subsonic HP filter before loudness correction
+        if (subsonicFirstOrderActive)
+        {
+            sampleL = subsonicFirstL.process(sampleL);
+            sampleR = subsonicFirstR.process(sampleR);
+        }
         for (int s = 0; s < numSubsonicStages && s < MAX_SUBSONIC_STAGES; s++)
         {
             sampleL = subsonicL[s].process(sampleL);
@@ -487,6 +535,8 @@ void LoudnessCorrectionProcessor::processDeinterleaved(float* left, float* right
     }
 
     // Remove denormals periodically to prevent CPU spikes
+    subsonicFirstL.removeDenormals();
+    subsonicFirstR.removeDenormals();
     lowShelfL.removeDenormals();
     lowShelfR.removeDenormals();
     highShelfL.removeDenormals();
@@ -544,8 +594,8 @@ static double iso226_spl_from_phon(double af, double lu, double tf, double lN)
     return (10.0 / af) * std::log10(inner) - lu;
 }
 
-double LoudnessCorrectionProcessor::computeIso226Gains(double volume,
-                                                       double gains[ISO226_NUM_BANDS])
+double LoudnessCorrectionProcessor::computeIso226Gains(
+    const ConfigParams& cfg, double volume, double gains[ISO226_NUM_BANDS])
 {
     // The ISO 226 formula requires absolute phon values (valid range 20-90).
     // The UI provides relative dB values. We use a fixed base phon level
@@ -558,8 +608,8 @@ double LoudnessCorrectionProcessor::computeIso226Gains(double volume,
     // When volDiff = 0 (at reference level), refPhon = curPhon → no correction.
     // When volDiff > 0 (below reference), curPhon < refPhon → boost bass/treble.
 
-    const double basePhon = isoBasePhon;
-    double volDiff = referenceLevel - referenceOffset - volume;
+    const double basePhon = cfg.isoBasePhon;
+    double volDiff = cfg.referenceLevel - cfg.referenceOffset - volume;
     double refPhon = basePhon;
     double curPhon = basePhon - volDiff;
 
