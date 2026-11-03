@@ -283,8 +283,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     private val blockedAppRepository by lazy { AppBlocklistRepository(blockedAppDatabase.appBlocklistDao()) }
     private val blockedApps by lazy { blockedAppRepository.blocklist.asLiveData() }
     private val blockedAppObserver = Observer<List<BlockedApp>?> {
-        Timber.d("blockedAppObserver: Database changed; ignored=${!isRunning}")
-        if(isRunning)
+        Timber.d("blockedAppObserver: Database changed; ignored=${!isRunning || loopbackCapture}")
+        if (isRunning && !loopbackCapture)
             recreateRecorderRequested = true
     }
 
@@ -357,8 +357,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         // No need to recreate in this stage
         recreateRecorderRequested = false
 
-        // Launch foreground service
-        val fgsType = if (processingMode == ProcessingMode.DIRECT)
+        // Launch foreground service. Shizuku captures in its own privileged
+        // process, so this service has mediaPlayback rather than projection FGS type.
+        val fgsType = if (processingMode == ProcessingMode.DIRECT || loopbackCapture)
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
         else
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
@@ -399,12 +400,15 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         notificationManager.cancel(Notifications.ID_SERVICE_SESSION_LOSS)
         notificationManager.cancel(Notifications.ID_SERVICE_APPCOMPAT)
 
-        // Setup media projection (not needed for Direct Mode)
+        // Direct Mode and privileged loopback must work without projection extras.
         val isDirectMode = processingMode == ProcessingMode.DIRECT
-        mediaProjectionStartIntent = if (isDirectMode) null
-            else intent.extras?.getParcelableAs(EXTRA_MEDIA_PROJECTION_DATA)
+        val needsProjection = !isDirectMode && !loopbackCapture
+        mediaProjectionStartIntent = if (needsProjection)
+            intent.extras?.getParcelableAs(EXTRA_MEDIA_PROJECTION_DATA)
+        else
+            null
 
-        mediaProjection = if (isDirectMode) {
+        mediaProjection = if (!needsProjection) {
             null
         } else {
             try {
@@ -422,7 +426,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         mediaProjection?.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
 
-        if (mediaProjection != null || isDirectMode) {
+        if (mediaProjection != null || !needsProjection) {
             startRecording()
             sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STARTED))
         } else {
@@ -793,7 +797,11 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         // policy (48 кГц стерео PCM16); смена ставки контента отключена.
         if (loopbackCapture) {
             Timber.i("Privileged loopback capture mode")
-            val client = LoopbackCaptureClient(applicationContext)
+            // One client per processor service. Repeated start/stop cycles create
+            // new generations inside it, not independent Shizuku bindings.
+            val client = loopbackClient ?: LoopbackCaptureClient(applicationContext).also {
+                loopbackClient = it
+            }
             if (!client.isShizukuReady()) {
                 Timber.e("Privileged loopback: Shizuku is not running or not granted")
                 toast(getString(R.string.privileged_loopback_start_failed), false)
@@ -850,12 +858,23 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         // Low-latency tuning (PEQHUB approach: persistence + debug override)
         val tuning = LatencyTuning.load(this, processingMode.isLowLatency())
-        val readFrames = if (tuning.readFrames > 0) tuning.readFrames else bufferSize
+        // Privileged capture already arrives in exact 20 ms blocks. Preserve that cadence
+        // instead of aggregating it into the user buffer size (5632 frames = 117 ms on
+        // this device): the AudioTrack may hold only 3844 frames, so every large block
+        // starved the mixer and produced audible underruns in every DSP effect.
+        val readFrames = if (loopbackCapture) LoopbackCaptureUserService.PCM_BLOCK_FRAMES
+            else if (tuning.readFrames > 0) tuning.readFrames else bufferSize
         val readSamples = readFrames * 2 // 2 канала
 
-        // QueueController (только для Low-latency: maxQueueFrames > 0)
-        val queueControl = QueueController(tuning.maxQueueFrames)
-        // Voice Isolation grows the playback buffer when the enhancer stage starves the track
+        // Privileged capture and the output device have independent clocks. Bound
+        // playback to seven 20 ms blocks so clock drift cannot accumulate into PCM
+        // overflow; QueueController fades around a compensating drop when required.
+        val maxQueueFrames = if (loopbackCapture && tuning.maxQueueFrames <= 0)
+            readFrames * 7 else tuning.maxQueueFrames
+        val queueControl = QueueController(maxQueueFrames)
+        // Voice Isolation may grow the playback buffer in normal capture modes. Privileged
+        // capture uses the fixed queue above: on this OEM, setBufferSizeInFrames() itself
+        // causes a recurring underrun even when the requested size does not change.
         val voiceIsolationBuffer = PlaybackBufferAdapter(sampleRate)
 
         // LatencyTracer (PEQHUB approach: AudioTimestamp-based, marker detection)
@@ -869,14 +888,14 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 .put("track_buffer_frames", tuning.trackBufferFrames)
                 .put("low_latency_track", tuning.lowLatencyTrack)
                 .put("urgent_priority", tuning.urgentPriority)
-                .put("max_queue_frames", tuning.maxQueueFrames)
+                .put("max_queue_frames", maxQueueFrames)
                 .put("processing_mode", processingMode.name))
         }
 
         Timber.i("Sample rate: $sampleRate; Encoding: ${encoding.name}; " +
                 "Buffer size: $bufferSize; Buffer size (bytes): $bufferSizeBytes ; " +
                 "HAL buffer size (bytes): ${determineBufferSize()}; " +
-                "Mode: $processingMode; Read frames: $readFrames; Max queue: ${tuning.maxQueueFrames}")
+                "Mode: $processingMode; Read frames: $readFrames; Max queue: $maxQueueFrames")
 
         // Create recorder and track
         var recorder: AudioRecord? = null
@@ -893,6 +912,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 outputFormat,
                 bufferSize * bytesPerSample(outputFormat.encoding),
                 tuning,
+                privilegedCapture = loopbackCapture,
             )
             activeAudioTrack = track
             activeAudioRecord = recorder
@@ -936,6 +956,18 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         val runGeneration = captureGeneration.incrementAndGet()
         val captureThread = Thread {
             try {
+                // Privileged capture does all DSP and two enhancer inferences on this thread.
+                // Its 20 ms budget requires real-time scheduling even in Standard mode; setting
+                // the priority in startRecording() would only affect the main thread instead.
+                if (loopbackCapture) {
+                    try {
+                        android.os.Process.setThreadPriority(
+                            android.os.Process.THREAD_PRIORITY_URGENT_AUDIO,
+                        )
+                    } catch (ex: Exception) {
+                        Timber.w("Failed to set loopback URGENT_AUDIO priority: ${ex.message}")
+                    }
+                }
                 // Rebuilding the processing pipeline must not overwrite the current
                 // session-aware notification with a false "idle" state.
                 if (loopbackCapture) {
@@ -1153,7 +1185,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                                 )
                                 queueControl.onWritten(written)
                                 tracer.onWritten(track, shortBuffer, written)
-                                if (voiceIsolationBuffer.onBlock(track, engine.isVoiceIsolationActive(), engine.voiceIsolationHopMs()))
+                                if (voiceIsolationBuffer.onBlock(track, engine.isVoiceIsolationActive(), engine.voiceIsolationHopMs(), allowResize = !loopbackCapture))
                                     Timber.d("${engine.voiceIsolationStats()} buffer=${voiceIsolationBuffer.status}")
                             }
                         }
@@ -1224,7 +1256,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                                 )
                                 queueControl.onWritten(written)
                                 tracer.onWritten(track, floatBuffer, written)
-                                if (voiceIsolationBuffer.onBlock(track, engine.isVoiceIsolationActive(), engine.voiceIsolationHopMs()))
+                                if (voiceIsolationBuffer.onBlock(track, engine.isVoiceIsolationActive(), engine.voiceIsolationHopMs(), allowResize = !loopbackCapture))
                                     Timber.d("${engine.voiceIsolationStats()} buffer=${voiceIsolationBuffer.status}")
                             }
                         }
@@ -1616,8 +1648,12 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         else -> Int.MAX_VALUE
     }
 
-    private fun buildAudioTrack(format: AudioFormat, bufferSizeBytes: Int,
-                                tuning: LatencyTuning = LatencyTuning()): AudioTrack {
+    private fun buildAudioTrack(
+        format: AudioFormat,
+        bufferSizeBytes: Int,
+        tuning: LatencyTuning = LatencyTuning(),
+        privilegedCapture: Boolean = false,
+    ): AudioTrack {
         val encoding = format.encoding
         val frameSizeInBytes = format.channelCount * bytesPerSample(encoding)
 
@@ -1631,13 +1667,24 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             format.channelMask,
             encoding,
         ).coerceAtLeast(0)
-        val bufferSize = maxOf(requestedBufferSize, minimumBufferSize)
-            .let { size ->
-                val remainder = size % frameSizeInBytes
-                if (remainder == 0) size else size + frameSizeInBytes - remainder
-            }
+        // Privileged capture crosses a Binder boundary and needs headroom for its
+        // occasional scheduling stalls. Keep playback at the device minimum, but
+        // allocate 2x so the adaptive controller can absorb a stall without latency
+        // accumulating in the input PCM queue.
+        val capacityBufferSize = if (privilegedCapture)
+            maxOf(requestedBufferSize, minimumBufferSize * 2)
+        else maxOf(requestedBufferSize, minimumBufferSize)
+        val bufferSize = capacityBufferSize.let { size ->
+            val remainder = size % frameSizeInBytes
+            if (remainder == 0) size else size + frameSizeInBytes - remainder
+        }
+        val targetBufferFrames = when {
+            tuning.trackBufferFrames > 0 -> tuning.trackBufferFrames
+            privilegedCapture -> minimumBufferSize / frameSizeInBytes
+            else -> 0
+        }
 
-        Timber.d("Using buffer size $bufferSize")
+        Timber.d("Using buffer size $bufferSize; target frames: $targetBufferFrames")
 
         val trackBuilder = AudioTrack.Builder()
             .setAudioFormat(format)
@@ -1655,11 +1702,10 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         val track = trackBuilder.build()
 
-        // Low-latency: ограниченный буфер вывода для меньшей задержки
-        if (tuning.trackBufferFrames > 0) {
+        if (targetBufferFrames > 0) {
             try {
                 sdkAbove(Build.VERSION_CODES.M) {
-                    track.setBufferSizeInFrames(tuning.trackBufferFrames)
+                    track.setBufferSizeInFrames(targetBufferFrames)
                 }
             } catch (ex: Exception) {
                 Timber.w("Failed to set track buffer size: ${ex.message}")

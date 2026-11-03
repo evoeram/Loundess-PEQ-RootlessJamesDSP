@@ -28,9 +28,15 @@ class PlaybackBufferAdapter(private val sampleRate: Int) {
     /**
      * Call once per processed block; the track is only visited every [STATS_INTERVAL_MS].
      * [hopMs] is the duration of one enhancer hop, which sets the granularity of the growth steps.
+     * [allowResize] can disable adaptation while retaining the statistics callback cadence.
      * Returns true on such a tick, so the caller can report module statistics with the same cadence.
      */
-    fun onBlock(track: AudioTrack, active: Boolean, hopMs: Float): Boolean {
+    fun onBlock(
+        track: AudioTrack,
+        active: Boolean,
+        hopMs: Float,
+        allowResize: Boolean = true,
+    ): Boolean {
         if (!active || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             controller = null
             lastStatsAt = 0L
@@ -39,6 +45,7 @@ class PlaybackBufferAdapter(private val sampleRate: Int) {
         val now = SystemClock.elapsedRealtime()
         if (lastStatsAt != 0L && now - lastStatsAt < STATS_INTERVAL_MS) return false
         lastStatsAt = now
+        if (!allowResize) return true
 
         val hopFrames = (sampleRate * hopMs.coerceAtLeast(DEFAULT_HOP_MS) / 1000f)
             .toInt().coerceAtLeast(1)

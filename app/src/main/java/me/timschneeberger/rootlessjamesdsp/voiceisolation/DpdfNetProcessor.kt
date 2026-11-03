@@ -46,7 +46,7 @@ internal class DpdfNetProcessor(model: ByteArray) : EnhancerBackend {
 
     init {
         val options = OrtSession.SessionOptions().apply {
-            setIntraOpNumThreads(1)
+            setIntraOpNumThreads(2)
             setInterOpNumThreads(1)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         }

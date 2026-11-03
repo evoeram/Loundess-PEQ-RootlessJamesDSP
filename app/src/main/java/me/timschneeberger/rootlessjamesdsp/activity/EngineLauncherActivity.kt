@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.getSystemService
+import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.service.RootAudioProcessorService
 import me.timschneeberger.rootlessjamesdsp.service.RootlessAudioProcessorService
 import me.timschneeberger.rootlessjamesdsp.utils.SdkCheck
@@ -33,6 +34,14 @@ class EngineLauncherActivity : BaseActivity() {
         }
 
         sdkAbove(Build.VERSION_CODES.Q) {
+            val directMode = prefsApp.get<String>(R.string.key_processing_mode).toIntOrNull() == 2
+            val privilegedLoopback = prefsApp.get<Boolean>(R.string.key_privileged_loopback)
+            if (directMode || privilegedLoopback) {
+                RootlessAudioProcessorService.start(this, null)
+                finish()
+                return
+            }
+
             // If projection token available, start immediately
             // Note: Android >=14 doesn't allow token reuse
             if(app.mediaProjectionStartIntent != null && !SdkCheck.isUpsideDownCake) {

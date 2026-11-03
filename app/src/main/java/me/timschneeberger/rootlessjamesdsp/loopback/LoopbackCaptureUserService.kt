@@ -3,8 +3,8 @@ package me.timschneeberger.rootlessjamesdsp.loopback
 import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioRecord
+import android.os.IBinder
 import android.os.Process
-import android.os.RemoteException
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -27,10 +27,12 @@ class LoopbackCaptureUserService(private val context: Context) : ILoopbackCaptur
     private var record: AudioRecord? = null
     private var appUid = 0
     private val running = AtomicBoolean(false)
+    private val stateLock = Object()
     @Volatile
     private var callback: ILoopbackCaptureCallback? = null
     @Volatile
     private var captureThread: Thread? = null
+    private var deathRecipient: IBinder.DeathRecipient? = null
 
     override fun start(callback: ILoopbackCaptureCallback) {
         // UserService-процесс не исполняет Application.onCreate: дерева Timber
@@ -40,9 +42,9 @@ class LoopbackCaptureUserService(private val context: Context) : ILoopbackCaptur
         this.callback = callback
         // Клиент умер (process killed) → захват останавливаем: иначе осиротевший
         // UserService держит policy и loopback-маршрут навсегда
-        runCatching {
-            callback.asBinder().linkToDeath({ -> runCatching { stop() } }, 0)
-        }
+        val recipient = IBinder.DeathRecipient { runCatching { stop() } }
+        deathRecipient = recipient
+        runCatching { callback.asBinder().linkToDeath(recipient, 0) }
         // На binder-потоке getCallingUid() = uid приложения-клиента: именно его
         // надо исключить из правила микширования (иначе наш же выходной трек
         // попадает в loopback → петля и тишина на устройстве)
@@ -53,7 +55,7 @@ class LoopbackCaptureUserService(private val context: Context) : ILoopbackCaptur
         // (без MODIFY_AUDIO_ROUTING), а вне binder-контекста — собственный uid
         // UserService (root: checkComponentPermission даёт root всё; shell:
         // platform.xml выдаёт MODIFY_AUDIO_ROUTING) — ровно как у sk2andy
-        captureThread = Thread {
+        val thread = Thread {
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
             try {
                 context.installShellAttribution()
@@ -62,35 +64,65 @@ class LoopbackCaptureUserService(private val context: Context) : ILoopbackCaptur
                 policy = createdPolicy
                 val createdRecord = createdPolicy.openRecord()
                 record = createdRecord
+                if (!running.get()) throw InterruptedException("Capture stopped during startup")
                 createdRecord.startRecording()
+                if (!running.get()) throw InterruptedException("Capture stopped during startup")
 
                 callback.onStarted(SAMPLE_RATE, CHANNELS)
                 Timber.i("[Loopback] capture started (${SAMPLE_RATE} Hz, $CHANNELS ch)")
                 pump(createdRecord, callback)
             } catch (error: Throwable) {
+                if (running.get()) {
+                    Timber.e(error, "[Loopback] capture failed")
+                    runCatching {
+                        callback.onError(
+                            ERROR_START_FAILED,
+                            error.message ?: error.javaClass.simpleName,
+                        )
+                    }
+                }
+            } finally {
                 running.set(false)
-                Timber.e(error, "[Loopback] start failed")
-                runCatching { callback.onError(ERROR_START_FAILED, error.message ?: error.javaClass.simpleName) }
+                // Only the capture thread releases AudioRecord/policy. stop() waits
+                // for this cleanup instead of racing a blocking read or PCM pump.
                 closeCapture()
+                synchronized(stateLock) {
+                    if (captureThread === Thread.currentThread()) captureThread = null
+                }
             }
-        }.apply {
-            name = "LoopbackCapture"
-            start()
-        }
+        }.apply { name = "LoopbackCapture" }
+        synchronized(stateLock) { captureThread = thread }
+        thread.start()
     }
 
     override fun stop() {
         Timber.i("[Loopback] stop requested")
         running.set(false)
-        stopAndClose()
-        runCatching { callback?.onStopped() }
+        val stoppedCallback = callback
+        val thread = synchronized(stateLock) { captureThread }
+
+        // AudioRecord.stop() wakes a blocking read. The capture thread remains
+        // the sole owner that releases the recorder and unregisters the policy.
+        runCatching { record?.stop() }
+        thread?.interrupt()
+        if (thread != null && thread !== Thread.currentThread()) {
+            var interrupted = false
+            while (thread.isAlive) {
+                try {
+                    thread.join()
+                } catch (_: InterruptedException) {
+                    interrupted = true
+                }
+            }
+            if (interrupted) Thread.currentThread().interrupt()
+        }
+        runCatching { stoppedCallback?.onStopped() }
     }
 
     override fun isRunning(): Boolean = running.get()
 
     private fun pump(record: AudioRecord, callback: ILoopbackCaptureCallback) {
-        val blockFrames = SAMPLE_RATE * CHANNELS / 50 // ~20 мс стерео
-        val pcm = ShortArray(blockFrames)
+        val pcm = ShortArray(PCM_BLOCK_FRAMES * CHANNELS)
         try {
             while (running.get() && !Thread.currentThread().isInterrupted) {
                 var offset = 0
@@ -112,29 +144,26 @@ class LoopbackCaptureUserService(private val context: Context) : ILoopbackCaptur
                 Timber.e(error, "[Loopback] capture pump died")
                 runCatching { callback.onError(ERROR_PUMP_DIED, error.message ?: error.javaClass.simpleName) }
             }
-        } finally {
-            running.set(false)
         }
     }
 
-    private fun stopAndClose() {
-        captureThread?.interrupt()
-        captureThread = null
+    private fun closeCapture() {
         runCatching { record?.stop() }
         runCatching { record?.release() }
         record = null
         runCatching { policy?.close() }
         policy = null
-    }
-
-    private fun closeCapture() {
-        stopAndClose()
+        deathRecipient?.let { recipient ->
+            runCatching { callback?.asBinder()?.unlinkToDeath(recipient, 0) }
+        }
+        deathRecipient = null
         callback = null
     }
 
     companion object {
         const val SAMPLE_RATE = 48_000
         const val CHANNELS = 2
+        const val PCM_BLOCK_FRAMES = SAMPLE_RATE / 50 // 20 ms
 
         const val ERROR_START_FAILED = 1
         const val ERROR_PUMP_DIED = 2

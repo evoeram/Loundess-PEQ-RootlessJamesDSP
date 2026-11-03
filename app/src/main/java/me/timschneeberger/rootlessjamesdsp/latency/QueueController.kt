@@ -88,9 +88,8 @@ class QueueController(private val maxQueueFrames: Int) {
     }
 
     private fun overTarget(track: AudioTrack, blockFrames: Int): Boolean {
-        // Frames handed to the track that its mixer has not consumed yet; the head wraps as a uint32
-        val head = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
-        val queued = framesWritten - head
+        val presented = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+        val queued = (framesWritten - presented).coerceAtLeast(0)
         return queued + blockFrames > maxQueueFrames
     }
 

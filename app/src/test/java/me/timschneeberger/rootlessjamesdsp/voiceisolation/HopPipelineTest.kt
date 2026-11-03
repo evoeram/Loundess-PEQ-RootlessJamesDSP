@@ -100,6 +100,14 @@ class HopPipelineTest {
     }
 
     @Test
+    fun captureBlocksLargerThanTheInitialRingDoNotStaySilent() {
+        val stream = stream(48_000, 5_632, blocks = 100)
+        assertTrue("large capture blocks never started", stream.firstFullBlock >= 0)
+        assertEquals(0, stream.silentBlocksAfterStart)
+        assertTrue("large capture blocks distorted the signal: ${stream.worstError}", stream.worstError < 1e-3f)
+    }
+
+    @Test
     fun partialHopsAreCarriedAcrossBlocksInsteadOfBeingDropped() {
         val hops = mutableListOf<Int>()
         val pipeline = identity(48_000, hops)

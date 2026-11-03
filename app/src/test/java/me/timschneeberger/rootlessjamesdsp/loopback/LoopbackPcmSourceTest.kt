@@ -73,8 +73,73 @@ class LoopbackPcmSourceTest {
         assertEquals(4, source.read(first, 0, first.size))
         assertArrayEquals(shortArrayOf(1, 2, 3, 4), first)
 
+        source.offer(shortArrayOf(7, 8))
         val second = ShortArray(4)
-        assertEquals(2, source.read(second, 0, second.size))
-        assertArrayEquals(shortArrayOf(5, 6, 0, 0), second)
+        assertEquals(4, source.read(second, 0, second.size))
+        assertArrayEquals(shortArrayOf(5, 6, 7, 8), second)
+    }
+
+    @Test
+    fun `read waits for a complete block instead of returning scheduling dependent sizes`() {
+        val source = LoopbackPcmSource()
+        val result = AtomicInteger(Int.MIN_VALUE)
+        val done = CountDownLatch(1)
+        val output = ShortArray(4)
+        val reader = Thread {
+            result.set(source.read(output, 0, output.size))
+            done.countDown()
+        }
+        reader.start()
+
+        source.offer(shortArrayOf(1, 2))
+        Thread.sleep(100)
+        assertTrue("read returned a partial block", reader.isAlive)
+
+        source.offer(shortArrayOf(3, 4))
+        assertTrue("read did not resume with a complete block", done.await(2, TimeUnit.SECONDS))
+        assertEquals(4, result.get())
+        assertArrayEquals(shortArrayOf(1, 2, 3, 4), output)
+    }
+
+    @Test
+    fun `binder bytes are decoded as little endian pcm16`() {
+        val source = LoopbackPcmSource()
+        source.offer(byteArrayOf(1, 0, -1, -1, 0, -128, -1, 127))
+
+        val output = ShortArray(4)
+        assertEquals(4, source.read(output, 0, output.size))
+        assertArrayEquals(shortArrayOf(1, -1, Short.MIN_VALUE, Short.MAX_VALUE), output)
+    }
+
+    @Test
+    fun `large capture buffers are delivered as fixed twenty millisecond processing blocks`() {
+        val source = LoopbackPcmSource()
+        val input = ShortArray(LoopbackCaptureUserService.PCM_BLOCK_FRAMES * 2 * 6) { it.toShort() }
+        source.offer(input)
+
+        val output = ShortArray(input.size)
+        val processingBlock = ShortArray(LoopbackCaptureUserService.PCM_BLOCK_FRAMES * 2)
+        var offset = 0
+        while (offset < output.size) {
+            val read = source.read(processingBlock, 0, processingBlock.size)
+            assertEquals(processingBlock.size, read)
+            System.arraycopy(processingBlock, 0, output, offset, read)
+            offset += read
+        }
+
+        assertArrayEquals(input, output)
+        assertEquals(0, offset % processingBlock.size)
+    }
+
+    @Test
+    fun `queue overflow is counted and newest pcm is retained`() {
+        val source = LoopbackPcmSource()
+        repeat(26) { value -> source.offer(shortArrayOf(value.toShort())) }
+
+        val output = ShortArray(25)
+        assertEquals(25, source.read(output, 0, output.size))
+        assertEquals(1, source.droppedBlockCount)
+        assertEquals(1, output.first().toInt())
+        assertEquals(25, output.last().toInt())
     }
 }

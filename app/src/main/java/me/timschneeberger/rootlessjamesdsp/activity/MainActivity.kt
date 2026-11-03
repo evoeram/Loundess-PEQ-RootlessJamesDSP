@@ -664,10 +664,11 @@ class MainActivity : BaseActivity() {
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun requestCapturePermission() {
-        // Direct Mode: no capture permission needed, start service directly
+        // Direct Mode and Shizuku loopback do not use MediaProjection.
         val currentMode = prefsApp.get<String>(R.string.key_processing_mode).toIntOrNull()
         val isDirectMode = currentMode == 2 // ProcessingMode.DIRECT.value
-        if(isDirectMode) {
+        val privilegedLoopback = prefsApp.get<Boolean>(R.string.key_privileged_loopback)
+        if(isDirectMode || privilegedLoopback) {
             binding.powerToggle.isToggled = true
             RootlessAudioProcessorService.start(this, null)
             return

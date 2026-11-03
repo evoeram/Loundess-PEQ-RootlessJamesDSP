@@ -24,7 +24,7 @@ internal class HopPipeline(
     private val hopOutputFrames = ((hopSize.toLong() * sampleRate +
         modelSampleRate - 1) / modelSampleRate).toInt().coerceAtLeast(1)
 
-    private val outputRing = FloatArray(
+    private var outputRing = FloatArray(
         (hopOutputFrames * OUTPUT_RING_HOPS).coerceAtLeast(OUTPUT_RING_FLOOR),
     )
     private var ringWritten = 0L
@@ -73,6 +73,7 @@ internal class HopPipeline(
      */
     fun process(buffer: FloatArray, channel: Int, frames: Int, offset: Int, settings: VoiceIsolationSettings) {
         val first = offset + channel
+        ensureOutputCapacity(frames)
         decimator.push(buffer, first, 2, frames)
 
         while (true) {
@@ -100,6 +101,23 @@ internal class HopPipeline(
             buffer[first + 2 * index] = outputRing[(ringRead % outputRing.size).toInt()]
             ringRead++
         }
+    }
+
+    /**
+     * A capture block can exceed the hop-based ring (privileged capture uses 5632 frames). Without
+     * this, `needed == frames` is unreachable and every block is replaced by silence forever. Grow
+     * only when a larger block arrives and preserve unread samples in their original order.
+     */
+    private fun ensureOutputCapacity(frames: Int) {
+        if (frames <= outputRing.size) return
+        val unread = (ringWritten - ringRead).toInt()
+        val resized = FloatArray(maxOf(frames, outputRing.size * 2))
+        for (index in 0 until unread) {
+            resized[index] = outputRing[((ringRead + index) % outputRing.size).toInt()]
+        }
+        outputRing = resized
+        ringRead = 0
+        ringWritten = unread.toLong()
     }
 
     private fun drainInterpolator() {
