@@ -84,6 +84,23 @@ android {
             versionNameSuffix = debugType.versionNameSuffix
             matchingFallbacks.add("release")
         }
+        // Release-optimized build that installs next to the Play Store version instead
+        // of replacing it (same committed signature). Used for A/B performance testing,
+        // e.g. proving debug-vs-release DSP throughput on heavy enhancer models.
+        create("bench") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".bench"
+            versionNameSuffix = "-bench"
+            matchingFallbacks.add("release")
+        }
+    }
+
+    // The bench variant only exists for on-device performance A/B; Firebase is not
+    // wired up for the extra application id, so skip google-services processing for it.
+    tasks.matching {
+        it.name.startsWith("process") && it.name.endsWith("GoogleServices") && it.name.contains("Bench")
+    }.configureEach {
+        enabled = false
     }
 
     flavorDimensions += "version"
@@ -274,9 +291,11 @@ dependencies {
     debugImplementation("com.plutolib:pluto:2.0.9")
     "previewImplementation"("com.plutolib:pluto-no-op:2.0.9")
     releaseImplementation("com.plutolib:pluto-no-op:2.0.9")
+    "benchImplementation"("com.plutolib:pluto-no-op:2.0.9")
     debugImplementation("com.plutolib.plugins:bundle-core:2.0.9")
     "previewImplementation"("com.plutolib.plugins:bundle-core-no-op:2.0.9")
     releaseImplementation("com.plutolib.plugins:bundle-core-no-op:2.0.9")
+    "benchImplementation"("com.plutolib.plugins:bundle-core-no-op:2.0.9")
 
     // Unit tests
     testImplementation("junit:junit:4.13.2")
