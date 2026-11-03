@@ -2,9 +2,6 @@ package me.timschneeberger.rootlessjamesdsp.voiceisolation
 
 import android.content.Context
 import timber.log.Timber
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 import kotlin.math.log10
 
 /**
@@ -187,11 +184,65 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
         // The two channels are independent chains sharing nothing but the interleaved buffer, so one
         // of them runs on a worker while the caller does the other. Sequential stereo costs two
         // inferences per hop and pushed the 48 kHz models to ~1.6x their real-time budget.
-        private val worker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
-            Thread({
-                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
-                runnable.run()
-            }, "voice-isolation-channel").apply { isDaemon = true }
+        //
+        // The handshake is a lock + epoch, not ExecutorService.submit() (OPT-03): a per-block
+        // FutureTask is a steady allocation source on the audio thread, and every GC then risks a
+        // "Waiting for a blocking GC" pause mid-block — audible as a micro-stutter whenever any
+        // other thread (UI in particular) allocates. This path performs no per-block allocations;
+        // the worker wakes only when a block arrives.
+        private val workerLock = Object()
+        private var blockSeq = 0L
+        private var doneSeq = 0L
+        private var workerFailure: Exception? = null
+
+        @Volatile
+        private var workerClosed = false
+
+        private var taskBuffer: FloatArray? = null
+        private var taskFrames = 0
+        private var taskOffset = 0
+        private var taskSettings: VoiceIsolationSettings? = null
+
+        private val worker: Thread = Thread {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
+            var lastSeq = 0L
+            while (true) {
+                var buffer: FloatArray? = null
+                var frames = 0
+                var offset = 0
+                var settings: VoiceIsolationSettings? = null
+                synchronized(workerLock) {
+                    while (!workerClosed && blockSeq == lastSeq) {
+                        try {
+                            workerLock.wait()
+                        } catch (e: InterruptedException) {
+                            workerClosed = true
+                        }
+                    }
+                    if (workerClosed) return@synchronized
+                    lastSeq = blockSeq
+                    buffer = taskBuffer
+                    frames = taskFrames
+                    offset = taskOffset
+                    settings = taskSettings
+                }
+                if (buffer == null) break
+                try {
+                    channels[0].process(buffer, 0, frames, offset, settings!!)
+                } catch (e: Exception) {
+                    // Проваливаем ошибку в caller через workerFailure; doneSeq всё равно
+                    // выставляем, чтобы ожидающий блок проснулся и не завис
+                    synchronized(workerLock) { workerFailure = e }
+                }
+                synchronized(workerLock) {
+                    doneSeq = lastSeq
+                    workerLock.notifyAll()
+                }
+            }
+        }.apply {
+            isDaemon = true
+            name = "voice-isolation-channel"
+            start()
         }
 
         fun scratch(size: Int): FloatArray {
@@ -200,19 +251,47 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
         }
 
         fun process(buffer: FloatArray, frames: Int, offset: Int, settings: VoiceIsolationSettings) {
-            val pending = worker.submit<Unit> { channels[0].process(buffer, 0, frames, offset, settings) }
+            val lock = workerLock
+            val mySeq: Long
+            synchronized(lock) {
+                taskBuffer = buffer
+                taskFrames = frames
+                taskOffset = offset
+                taskSettings = settings
+                mySeq = ++blockSeq
+                lock.notifyAll()
+            }
+            // Канал 1 обрабатываем на caller-потоке параллельно с worker, который берёт канал 0;
+            // последовательное исполнение удвоило бы стоимость блока и превысило бы бюджет.
+            var failure: Exception? = null
             try {
                 channels[1].process(buffer, 1, frames, offset, settings)
-                pending.get()
-            } catch (e: ExecutionException) {
-                throw e.cause as? Exception ?: e
-            } catch (e: InterruptedException) {
-                // Остановка из close() во время ожидания worker (BUG-02):
-                // отменяем задачу и пропускаем блок — не ловим Exception ниже,
-                // иначе close выглядел бы как сбой обработки
-                pending.cancel(true)
-                Thread.currentThread().interrupt()
-                return
+            } catch (e: Exception) {
+                failure = e
+            }
+            var interrupted = false
+            synchronized(lock) {
+                // Даже при собственном сбое канала 1 дожидаемся worker: иначе следующий блок
+                // перезапишет поля задачи, пока worker ещё внутри нативного инференса
+                while (workerFailure == null && doneSeq < mySeq && !workerClosed) {
+                    try {
+                        lock.wait()
+                    } catch (e: InterruptedException) {
+                        // Остановка capture-потока извне (BUG-02): прерываем ожидание
+                        // и пропускаем блок — не сбой обработки
+                        Thread.currentThread().interrupt()
+                        interrupted = true
+                        break
+                    }
+                }
+                if (failure == null) failure = workerFailure
+                workerFailure = null
+                taskBuffer = null
+                taskSettings = null
+            }
+            when {
+                failure != null -> throw failure
+                interrupted -> return
             }
             var index = offset
             val last = offset + frames * 2
@@ -232,11 +311,15 @@ class VoiceIsolationProcessor(private val context: Context) : AutoCloseable {
         }
 
         override fun close() {
-            // BUG-02: будим поток, заблокированный в Future.get(): shutdown()
-            // сам по себе ожидание не прерывает
-            worker.shutdown()
-            if (!worker.awaitTermination(200, java.util.concurrent.TimeUnit.MILLISECONDS)) {
-                worker.shutdownNow()
+            // BUG-02: снимаем флаг и будим поток из wait(); join с тем же таймаутом,
+            // что раньше был у awaitTermination()
+            synchronized(workerLock) {
+                workerClosed = true
+                workerLock.notifyAll()
+            }
+            worker.join(200)
+            if (worker.isAlive) {
+                worker.interrupt()
             }
             channels.forEach { it.close() }
         }

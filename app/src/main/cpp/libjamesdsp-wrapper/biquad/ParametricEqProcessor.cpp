@@ -125,11 +125,8 @@ void ParametricEqProcessor::processInterleaved(float* data, size_t numFrames)
     if (!enabled.load(std::memory_order_acquire))
         return;
 
-    {
-        std::shared_ptr<ChainConfig> chain = std::atomic_load(&publishedChain);
-        if (!chain || chain->bands.empty())
-            return;
-    }
+    // processDeinterleaved() takes the single shared-chain snapshot used by
+    // this block; avoid a second atomic load and shared_ptr refcount update.
 
     // Ensure temp buffers are large enough
     if (tmpL.size() < numFrames)
@@ -211,10 +208,6 @@ void ParametricEqProcessor::processDeinterleaved(float* left, float* right, size
                 continue;
             }
 
-            // Remove denormals periodically to prevent CPU spikes
-            band.bqL.removeDenormals();
-            band.bqR.removeDenormals();
-
             switch (band.channelMode)
             {
             case PEQ_CHAN_BOTH:
@@ -234,5 +227,16 @@ void ParametricEqProcessor::processDeinterleaved(float* left, float* right, size
 
         left[i]  = (float)sampleL;
         right[i] = (float)sampleR;
+    }
+
+    // Denormal cleanup is block-level work. Doing it inside the sample loop
+    // multiplied eight absolute-value checks by frames x bands and dominated
+    // PEQ cost on power-saving cores.
+    for (auto& band : bandStates)
+    {
+        if (!band.enabled || band.isPreamp)
+            continue;
+        band.bqL.removeDenormals();
+        band.bqR.removeDenormals();
     }
 }

@@ -2,6 +2,7 @@
 #define DSPHOST_H
 
 #include <jni.h>
+#include <vector>
 
 #include <Effects/dynamicEq.h>
 #include <Effects/lufs_normalizer.h>
@@ -35,6 +36,9 @@ typedef struct
     viper_agc_t* viperAgc;
     cure_t* cure;
     tape_t* tape;
+    // Audio-thread-only conversion scratch. Retained across blocks to avoid
+    // allocator work and zero-initialisation in the PCM16 real-time path.
+    std::vector<float> pcm16Scratch;
 } JamesDspWrapper;
 
 /* C interop function */

@@ -339,7 +339,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
         if (peqEnabled || deqActive || loudEnabled || lufsEnabled || extrasOn || tapeOn)
         {
             size_t frames = inputLength / 2;
-            std::vector<float> tmp(frames * 2);
+            if (wrapper->pcm16Scratch.size() < frames * 2)
+                wrapper->pcm16Scratch.resize(frames * 2);
+            auto& tmp = wrapper->pcm16Scratch;
             for (size_t i = 0; i < frames * 2; ++i)
                 tmp[i] = (float)(input[offset + i]) / 32768.0f;
             if (peqEnabled)
@@ -393,7 +395,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
     if (peqEnabled || deqActive || loudEnabled || lufsEnabled || extrasOn || tapeOn)
     {
         size_t frames = inputLength / 2;
-        std::vector<float> tmp(frames * 2);
+        if (wrapper->pcm16Scratch.size() < frames * 2)
+            wrapper->pcm16Scratch.resize(frames * 2);
+        auto& tmp = wrapper->pcm16Scratch;
         for (size_t i = 0; i < frames * 2; ++i)
             tmp[i] = (float)(output[i]) / 32768.0f;
         if (peqEnabled)
