@@ -14,6 +14,7 @@ import androidx.preference.PreferenceViewHolder
 import androidx.preference.children
 import com.google.android.material.materialswitch.MaterialSwitch
 import me.timschneeberger.rootlessjamesdsp.R
+import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.animatedValueAs
 
 
@@ -28,6 +29,11 @@ class SwitchPreferenceGroup(context: Context, attrs: AttributeSet) : PreferenceG
     private var bgAnimation: ValueAnimator? = null
     private var isIconVisible: Boolean = false
     private var state = false
+    /* Card collapse (tap on the title row). Independent of the enable
+     * switch: the switch turns the plugin on/off, the title collapses the
+     * card to save screen space. Persisted in PREF_VAR (NOT in the card's
+     * own prefs file) so it never reaches the DSP engine sync. */
+    private var collapsed = false
 
     init {
         layoutResource = R.layout.preference_switchgroup
@@ -35,6 +41,7 @@ class SwitchPreferenceGroup(context: Context, attrs: AttributeSet) : PreferenceG
     }
 
     override fun onSetInitialValue(defaultValue: Any?) {
+        collapsed = sharedPreferences?.getBoolean(collapsedKey(), false) ?: false
         setValueInternal(getPersistedBoolean((defaultValue as? Boolean) ?: false), true)
     }
 
@@ -54,7 +61,7 @@ class SwitchPreferenceGroup(context: Context, attrs: AttributeSet) : PreferenceG
             }
         }
 
-        setChildrenVisibility(state)
+        setChildrenVisibility(state && !collapsed)
         animateHeaderState(state)
         setIsIconVisible(isIconVisible)
 
@@ -69,8 +76,10 @@ class SwitchPreferenceGroup(context: Context, attrs: AttributeSet) : PreferenceG
         }
 
         holder.itemView.apply {
+            /* Title-row click collapses/expands the card. The switch on the
+             * right keeps its own click handling for enable/disable. */
             setOnClickListener {
-                switch?.toggle()
+                setCollapsed(!collapsed)
             }
         }
     }
@@ -90,7 +99,7 @@ class SwitchPreferenceGroup(context: Context, attrs: AttributeSet) : PreferenceG
     }
 
     private fun setValueInternal(value: Boolean, notifyChanged: Boolean) {
-        setChildrenVisibility(value)
+        setChildrenVisibility(value && !collapsed)
         if (state != value) {
             animateHeaderState(value)
 
@@ -112,6 +121,24 @@ class SwitchPreferenceGroup(context: Context, attrs: AttributeSet) : PreferenceG
 
     private fun setChildrenVisibility(visible: Boolean) {
         children.forEach { it.isVisible = visible }
+    }
+
+    private fun collapsedKey() = "${key ?: hashCode()}:collapsed"
+
+    private fun setCollapsed(value: Boolean) {
+        if (collapsed == value)
+            return
+        collapsed = value
+        try {
+            context.getSharedPreferences(Constants.PREF_VAR, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(collapsedKey(), value)
+                .apply()
+        }
+        catch (_: Exception) {
+            // Persistence is best-effort; the runtime state still applies
+        }
+        setChildrenVisibility(state && !collapsed)
     }
 
     companion object {
