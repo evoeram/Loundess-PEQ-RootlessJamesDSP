@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <Preference
+        android:key="smooth_volume_hud_preview_holder"
+        android:selectable="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/smooth_volume_hud_preview" />
+
+    <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+        android:key="@string/key_smooth_volume_hud_enabled"
+        android:defaultValue="@bool/default_smooth_volume_hud_enabled"
+        android:title="@string/smooth_volume_hud_enable"
+        android:summary="@string/smooth_volume_hud_enable_summary"
+        android:icon="@drawable/ic_twotone_volume_up_24dp"
+        app:iconSpaceReserved="false" />
+
+    <Preference
+        android:key="smooth_volume_hud_unavailable_notice"
+        android:selectable="false"
+        android:summary="@string/smooth_volume_hud_unavailable_notice"
+        app:iconSpaceReserved="false" />
+
+    <PreferenceCategory
+        android:key="smooth_volume_hud_availability"
+        android:title="@string/smooth_volume_card_status_hud_unavailable"
+        app:iconSpaceReserved="false">
+
+        <Preference
+            android:key="smooth_volume_hud_grant_overlay"
+            android:title="@string/smooth_volume_hud_grant_overlay"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="@string/smooth_volume_hud_section_appearance"
+        app:iconSpaceReserved="false">
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_orientation"
+            android:defaultValue="@string/default_smooth_volume_hud_orientation"
+            android:title="@string/smooth_volume_hud_orientation"
+            android:entries="@array/smooth_volume_hud_orientation_entries"
+            android:entryValues="@array/smooth_volume_hud_orientation_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_style"
+            android:defaultValue="@string/default_smooth_volume_hud_style"
+            android:title="@string/smooth_volume_hud_style"
+            android:entries="@array/smooth_volume_hud_style_entries"
+            android:entryValues="@array/smooth_volume_hud_style_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_position"
+            android:defaultValue="@string/default_smooth_volume_hud_position"
+            android:title="@string/smooth_volume_hud_position"
+            android:entries="@array/smooth_volume_hud_position_entries"
+            android:entryValues="@array/smooth_volume_hud_position_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_size"
+            android:defaultValue="@string/default_smooth_volume_hud_size"
+            android:title="@string/smooth_volume_hud_size"
+            android:entries="@array/smooth_volume_hud_size_entries"
+            android:entryValues="@array/smooth_volume_hud_size_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <SeekBarPreference
+            android:key="@string/key_smooth_volume_hud_opacity"
+            android:defaultValue="@integer/default_smooth_volume_hud_opacity"
+            android:title="@string/smooth_volume_hud_opacity"
+            android:max="100"
+            app:min="30"
+            app:showSeekBarValue="true"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_theme"
+            android:defaultValue="@string/default_smooth_volume_hud_theme"
+            android:title="@string/smooth_volume_hud_theme"
+            android:entries="@array/smooth_volume_hud_theme_entries"
+            android:entryValues="@array/smooth_volume_hud_theme_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_corner_radius"
+            android:defaultValue="@string/default_smooth_volume_hud_corner_radius"
+            android:title="@string/smooth_volume_hud_corner_radius"
+            android:entries="@array/smooth_volume_hud_corner_entries"
+            android:entryValues="@array/smooth_volume_hud_corner_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="@string/smooth_volume_hud_section_behavior"
+        app:iconSpaceReserved="false">
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_auto_hide"
+            android:defaultValue="@string/default_smooth_volume_hud_auto_hide"
+            android:title="@string/smooth_volume_hud_auto_hide"
+            android:entries="@array/smooth_volume_hud_auto_hide_entries"
+            android:entryValues="@array/smooth_volume_hud_auto_hide_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            android:key="@string/key_smooth_volume_hud_show_on_keys"
+            android:defaultValue="@bool/default_smooth_volume_hud_show_on_keys"
+            android:title="@string/smooth_volume_hud_show_on_keys"
+            app:iconSpaceReserved="false" />
+
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            android:key="@string/key_smooth_volume_hud_show_on_app"
+            android:defaultValue="@bool/default_smooth_volume_hud_show_on_app"
+            android:title="@string/smooth_volume_hud_show_on_app"
+            app:iconSpaceReserved="false" />
+
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            android:key="@string/key_smooth_volume_hud_show_on_hud"
+            android:defaultValue="@bool/default_smooth_volume_hud_show_on_hud"
+            android:title="@string/smooth_volume_hud_show_on_hud"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_haptics"
+            android:defaultValue="@string/default_smooth_volume_hud_haptics"
+            android:title="@string/smooth_volume_hud_haptics"
+            android:entries="@array/smooth_volume_hud_haptics_entries"
+            android:entryValues="@array/smooth_volume_hud_haptics_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            android:key="@string/key_smooth_volume_hud_animations"
+            android:defaultValue="@bool/default_smooth_volume_hud_animations"
+            android:title="@string/smooth_volume_hud_animations"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="@string/smooth_volume_hud_section_gestures"
+        app:iconSpaceReserved="false">
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_action_tap"
+            android:defaultValue="@string/default_smooth_volume_hud_action_tap"
+            android:title="@string/smooth_volume_hud_action_tap"
+            android:entries="@array/smooth_volume_hud_action_entries"
+            android:entryValues="@array/smooth_volume_hud_action_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_action_double_tap"
+            android:defaultValue="@string/default_smooth_volume_hud_action_double_tap"
+            android:title="@string/smooth_volume_hud_action_double_tap"
+            android:entries="@array/smooth_volume_hud_action_entries"
+            android:entryValues="@array/smooth_volume_hud_action_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_action_long_press"
+            android:defaultValue="@string/default_smooth_volume_hud_action_long_press"
+            android:title="@string/smooth_volume_hud_action_long_press"
+            android:entries="@array/smooth_volume_hud_action_entries"
+            android:entryValues="@array/smooth_volume_hud_action_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            android:key="@string/key_smooth_volume_hud_swipe_step"
+            android:defaultValue="@string/default_smooth_volume_hud_swipe_step"
+            android:title="@string/smooth_volume_hud_swipe_step"
+            android:entries="@array/smooth_volume_hud_swipe_step_entries"
+            android:entryValues="@array/smooth_volume_hud_swipe_step_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            android:key="@string/key_smooth_volume_hud_swipe_accel"
+            android:defaultValue="@bool/default_smooth_volume_hud_swipe_accel"
+            android:title="@string/smooth_volume_hud_swipe_accel"
+            app:iconSpaceReserved="false" />
+
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            android:key="@string/key_smooth_volume_hud_reverse"
+            android:defaultValue="@bool/default_smooth_volume_hud_reverse"
+            android:title="@string/smooth_volume_hud_reverse"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+</PreferenceScreen>

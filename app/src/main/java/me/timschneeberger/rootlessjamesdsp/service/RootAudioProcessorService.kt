@@ -32,6 +32,7 @@ import me.timschneeberger.rootlessjamesdsp.model.room.AppBlocklistRepository
 import me.timschneeberger.rootlessjamesdsp.model.room.BlockedApp
 import me.timschneeberger.rootlessjamesdsp.session.root.OnRootSessionChangeListener
 import me.timschneeberger.rootlessjamesdsp.session.root.RootSessionDumpManager
+import me.timschneeberger.rootlessjamesdsp.smoothvolume.SmoothVolumeController
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
@@ -65,6 +66,8 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
     // Smooth volume control (root mode: applies post-gain to all sessions)
     @Volatile
     private var smoothVolumeEnabled = false
+    @Volatile
+    private var smoothVolumeMuted = false
     @Volatile
     private var smoothVolumeDb = 0.0
 
@@ -153,12 +156,13 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
 
         // Load smooth volume settings from preferences
         smoothVolumeEnabled = preferences.get(R.string.key_smooth_volume_enabled)
+        smoothVolumeMuted = preferences.get(R.string.key_smooth_volume_muted)
         smoothVolumeDb = preferences.get<Float>(R.string.key_smooth_volume_db).toDouble()
-        Timber.i("Root smooth volume: enabled=$smoothVolumeEnabled, vol=${smoothVolumeDb}dB")
+        Timber.i("Root smooth volume: enabled=$smoothVolumeEnabled, muted=$smoothVolumeMuted, vol=${smoothVolumeDb}dB")
 
         // Register broadcast receiver for smooth volume changes
         val filter = IntentFilter()
-        filter.addAction(VolumeKeyAccessibilityService.ACTION_VOLUME_CHANGED)
+        filter.addAction(SmoothVolumeController.ACTION_VOLUME_CHANGED)
         registerLocalReceiver(volumeBroadcastReceiver, filter)
     }
 
@@ -277,10 +281,10 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
 
     override fun onSessionChanged(sessionList: HashMap<Int, IEffectSession>) {
         updateServiceNotification()
-        // Apply smooth volume to any newly created sessions
-        if (smoothVolumeEnabled) {
-            applySmoothVolume()
-        }
+        // Apply smooth volume to any newly created sessions. Applied
+        // unconditionally (0 dB is a harmless no-op) so a disabled feature
+        // never leaves stale gain on fresh sessions.
+        applySmoothVolume()
     }
 
     private fun updateServiceNotification() {
@@ -290,18 +294,31 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
             ServiceNotificationHelper.pushServiceNotification(this, app.rootSessionDatabase.sessionList.values.toTypedArray())
     }
 
-    // Broadcast receiver for smooth volume changes from VolumeKeyAccessibilityService
+    // Broadcast receiver for smooth volume changes from SmoothVolumeController
     private val volumeBroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == VolumeKeyAccessibilityService.ACTION_VOLUME_CHANGED) {
+            if (intent?.action == SmoothVolumeController.ACTION_VOLUME_CHANGED) {
                 smoothVolumeDb = intent.getDoubleExtra(
-                    VolumeKeyAccessibilityService.EXTRA_VOLUME_DB, 0.0
+                    SmoothVolumeController.EXTRA_VOLUME_DB, 0.0
                 )
-                smoothVolumeEnabled = true
+                smoothVolumeMuted = intent.getBooleanExtra(
+                    SmoothVolumeController.EXTRA_VOLUME_MUTED, false
+                )
+                smoothVolumeEnabled = intent.getBooleanExtra(
+                    SmoothVolumeController.EXTRA_VOLUME_ENABLED, true
+                )
+                // Applied unconditionally: enabled=false carries an explicit
+                // 0 dB reset so no stale gain survives the feature being off.
                 applySmoothVolume()
-                Timber.i("Root smooth volume applied: ${smoothVolumeDb}dB")
+                Timber.i("Root smooth volume applied: ${effectiveSmoothVolumeDb()}dB (enabled=$smoothVolumeEnabled, muted=$smoothVolumeMuted)")
             }
         }
+    }
+
+    private fun effectiveSmoothVolumeDb(): Double = when {
+        !smoothVolumeEnabled -> 0.0 // feature off: unity gain (explicit reset)
+        smoothVolumeMuted -> SmoothVolumeController.SILENCE_DB // mute != -60 dB user step
+        else -> smoothVolumeDb
     }
 
     /**
@@ -313,11 +330,7 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
      * active even when the user disables the output control card.
      */
     private fun applySmoothVolume() {
-        if (!smoothVolumeEnabled) return
-
-        // Convert dB to linear gain: gain = 10^(dB/20)
-        // 0 dB = 1.0 (full), -60 dB ≈ 0.001 (near silence)
-        val postGain = smoothVolumeDb.toFloat()
+        val postGain = effectiveSmoothVolumeDb().toFloat()
 
         var applied = 0
         app.rootSessionDatabase.sessionList.values.forEach { session ->

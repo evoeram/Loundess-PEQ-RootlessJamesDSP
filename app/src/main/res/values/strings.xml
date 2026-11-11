@@ -677,6 +677,84 @@
     <string name="smooth_volume_status_active">Active (0.5 dB steps)</string>
     <string name="smooth_volume_status_inactive">Inactive</string>
     <string name="smooth_volume_current">Current volume: %.1f dB</string>
+
+    <!-- Smooth Volume main-screen card -->
+    <string name="smooth_volume_card_title">Smooth Volume</string>
+    <string name="smooth_volume_card_summary">Fine-grained volume (0.5 dB steps) via DSP gain; hardware buttons, floating HUD and this slider stay in sync</string>
+    <string name="smooth_volume_card_disabled_summary">Disabled — gain is reset to 0 dB</string>
+    <string name="smooth_volume_card_mute">Mute</string>
+    <string name="smooth_volume_card_unmute">Unmute</string>
+    <string name="smooth_volume_card_reset">Reset 0 dB</string>
+    <string name="smooth_volume_card_hud_settings">Mini-HUD settings</string>
+    <string name="smooth_volume_card_status_dsp_active">DSP: applying gain</string>
+    <string name="smooth_volume_card_status_dsp_inactive">DSP: not applied</string>
+    <string name="smooth_volume_card_status_hud_ok">HUD: available</string>
+    <string name="smooth_volume_card_status_hud_unavailable">HUD: unavailable (enable accessibility or grant overlay permission)</string>
+    <string name="smooth_volume_card_status_muted">muted</string>
+    <string name="smooth_volume_card_slider_position">Position</string>
+    <string name="smooth_volume_card_slider_position_percent">Position %1$d%%</string>
+
+    <!-- Smooth Volume Mini-HUD settings -->
+    <string name="smooth_volume_hud_title">Smooth Volume</string>
+    <string name="smooth_volume_hud_enable">Show Mini-HUD</string>
+    <string name="smooth_volume_hud_enable_summary">Floating panel that appears on volume changes. Uses the accessibility overlay when available, otherwise the \"Display over other apps\" permission</string>
+    <string name="smooth_volume_hud_preview">Live preview — interactive, does not change the actual volume</string>
+    <string name="smooth_volume_hud_section_appearance">Appearance</string>
+    <string name="smooth_volume_hud_section_behavior">Behavior</string>
+    <string name="smooth_volume_hud_section_gestures">Gestures</string>
+    <string name="smooth_volume_hud_orientation">Orientation</string>
+    <string name="smooth_volume_hud_orientation_vertical">Vertical</string>
+    <string name="smooth_volume_hud_orientation_horizontal">Horizontal</string>
+    <string name="smooth_volume_hud_style">Style</string>
+    <string name="smooth_volume_hud_style_compact">Compact</string>
+    <string name="smooth_volume_hud_style_expanded">Expanded</string>
+    <string name="smooth_volume_hud_position">Position</string>
+    <string name="smooth_volume_hud_position_left">Left edge</string>
+    <string name="smooth_volume_hud_position_right">Right edge</string>
+    <string name="smooth_volume_hud_position_top">Top edge</string>
+    <string name="smooth_volume_hud_position_bottom">Bottom edge</string>
+    <string name="smooth_volume_hud_position_custom">Custom (drag by the handle)</string>
+    <string name="smooth_volume_hud_size">Size</string>
+    <string name="smooth_volume_hud_size_small">Small</string>
+    <string name="smooth_volume_hud_size_medium">Medium</string>
+    <string name="smooth_volume_hud_size_large">Large</string>
+    <string name="smooth_volume_hud_opacity">Opacity</string>
+    <string name="smooth_volume_hud_theme">Theme</string>
+    <string name="smooth_volume_hud_theme_system">System</string>
+    <string name="smooth_volume_hud_theme_dark">Dark</string>
+    <string name="smooth_volume_hud_theme_light">Light</string>
+    <string name="smooth_volume_hud_corner_radius">Corner radius</string>
+    <string name="smooth_volume_hud_corner_small">Small</string>
+    <string name="smooth_volume_hud_corner_medium">Medium</string>
+    <string name="smooth_volume_hud_corner_large">Large</string>
+    <string name="smooth_volume_hud_auto_hide">Auto-hide</string>
+    <string name="smooth_volume_hud_auto_hide_never">Never</string>
+    <string name="smooth_volume_hud_auto_hide_seconds">%1$s s</string>
+    <string name="smooth_volume_hud_show_on_keys">Show on hardware volume keys</string>
+    <string name="smooth_volume_hud_show_on_app">Show on app/tile volume changes</string>
+    <string name="smooth_volume_hud_show_on_hud">Show on HUD interaction</string>
+    <string name="smooth_volume_hud_haptics">Haptic feedback</string>
+    <string name="smooth_volume_hud_haptics_off">Off</string>
+    <string name="smooth_volume_hud_haptics_light">Light</string>
+    <string name="smooth_volume_hud_haptics_standard">Standard</string>
+    <string name="smooth_volume_hud_animations">Smooth animations</string>
+    <string name="smooth_volume_hud_action_tap">Tap action</string>
+    <string name="smooth_volume_hud_action_double_tap">Double-tap action</string>
+    <string name="smooth_volume_hud_action_long_press">Long-press action</string>
+    <string name="smooth_volume_hud_action_none">None</string>
+    <string name="smooth_volume_hud_action_expand">Expand / collapse</string>
+    <string name="smooth_volume_hud_action_mute">Mute / unmute</string>
+    <string name="smooth_volume_hud_action_reset">Reset 0 dB</string>
+    <string name="smooth_volume_hud_action_open_app">Open the app</string>
+    <string name="smooth_volume_hud_swipe_step">Swipe step</string>
+    <string name="smooth_volume_hud_swipe_step_db">%1$s dB</string>
+    <string name="smooth_volume_hud_swipe_accel">Swipe acceleration on fast drags</string>
+    <string name="smooth_volume_hud_reverse">Reverse swipe direction</string>
+    <string name="smooth_volume_hud_unavailable_notice">The HUD cannot be shown right now: enable the \"Smooth Volume\" accessibility service or grant the \"Display over other apps\" permission. App-side control keeps working either way.</string>
+    <string name="smooth_volume_hud_grant_overlay">Grant overlay permission</string>
+
+    <!-- Smooth Volume quick settings tile -->
+    <string name="smooth_volume_tile_mute">Smooth Volume mute</string>
     <!-- Android EQ internal settings -->
     <string name="android_eq_latency">Direct mode block size</string>
     <string name="android_eq_latency_512">512 samples (~10 ms, coarse bass)</string>

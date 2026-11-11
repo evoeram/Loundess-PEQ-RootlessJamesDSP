@@ -63,6 +63,7 @@ import me.timschneeberger.rootlessjamesdsp.session.rootless.OnRootlessSessionCha
 import me.timschneeberger.rootlessjamesdsp.session.rootless.RootlessSessionDatabase
 import me.timschneeberger.rootlessjamesdsp.session.rootless.RootlessSessionManager
 import me.timschneeberger.rootlessjamesdsp.session.rootless.SessionRecordingPolicyManager
+import me.timschneeberger.rootlessjamesdsp.smoothvolume.SmoothVolumeController
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.Constants.ACTION_PREFERENCES_UPDATED
 import me.timschneeberger.rootlessjamesdsp.utils.Constants.ACTION_SAMPLE_RATE_UPDATED
@@ -267,7 +268,14 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     @Volatile
     private var activeAudioTrack: AudioTrack? = null
     private var smoothVolumeEnabled = false
+    private var smoothVolumeMuted = false
     private var smoothVolumeDb = 0.0
+
+    private fun effectiveSmoothVolumeDb(): Double = when {
+        !smoothVolumeEnabled -> 0.0 // feature off: unity gain (explicit reset)
+        smoothVolumeMuted -> SmoothVolumeController.SILENCE_DB // mute != -60 dB user step
+        else -> smoothVolumeDb
+    }
 
     // Termination flags
     private var isProcessorDisposing = false
@@ -334,7 +342,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         filter.addAction(ACTION_SERVICE_HARD_REBOOT_CORE)
         filter.addAction(ACTION_SERVICE_SOFT_REBOOT_CORE)
         filter.addAction(Constants.ACTION_SQUIG_PEQ_CHANGED)
-        filter.addAction(me.timschneeberger.rootlessjamesdsp.service.VolumeKeyAccessibilityService.ACTION_VOLUME_CHANGED)
+        filter.addAction(SmoothVolumeController.ACTION_VOLUME_CHANGED)
         registerLocalReceiver(broadcastReceiver, filter)
 
         // Setup shared preferences
@@ -346,8 +354,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         // Load smooth volume settings at startup
         smoothVolumeEnabled = preferences.get(R.string.key_smooth_volume_enabled)
+        smoothVolumeMuted = preferences.get(R.string.key_smooth_volume_muted)
         smoothVolumeDb = preferences.get<Float>(R.string.key_smooth_volume_db).toDouble()
-        Timber.i("Smooth volume on startup: enabled=$smoothVolumeEnabled, vol=${smoothVolumeDb}dB")
+        Timber.i("Smooth volume on startup: enabled=$smoothVolumeEnabled, muted=$smoothVolumeMuted, vol=${smoothVolumeDb}dB")
 
         // Setup database observer
         blockedApps.observeForever(blockedAppObserver)
@@ -565,15 +574,21 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 ACTION_SERVICE_RELOAD_LIVEPROG -> engine.syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
                 ACTION_SERVICE_HARD_REBOOT_CORE -> restartRecording()
                 ACTION_SERVICE_SOFT_REBOOT_CORE -> requestAudioRecordRecreation()
-                me.timschneeberger.rootlessjamesdsp.service.VolumeKeyAccessibilityService.ACTION_VOLUME_CHANGED -> {
+                SmoothVolumeController.ACTION_VOLUME_CHANGED -> {
                     smoothVolumeDb = intent.getDoubleExtra(
-                        me.timschneeberger.rootlessjamesdsp.service.VolumeKeyAccessibilityService.EXTRA_VOLUME_DB, 0.0
+                        SmoothVolumeController.EXTRA_VOLUME_DB, 0.0
                     )
-                    smoothVolumeEnabled = true
+                    smoothVolumeMuted = intent.getBooleanExtra(
+                        SmoothVolumeController.EXTRA_VOLUME_MUTED, false
+                    )
+                    smoothVolumeEnabled = intent.getBooleanExtra(
+                        SmoothVolumeController.EXTRA_VOLUME_ENABLED, true
+                    )
+                    // Applied unconditionally: enabled=false carries an explicit
+                    // 0 dB reset so no stale gain survives the feature being off.
                     applySmoothVolume()
-                    Timber.i("Smooth volume applied: ${smoothVolumeDb}dB")
-                }
-            }
+                    Timber.i("Smooth volume applied: ${effectiveSmoothVolumeDb()}dB (enabled=$smoothVolumeEnabled, muted=$smoothVolumeMuted)")
+                }            }
         }
     }
 
@@ -916,10 +931,10 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             )
             activeAudioTrack = track
             activeAudioRecord = recorder
-            // Apply current smooth volume if enabled
-            if (smoothVolumeEnabled) {
-                applySmoothVolume()
-            }
+            // Apply current smooth volume on (re)creation of the track. Applied
+            // unconditionally (0 dB is a harmless no-op) so a disabled feature
+            // never leaves stale gain on a fresh track.
+            applySmoothVolume()
         }
         catch(ex: Exception) {
             Timber.e("Failed to create initial audio record/track")
@@ -1358,15 +1373,20 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     }
 
     private fun applySmoothVolume() {
+        val effectiveDb = effectiveSmoothVolumeDb()
         // Direct Mode: no AudioTrack, apply via DynamicsProcessing input gain
         if (processingMode == ProcessingMode.DIRECT) {
-            AndroidEq.setSmoothVolumeDb(smoothVolumeDb)
+            AndroidEq.setSmoothVolumeDb(effectiveDb)
             return
         }
-        val track = activeAudioTrack ?: return
         // Convert dB to linear gain: gain = 10^(dB/20)
         // 0 dB = 1.0 (full volume), -60 dB ≈ 0.001 (near silence)
-        val linearGain = Math.pow(10.0, smoothVolumeDb / 20.0).toFloat()
+        // Mute uses true digital silence (0.0) — distinct from the -60 dB step.
+        val linearGain = if (smoothVolumeEnabled && smoothVolumeMuted)
+            0f
+        else
+            Math.pow(10.0, effectiveDb / 20.0).toFloat()
+        val track = activeAudioTrack ?: return
         try {
             track.setVolume(linearGain)
         } catch (e: Exception) {

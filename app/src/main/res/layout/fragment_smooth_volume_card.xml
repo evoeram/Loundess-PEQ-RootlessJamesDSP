@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:id="@+id/smooth_volume_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/smooth_volume_card_title"
+            android:textAppearance="?attr/textAppearanceTitleMedium"
+            app:layout_constraintEnd_toStartOf="@id/smooth_volume_value"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/smooth_volume_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceTitleMedium"
+            android:textColor="?attr/colorPrimary"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="-3.5 dB" />
+
+        <TextView
+            android:id="@+id/smooth_volume_status"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?android:attr/textColorSecondary"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/smooth_volume_title"
+            tools:text="DSP: applying gain · HUD: available" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <FrameLayout
+        android:id="@+id/smooth_volume_disabled_notice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/smooth_volume_card_disabled_summary"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textStyle="italic" />
+    </FrameLayout>
+
+    <com.google.android.material.slider.Slider
+        android:id="@+id/smooth_volume_slider"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:stepSize="0.5"
+        android:valueFrom="-60.0"
+        android:valueTo="0.0"
+        app:labelBehavior="gone" />
+
+    <TextView
+        android:id="@+id/smooth_volume_position_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:textAppearance="?attr/textAppearanceLabelSmall"
+        android:textColor="?android:attr/textColorTertiary"
+        tools:text="Position 94%" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/smooth_volume_mute"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:text="@string/smooth_volume_card_mute" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/smooth_volume_reset"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:text="@string/smooth_volume_card_reset" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/smooth_volume_hud_settings"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:text="@string/smooth_volume_card_hud_settings" />
+
+    </LinearLayout>
+
+</LinearLayout>

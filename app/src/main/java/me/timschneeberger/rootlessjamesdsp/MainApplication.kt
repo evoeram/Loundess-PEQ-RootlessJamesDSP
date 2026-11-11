@@ -30,6 +30,8 @@ import me.timschneeberger.rootlessjamesdsp.model.room.AppBlocklistRepository
 import me.timschneeberger.rootlessjamesdsp.service.RootAudioProcessorService
 import me.timschneeberger.rootlessjamesdsp.session.dump.DumpManager
 import me.timschneeberger.rootlessjamesdsp.session.root.RootSessionDatabase
+import me.timschneeberger.rootlessjamesdsp.smoothvolume.SmoothVolumeController
+import me.timschneeberger.rootlessjamesdsp.smoothvolume.SmoothVolumeHudManager
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.ProfileManager
 import me.timschneeberger.rootlessjamesdsp.utils.DevicePresetManager
@@ -189,6 +191,8 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
             single { Preferences(androidContext()).Var() }
             single { DevicePresetManager() }
             single { PresetOverlayManager() }
+            single { SmoothVolumeController(androidContext(), get()) }
+            single { SmoothVolumeHudManager(get(), get(), androidContext()) }
         }
 
         startKoin {

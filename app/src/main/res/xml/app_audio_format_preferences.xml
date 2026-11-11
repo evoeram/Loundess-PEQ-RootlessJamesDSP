@@ -138,5 +138,11 @@
             android:summary="@string/smooth_volume_accessibility_hint"
             app:iconSpaceReserved="false" />
 
+        <Preference
+            android:key="smooth_volume_hud_settings"
+            android:title="@string/smooth_volume_card_hud_settings"
+            android:fragment="me.timschneeberger.rootlessjamesdsp.fragment.settings.SettingsSmoothVolumeHudFragment"
+            app:iconSpaceReserved="false" />
+
     </PreferenceCategory>
 </PreferenceScreen>

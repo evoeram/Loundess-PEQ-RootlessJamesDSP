@@ -28,7 +28,11 @@ class SettingsActivity : BaseActivity(),
         setSupportActionBar(binding.settingsToolbar)
 
         if (savedInstanceState == null) {
-            val fragment = SettingsFragment.newInstance()
+            val fragment = intent?.getStringExtra(EXTRA_OPEN_FRAGMENT)?.let { className ->
+                runCatching {
+                    supportFragmentManager.fragmentFactory.instantiate(classLoader, className)
+                }.getOrNull()
+            } ?: SettingsFragment.newInstance()
             @Suppress("DEPRECATION")
             fragment.setTargetFragment(null, 0)
 
@@ -134,6 +138,9 @@ class SettingsActivity : BaseActivity(),
 
     companion object {
         private const val PERSIST_TITLE = "title"
+
+        /** Extra: fully-qualified fragment class to open instead of the root page. */
+        const val EXTRA_OPEN_FRAGMENT = "me.timschneeberger.rootlessjamesdsp.extra.OPEN_FRAGMENT"
     }
 }
 

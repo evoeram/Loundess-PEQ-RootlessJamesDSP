@@ -59,6 +59,28 @@
     <!-- Smooth volume control -->
     <string name="key_smooth_volume_enabled" translatable="false">smooth_volume_enabled</string>
     <string name="key_smooth_volume_db" translatable="false">smooth_volume_db</string>
+    <string name="key_smooth_volume_muted" translatable="false">smooth_volume_muted</string>
+    <!-- Mini-HUD customization (appearance/behavior; kept apart from the gain key) -->
+    <string name="key_smooth_volume_hud_enabled" translatable="false">smooth_volume_hud_enabled</string>
+    <string name="key_smooth_volume_hud_orientation" translatable="false">smooth_volume_hud_orientation</string>
+    <string name="key_smooth_volume_hud_style" translatable="false">smooth_volume_hud_style</string>
+    <string name="key_smooth_volume_hud_position" translatable="false">smooth_volume_hud_position</string>
+    <string name="key_smooth_volume_hud_size" translatable="false">smooth_volume_hud_size</string>
+    <string name="key_smooth_volume_hud_opacity" translatable="false">smooth_volume_hud_opacity</string>
+    <string name="key_smooth_volume_hud_theme" translatable="false">smooth_volume_hud_theme</string>
+    <string name="key_smooth_volume_hud_corner_radius" translatable="false">smooth_volume_hud_corner_radius</string>
+    <string name="key_smooth_volume_hud_auto_hide" translatable="false">smooth_volume_hud_auto_hide</string>
+    <string name="key_smooth_volume_hud_show_on_keys" translatable="false">smooth_volume_hud_show_on_keys</string>
+    <string name="key_smooth_volume_hud_show_on_app" translatable="false">smooth_volume_hud_show_on_app</string>
+    <string name="key_smooth_volume_hud_show_on_hud" translatable="false">smooth_volume_hud_show_on_hud</string>
+    <string name="key_smooth_volume_hud_haptics" translatable="false">smooth_volume_hud_haptics</string>
+    <string name="key_smooth_volume_hud_animations" translatable="false">smooth_volume_hud_animations</string>
+    <string name="key_smooth_volume_hud_action_tap" translatable="false">smooth_volume_hud_action_tap</string>
+    <string name="key_smooth_volume_hud_action_double_tap" translatable="false">smooth_volume_hud_action_double_tap</string>
+    <string name="key_smooth_volume_hud_action_long_press" translatable="false">smooth_volume_hud_action_long_press</string>
+    <string name="key_smooth_volume_hud_swipe_step" translatable="false">smooth_volume_hud_swipe_step</string>
+    <string name="key_smooth_volume_hud_swipe_accel" translatable="false">smooth_volume_hud_swipe_accel</string>
+    <string name="key_smooth_volume_hud_reverse" translatable="false">smooth_volume_hud_reverse</string>
 
     <!-- Device profiles -->
     <string name="key_device_profiles_enable" translatable="false">device_profiles_enable</string>

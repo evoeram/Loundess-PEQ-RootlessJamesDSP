@@ -318,6 +318,25 @@
                 android:resource="@xml/accessibility_smooth_volume" />
         </service>
 
+        <!-- Fallback host for the Smooth Volume Mini-HUD (overlay permission path) -->
+        <service
+            android:name=".service.SmoothVolumeHudService"
+            android:exported="false" />
+
+        <!-- Quick Settings tile: Smooth Volume mute -->
+        <service
+            android:name=".service.SmoothVolumeTileService"
+            android:label="@string/smooth_volume_tile_mute"
+            android:icon="@drawable/ic_twotone_volume_up_24dp"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
         <!-- Receivers -->
         <receiver
             android:name=".receiver.SessionReceiver"

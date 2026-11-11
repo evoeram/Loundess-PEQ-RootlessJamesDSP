@@ -8,11 +8,13 @@ import android.os.Looper
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import me.timschneeberger.rootlessjamesdsp.R
-import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
+import me.timschneeberger.rootlessjamesdsp.smoothvolume.SmoothVolumeController
+import me.timschneeberger.rootlessjamesdsp.smoothvolume.SmoothVolumeHudManager
+import me.timschneeberger.rootlessjamesdsp.smoothvolume.VolumeSource
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
+import org.koin.core.Koin
 import org.koin.core.context.GlobalContext
 import timber.log.Timber
-import java.lang.ref.WeakReference
 
 /**
  * AccessibilityService that intercepts hardware volume buttons globally (in background)
@@ -21,11 +23,14 @@ import java.lang.ref.WeakReference
  *
  * When enabled:
  * - Volume UP/DOWN change JamesDSP internal volume by [STEP_DB] dB
- * - The system media volume is kept at a fixed level (user-configurable target)
+ * - The system media volume is kept at a fixed level (a consequence of the
+ *   intercepted keys being consumed)
  * - This gives ~200 steps across a 100 dB range, vs ~15 system steps
  *
- * The service communicates volume changes to the DSP engine via broadcast,
- * which the AudioProcessorService picks up to call setLoudnessCorrectionVolume().
+ * All gain changes go through [SmoothVolumeController] (the single state
+ * source); the controller persists the value and notifies the audio services
+ * and every HUD. This service additionally hosts the floating Mini-HUD as a
+ * TYPE_ACCESSIBILITY_OVERLAY window when the HUD is enabled in settings.
  *
  * Requires the user to enable this accessibility service in system settings.
  */
@@ -35,74 +40,98 @@ class VolumeKeyAccessibilityService : AccessibilityService(), SharedPreferences.
         /** Volume step in dB per single key press (first press, no hold). */
         private const val STEP_DB = 0.5
 
-        /** Maximum internal volume in dB. */
-        private const val MAX_VOLUME_DB = 0.0
-
-        /** Minimum internal volume in dB (full attenuation). */
-        private const val MIN_VOLUME_DB = -60.0
-
-        /** Time window (ms) after which a key press is considered a new press, not a continuation. */
+        /**
+         * Time window (ms) after which a key press is considered a new press, not a continuation.
+         * (Range/step limits live in SmoothVolumeMath; the ramp multiplies [STEP_DB].)
+         */
         private const val HOLD_RESET_MS = 400L
-
-        const val ACTION_VOLUME_CHANGED = "me.timschneeberger.rootlessjamesdsp.SMOOTH_VOLUME_CHANGED"
-        const val EXTRA_VOLUME_DB = "volume_db"
     }
 
-    private var currentVolumeDb = 0.0
     private var isSmoothVolumeEnabled = false
     private var preferences: Preferences.App? = null
-    private var overlay: VolumeOverlay? = null
+    private var controller: SmoothVolumeController? = null
+    private var hudManager: SmoothVolumeHudManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // Hold-tracking state for accelerated volume ramp
     private var holdDirection = 0       // +1 = up, -1 = down, 0 = idle
     private var holdStartTime = 0L      // SystemClock uptime when hold began
-    private var holdLastTickTime = 0L   // last accelerated tick
     private var holdTickInterval = 0L   // current interval between ticks (ms)
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         Timber.i("VolumeKeyAccessibilityService connected")
 
-        // Get preferences from Koin
+        val koin: Koin = GlobalContext.get()
         preferences = try {
-            GlobalContext.get().get<Preferences.App>()
+            koin.get<Preferences.App>()
         } catch (e: Exception) {
             Timber.w(e, "Failed to get Preferences from Koin")
             null
         }
+        controller = try {
+            koin.get<SmoothVolumeController>()
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to get SmoothVolumeController from Koin")
+            null
+        }
+        hudManager = try {
+            koin.get<SmoothVolumeHudManager>()
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to get SmoothVolumeHudManager from Koin")
+            null
+        }
 
         loadSettings()
-        // Register for preference changes so smooth volume can be toggled without reconnecting
         preferences?.registerOnSharedPreferenceChangeListener(this)
-        // Use WeakReference to self in the callback so the overlay
-        // doesn't keep the service alive after onDestroy.
-        val weakThis = WeakReference(this)
-        overlay = VolumeOverlay(this) { deltaDb ->
-            weakThis.get()?.adjustVolume(deltaDb)
-        }
+
+        // This service is now the HUD host (TYPE_ACCESSIBILITY_OVERLAY); it
+        // replaces any TYPE_APPLICATION_OVERLAY window owned by the fallback
+        // service, which stops itself once it sees accessibilityAvailable=true.
+        controller?.setAccessibilityAvailable(true)
+        attachHud()
+
+        // The fallback overlay host must not run while we own the HUD window
+        startFallbackServiceIfIdle()
     }
 
     private fun loadSettings() {
-        val prefs = preferences ?: return
-        isSmoothVolumeEnabled = prefs.get(R.string.key_smooth_volume_enabled)
-        currentVolumeDb = prefs.get<Float>(R.string.key_smooth_volume_db).toDouble()
-        Timber.i("Smooth volume enabled=$isSmoothVolumeEnabled, currentVolume=${currentVolumeDb}dB")
+        isSmoothVolumeEnabled = preferences?.get(R.string.key_smooth_volume_enabled) ?: false
+        Timber.i("Smooth volume enabled=%b", isSmoothVolumeEnabled)
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
-            getString(R.string.key_smooth_volume_enabled),
-            getString(R.string.key_smooth_volume_db) -> {
-                loadSettings()
-                Timber.i("Smooth volume settings reloaded: enabled=$isSmoothVolumeEnabled, vol=${currentVolumeDb}dB")
-            }
+            getString(R.string.key_smooth_volume_enabled) -> loadSettings()
+            getString(R.string.key_smooth_volume_hud_enabled) -> attachHud()
         }
     }
 
-    private fun configureService() {
-        // No-op: XML config handles flagRequestFilterKeyEvents.
-        // Setting serviceInfo at runtime causes bind/unbind loops.
+    private fun attachHud() {
+        val manager = hudManager ?: return
+        val hudEnabled = preferences?.get(R.string.key_smooth_volume_hud_enabled) ?: true
+        if (hudEnabled) {
+            manager.attach(this, useAccessibilityOverlay = true)
+        }
+        else {
+            manager.detach()
+        }
+    }
+
+    /**
+     * Start the fallback overlay host only when it actually has work to do
+     * (HUD enabled, no accessibility-based host active, permission granted).
+     * The service stops itself when none of those hold.
+     */
+    private fun startFallbackServiceIfIdle() {
+        val hudEnabled = preferences?.get(R.string.key_smooth_volume_hud_enabled) ?: true
+        if (hudEnabled && hudManager?.isAttached != true) {
+            try {
+                startService(Intent(this, SmoothVolumeHudService::class.java))
+            } catch (e: Exception) {
+                Timber.w(e, "Could not start fallback HUD host")
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -113,42 +142,55 @@ class VolumeKeyAccessibilityService : AccessibilityService(), SharedPreferences.
         Timber.w("VolumeKeyAccessibilityService interrupted")
     }
 
-    override fun onKeyEvent(event: KeyEvent): Boolean {
-        val action = event.action
-        val keyCode = event.keyCode
-        val actionStr = when (action) {
-            KeyEvent.ACTION_DOWN -> "DOWN"
-            KeyEvent.ACTION_UP -> "UP"
-            KeyEvent.ACTION_MULTIPLE -> "MULTIPLE"
-            else -> "OTHER($action)"
-        }
-        val keyStr = when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> "VOL_UP"
-            KeyEvent.KEYCODE_VOLUME_DOWN -> "VOL_DOWN"
-            else -> "KEY($keyCode)"
-        }
-        Timber.d("onKeyEvent: key=%s action=%s repeat=%d smoothEnabled=%b",
-            keyStr, actionStr, event.repeatCount, isSmoothVolumeEnabled)
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Screen rotation / size change: re-anchor and clamp the HUD
+        hudManager?.reclamp()
+    }
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        // Detach the overlay synchronously to prevent Context leaks.
+        // The AccessibilityService framework holds a Binder reference
+        // (IAccessibilityServiceClientWrapper.mContext) that can keep
+        // the destroyed service context alive if the overlay view is
+        // still attached to the WindowManager.
+        stopHoldRamp()
+        holdDirection = 0
+        hudManager?.detach()
+        controller?.setAccessibilityAvailable(false)
+        preferences?.unregisterOnSharedPreferenceChangeListener(this)
+        preferences = null
+        Timber.i("VolumeKeyAccessibilityService unbound")
+        return false
+    }
+
+    override fun onDestroy() {
+        stopHoldRamp()
+        holdDirection = 0
+        hudManager?.detach()
+        controller?.setAccessibilityAvailable(false)
+        preferences?.unregisterOnSharedPreferenceChangeListener(this)
+        preferences = null
+        Timber.i("VolumeKeyAccessibilityService destroyed")
+        super.onDestroy()
+    }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
         if (!isSmoothVolumeEnabled) {
-            Timber.d("onKeyEvent: smooth volume disabled, not consuming")
             return false
         }
 
-        when (keyCode) {
+        when (event.keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                val direction = if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) +1 else -1
+                val direction = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) +1 else -1
 
-                if (action == KeyEvent.ACTION_DOWN) {
-                    val now = android.os.SystemClock.uptimeMillis()
-
+                if (event.action == KeyEvent.ACTION_DOWN) {
                     if (event.repeatCount == 0) {
-                        Timber.d("onKeyEvent: FIRST PRESS, starting ramp. dir=%d", direction)
+                        Timber.d("onKeyEvent: first press, starting ramp. dir=%d", direction)
                         stopHoldRamp()
                         adjustVolume(direction * STEP_DB)
                         holdDirection = direction
-                        holdStartTime = now
-                        holdLastTickTime = now
+                        holdStartTime = android.os.SystemClock.uptimeMillis()
                         holdTickInterval = 300L
                         startHoldRamp()
                     }
@@ -158,39 +200,30 @@ class VolumeKeyAccessibilityService : AccessibilityService(), SharedPreferences.
                     return true
                 }
 
-                if (action == KeyEvent.ACTION_UP) {
+                if (event.action == KeyEvent.ACTION_UP) {
                     Timber.d("onKeyEvent: ACTION_UP, stopping ramp")
                     stopHoldRamp()
                     holdDirection = 0
                     return true
                 }
 
-                Timber.d("onKeyEvent: action=%s for vol key, consuming", actionStr)
                 return true
             }
         }
 
-        Timber.d("onKeyEvent: non-volume key, not consuming")
         return false
     }
 
     private val holdRampRunnable = object : Runnable {
         override fun run() {
             if (holdDirection == 0) {
-                Timber.d("holdRamp: holdDirection=0, stopping")
                 return
             }
 
-            val now = android.os.SystemClock.uptimeMillis()
-            val heldFor = now - holdStartTime
-
+            val heldFor = android.os.SystemClock.uptimeMillis() - holdStartTime
             val (stepDb, interval) = computeRampParams(heldFor)
-            Timber.d("holdRamp: dir=%d heldFor=%dms step=%.1f interval=%dms",
-                holdDirection, heldFor, stepDb, interval)
-
             adjustVolume(holdDirection * stepDb)
 
-            holdLastTickTime = now
             holdTickInterval = interval
             mainHandler.postDelayed(this, interval)
         }
@@ -208,8 +241,8 @@ class VolumeKeyAccessibilityService : AccessibilityService(), SharedPreferences.
 
     /**
      * Compute (stepDb, intervalMs) based on how long the button has been held.
+     * This accelerated ramp is part of the UX contract and must be preserved:
      *
-     * Progression:
      *   0–500ms:   0.5 dB / 300ms  — gentle, precise start
      *   500–1500ms: 1.0 dB / 200ms  — moderate
      *   1500–3000ms: 2.0 dB / 150ms — fast
@@ -227,59 +260,7 @@ class VolumeKeyAccessibilityService : AccessibilityService(), SharedPreferences.
     }
 
     private fun adjustVolume(deltaDb: Double) {
-        val oldVolume = currentVolumeDb
-        val newVolume = (currentVolumeDb + deltaDb)
-            .coerceIn(MIN_VOLUME_DB, MAX_VOLUME_DB)
-
-        if (newVolume == currentVolumeDb) {
-            Timber.d("adjustVolume: delta=%.1f dB, vol already at limit %.1f->%.1f (clamped, no-op)",
-                deltaDb, oldVolume, newVolume)
-            return
-        }
-
-        currentVolumeDb = newVolume
-        Timber.d("adjustVolume: delta=%.1f dB, %.1f -> %.1f dB", deltaDb, oldVolume, currentVolumeDb)
-
-        // Persist the volume
-        preferences?.set(R.string.key_smooth_volume_db, currentVolumeDb.toFloat())
-
-        // Broadcast volume change to DSP engine (applies to AudioTrack.setVolume)
-        val intent = Intent(ACTION_VOLUME_CHANGED).apply {
-            setPackage(packageName)
-            putExtra(EXTRA_VOLUME_DB, currentVolumeDb)
-        }
-        sendLocalBroadcast(intent)
-
-        Timber.d("adjustVolume: broadcast sent, vol=%.1f dB", currentVolumeDb)
-
-        // Show volume overlay HUD
-        overlay?.show(currentVolumeDb)
-    }
-
-    override fun onUnbind(intent: Intent?): Boolean {
-        // Remove overlay synchronously to prevent Context leak.
-        // The AccessibilityService framework holds a Binder reference
-        // (IAccessibilityServiceClientWrapper.mContext) that can keep
-        // the destroyed service context alive if the overlay view is
-        // still attached to the WindowManager.
-        stopHoldRamp()
-        holdDirection = 0
-        overlay?.hide()
-        overlay = null
-        preferences?.unregisterOnSharedPreferenceChangeListener(this)
-        preferences = null
-        Timber.i("VolumeKeyAccessibilityService unbound")
-        return false
-    }
-
-    override fun onDestroy() {
-        stopHoldRamp()
-        holdDirection = 0
-        overlay?.hide()
-        overlay = null
-        preferences?.unregisterOnSharedPreferenceChangeListener(this)
-        preferences = null
-        Timber.i("VolumeKeyAccessibilityService destroyed")
-        super.onDestroy()
+        controller?.adjustGain(deltaDb, VolumeSource.HARDWARE_KEY)
+            ?: Timber.w("adjustVolume: controller unavailable, change dropped")
     }
 }

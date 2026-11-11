@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Smooth Volume Mini-HUD -->
+    <string-array name="smooth_volume_hud_orientation_entries">
+        <item>@string/smooth_volume_hud_orientation_vertical</item>
+        <item>@string/smooth_volume_hud_orientation_horizontal</item>
+    </string-array>
+    <string-array name="smooth_volume_hud_orientation_values" translatable="false">
+        <item>vertical</item>
+        <item>horizontal</item>
+    </string-array>
+
+    <string-array name="smooth_volume_hud_style_entries">
+        <item>@string/smooth_volume_hud_style_compact</item>
+        <item>@string/smooth_volume_hud_style_expanded</item>
+    </string-array>
+    <string-array name="smooth_volume_hud_style_values" translatable="false">
+        <item>compact</item>
+        <item>expanded</item>
+    </string-array>
+
+    <string-array name="smooth_volume_hud_position_entries">
+        <item>@string/smooth_volume_hud_position_left</item>
+        <item>@string/smooth_volume_hud_position_right</item>
+        <item>@string/smooth_volume_hud_position_top</item>
+        <item>@string/smooth_volume_hud_position_bottom</item>
+        <item>@string/smooth_volume_hud_position_custom</item>
+    </string-array>
+    <string-array name="smooth_volume_hud_position_values" translatable="false">
+        <item>left</item>
+        <item>right</item>
+        <item>top</item>
+        <item>bottom</item>
+        <item>custom</item>
+    </string-array>
+
+    <string-array name="smooth_volume_hud_size_entries">
+        <item>@string/smooth_volume_hud_size_small</item>
+        <item>@string/smooth_volume_hud_size_medium</item>
+        <item>@string/smooth_volume_hud_size_large</item>
+    </string-array>
+    <string-array name="smooth_volume_hud_size_values" translatable="false">
+        <item>small</item>
+        <item>medium</item>
+        <item>large</item>
+    </string-array>
+
+    <string-array name="smooth_volume_hud_theme_entries">
+        <item>@string/smooth_volume_hud_theme_system</item>
+        <item>@string/smooth_volume_hud_theme_dark</item>
+        <item>@string/smooth_volume_hud_theme_light</item>
+    </string-array>
+    <string-array name="smooth_volume_hud_theme_values" translatable="false">
+        <item>system</item>
+        <item>dark</item>
+        <item>light</item>
+    </string-array>
+
+    <string-array name="smooth_volume_hud_corner_entries">
+        <item>@string/smooth_volume_hud_corner_small</item>
+        <item>@string/smooth_volume_hud_corner_medium</item>
+        <item>@string/smooth_volume_hud_corner_large</item>
+    </string-array>
+    <string-array name="smooth_volume_hud_corner_values" translatable="false">
+        <item>small</item>
+        <item>medium</item>
+        <item>large</item>
+    </string-array>
+
+    <string-array name="smooth_volume_hud_auto_hide_entries" translatable="false">
+        <item>@string/smooth_volume_hud_auto_hide_never</item>
+        <item>1 s</item>
+        <item>2 s</item>
+        <item>3 s</item>
+        <item>5 s</item>
+        <item>10 s</item>
+    </string-array>
+    <string-array name="smooth_volume_hud_auto_hide_values" translatable="false">
+        <item>never</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>5</item>
+        <item>10</item>
+    </string-array>
+
+    <string-array name="smooth_volume_hud_haptics_entries">
+        <item>@string/smooth_volume_hud_haptics_off</item>
+        <item>@string/smooth_volume_hud_haptics_light</item>
+        <item>@string/smooth_volume_hud_haptics_standard</item>
+    </string-array>
+    <string-array name="smooth_volume_hud_haptics_values" translatable="false">
+        <item>off</item>
+        <item>light</item>
+        <item>standard</item>
+    </string-array>
+
+    <string-array name="smooth_volume_hud_action_entries">
+        <item>@string/smooth_volume_hud_action_none</item>
+        <item>@string/smooth_volume_hud_action_expand</item>
+        <item>@string/smooth_volume_hud_action_mute</item>
+        <item>@string/smooth_volume_hud_action_reset</item>
+        <item>@string/smooth_volume_hud_action_open_app</item>
+    </string-array>
+    <string-array name="smooth_volume_hud_action_values" translatable="false">
+        <item>none</item>
+        <item>expand</item>
+        <item>mute</item>
+        <item>reset</item>
+        <item>open_app</item>
+    </string-array>
+
+    <string-array name="smooth_volume_hud_swipe_step_entries" translatable="false">
+        <item>0.5 dB</item>
+        <item>1 dB</item>
+        <item>2 dB</item>
+    </string-array>
+    <string-array name="smooth_volume_hud_swipe_step_values" translatable="false">
+        <item>0.5</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+
+</resources>

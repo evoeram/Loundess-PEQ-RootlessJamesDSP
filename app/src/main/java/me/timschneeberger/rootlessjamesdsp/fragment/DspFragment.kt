@@ -117,6 +117,7 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
 
         childFragmentManager.beginTransaction()
             .replace(R.id.card_device_profiles, DeviceCardsFragment.newInstance())
+            .replace(R.id.card_smooth_volume, SmoothVolumeCardFragment.newInstance())
             .replace(
                 R.id.card_output_control, PreferenceGroupFragment.newInstance(Constants.PREF_OUTPUT,
                     R.xml.dsp_output_control_preferences
