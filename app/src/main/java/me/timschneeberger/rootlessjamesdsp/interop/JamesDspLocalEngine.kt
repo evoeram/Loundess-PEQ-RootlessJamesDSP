@@ -426,6 +426,12 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         } ?: false
     }
 
+    override fun setPeqPhaseMode(linearPhase: Boolean): Boolean =
+        withNativeHandle { JamesDspWrapper.setParametricEqPhaseMode(it, linearPhase) } ?: false
+
+    override fun setBalance(enable: Boolean, balance: Float): Boolean =
+        withNativeHandle { JamesDspWrapper.setBalance(it, enable, balance) } ?: false
+
     override fun setDynamicEq(
         enable: Boolean,
         sampleRate: Double,

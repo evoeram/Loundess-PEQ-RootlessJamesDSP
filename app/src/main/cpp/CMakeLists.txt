@@ -61,6 +61,8 @@ add_library(jamesdsp_effect SHARED
         ${JAMESDSP_EFFECT_DIR}/jamesdsp.c
         ${JAMESDSP_EFFECT_DIR}/peq_loudness.c
         ${JAMESDSP_EFFECT_DIR}/peq_loudness.h
+        ${JAMESDSP_EFFECT_DIR}/balance.c
+        ${JAMESDSP_EFFECT_DIR}/balance.h
         ${LIBJAMESDSP_SOURCE_FILES}
         EELStdOutExtension.c
         EELStdOutExtension.h)

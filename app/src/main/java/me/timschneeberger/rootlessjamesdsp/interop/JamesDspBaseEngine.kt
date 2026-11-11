@@ -95,6 +95,11 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val peqEnabled = cache.get(R.string.key_peq_enable, false)
             val peqBandsStr = cache.get(R.string.key_peq_bands, Constants.DEFAULT_PEQ)
             val peqPreamp = cache.get(R.string.key_peq_preamp, 0f)
+            val peqLinearPhase = cache.get(R.string.key_peq_linear_phase, false)
+
+            cache.select(Constants.PREF_BALANCE)
+            val balanceEnabled = cache.get(R.string.key_balance_enable, false)
+            val balanceValue = cache.get(R.string.key_balance_value, 0f) / 100f
 
             cache.select(Constants.PREF_DYNAMICEQ)
             val dynEqEnabled = cache.get(R.string.key_dynamiceq_enable, false)
@@ -302,14 +307,19 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                             val mergedPreamp = (if (peqEnabled) peqPreamp else 0f) +
                                 (if (squigEnabled) squigPreamp else 0f)
                             val anyEnabled = peqEnabled || squigEnabled
+                            // Phase mode first: it only selects how the next
+                            // config is rendered, so the cascade must be
+                            // re-sent after it.
+                            setPeqPhaseMode(peqLinearPhase)
                             setParametricEqCascade(anyEnabled, sampleRate.toDouble(), mergedPreamp.toDouble(), mergedBands.toList())
                         } else {
                             // Fallback: merge PEQ into GraphicEQ for engines without native PEQ.
                             // Squig bands are merged into the PEQ band string so they reach the
                             // graphic-eq combined path too.
                             // Phase mode first: it rebuilds the coefficient generator, so the
-                            // nodes must be re-sent after it.
-                            setEqPhaseMode(geqLinearPhase)
+                            // nodes must be re-sent after it. If the user asked for a
+                            // linear-phase PEQ, the merged GEQ curve inherits it.
+                            setEqPhaseMode(geqLinearPhase || peqLinearPhase)
                             val combinedBandsStr = if (squigEnabled) {
                                 val merged = ParametricEqBandList()
                                 if (peqEnabled) merged.deserialize(peqBandsStr)
@@ -365,13 +375,18 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                             val mergedPreamp = (if (peqEnabled) peqPreamp else 0f) +
                                 (if (squigEnabled) squigPreamp else 0f)
                             val anyEnabled = peqEnabled || squigEnabled
+                            // Phase mode first: it only selects how the next
+                            // config is rendered, so the cascade must be
+                            // re-sent after it.
+                            setPeqPhaseMode(peqLinearPhase)
                             setParametricEqCascade(anyEnabled, sampleRate.toDouble(), mergedPreamp.toDouble(), mergedBands.toList())
                         } else {
                             // Fallback for engines without native PEQ cascade:
                             // merge squig bands into the graphic-eq combined path.
                             // Phase mode first: it rebuilds the coefficient generator,
-                            // so the nodes must be re-sent after it.
-                            setEqPhaseMode(geqLinearPhase)
+                            // so the nodes must be re-sent after it. If the user asked
+                            // for a linear-phase PEQ, the merged GEQ curve inherits it.
+                            setEqPhaseMode(geqLinearPhase || peqLinearPhase)
                             val combinedBandsStr = if (squigEnabled) {
                                 val merged = ParametricEqBandList()
                                 if (peqEnabled) merged.deserialize(peqBandsStr)
@@ -445,6 +460,9 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                     }
                     Constants.PREF_CURE -> {
                         setCure(cureEnabled, sampleRate.toDouble(), cureLevel)
+                    }
+                    Constants.PREF_BALANCE -> {
+                        setBalance(balanceEnabled, balanceValue)
                     }
                     Constants.PREF_TAPE -> {
                         setTape(
@@ -828,6 +846,21 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         preampDb: Double,
         bands: List<me.timschneeberger.rootlessjamesdsp.model.ParametricEqBand>
     ): Boolean
+
+    /**
+     * PEQ phase mode: false = minimum-phase biquads (no added latency),
+     * true = linear-phase FIR (constant group delay, ~171 ms @ 48 kHz).
+     * Only selects how the next [setParametricEqCascade] config is rendered,
+     * so callers must re-send the cascade afterwards.
+     */
+    abstract fun setPeqPhaseMode(linearPhase: Boolean): Boolean
+
+    /**
+     * L/R balance: balance in [-1, +1]; 0 = center (bypass), positive
+     * attenuates the left channel (image moves right), negative attenuates
+     * the right channel.
+     */
+    abstract fun setBalance(enable: Boolean, balance: Float): Boolean
 
     // Dynamic EQ: per-band frequency-dependent dynamics.
     // mix is dry/wet in percent (0..100); msMode is 0 = stereo, 1 = mid, 2 = side.

@@ -16,6 +16,7 @@
 // Forward declaration (opaque pointer for C interop)
 class ParametricEqProcessor;
 class LoudnessCorrectionProcessor;
+class BalanceProcessor;
 
 typedef struct
 {
@@ -28,6 +29,7 @@ typedef struct
     jmethodID callbackOnVdcParseError;
     ParametricEqProcessor* parametricEq;
     LoudnessCorrectionProcessor* loudnessCorrection;
+    BalanceProcessor* balance;
     dynamicEq_t* dynamicEq;
     lufs_normalizer_t* lufsNormalizer;
     fet_compressor_t* fetCompressor;

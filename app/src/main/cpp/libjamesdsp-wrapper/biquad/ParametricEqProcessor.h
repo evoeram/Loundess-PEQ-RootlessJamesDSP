@@ -24,6 +24,11 @@
 #include <memory>
 #include <string>
 
+// C core (compiled as part of the linked libjamesdsp)
+extern "C" {
+#include "Effects/eel2/numericSys/FFTConvolver.h"
+}
+
 // Filter type codes (match Kotlin ParametricEqFilterType enum codes)
 enum ParametricEqFilterType : int
 {
@@ -57,6 +62,12 @@ struct ParametricEqBandConfig
     bool enabled;
 };
 
+// Linear-phase FIR kernel (mirrors GEQ ArbFIRGen.h): odd symmetric FIR,
+// center tap 8191, synthesized on a 16384-point Hartley transform.
+constexpr int PEQ_FIR_TAPS = 16383;
+constexpr int PEQ_FIR_CENTER = 8191;
+constexpr int PEQ_FFT_SIZE = 16384;
+
 // Map our filter type codes to BiQuad::Type
 inline BiQuad::Type toBiQuadType(int ft)
 {
@@ -85,10 +96,18 @@ public:
     // bands: array of band configs
     // count: number of bands
     // preampDb: global preamp gain in dB
+    // Renders as a linear-phase FIR when setLinearPhase(true) was called.
     void configure(double sampleRate, const ParametricEqBandConfig* bands, size_t count, double preampDb);
 
     // Enable/disable the entire PEQ
     void setEnabled(bool enabled);
+
+    // Phase mode for subsequent configure() calls: false = minimum-phase
+    // biquads (default, zero latency), true = linear-phase FIR (adds
+    // PEQ_FIR_CENTER samples of constant latency). The caller must re-send
+    // the band configuration afterwards.
+    void setLinearPhase(bool linearPhase);
+    bool getLinearPhase() const { return linearPhase.load(std::memory_order_acquire); }
 
     bool isEnabled() const { return enabled.load(std::memory_order_acquire); }
 
@@ -122,10 +141,18 @@ private:
     {
         std::vector<BandState> bands;
         double preampLinear;
+        // Linear-phase rendering: when true, the biquad band list is only
+        // used to sample the cascade magnitude at configure time; playback
+        // runs through the FFT convolver with the symmetric kernels below.
+        bool linearPhase;
+        FFTConvolver2x2 conv;
+        std::vector<float> irL;
+        std::vector<float> irR;
     };
     std::shared_ptr<ChainConfig> publishedChain;
 
     std::atomic<bool> enabled;
+    std::atomic<bool> linearPhase;
     double sampleRate;  // config thread only
 
     // Temp buffers for deinterleaved processing (audio thread only)
@@ -134,4 +161,10 @@ private:
 
     void processChannel(double& x1, double& x2, double& y1, double& y2,
                         const BandState& band, double sample);
+
+    // Samples the cascade magnitude on the PEQ_FFT_SIZE grid, inverse-
+    // transforms it and mirrors the impulse around PEQ_FIR_CENTER; loads
+    // the kernels into chain.conv. Called from configure() with the fresh
+    // chain when linearPhase is set.
+    static void peqFirBuild(ChainConfig& chain);
 };

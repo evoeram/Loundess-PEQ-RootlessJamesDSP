@@ -12,6 +12,7 @@
 #include "EelVmVariable.h"
 #include "biquad/ParametricEqProcessor.h"
 #include "loudness/LoudnessCorrectionProcessor.h"
+#include "balance/BalanceProcessor.h"
 
 extern "C" {
 #include "../EELStdOutExtension.h"
@@ -95,6 +96,7 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_alloc(JNIEnv *e
     env->GetJavaVM(&self->vm);
     self->parametricEq = new ParametricEqProcessor();
     self->loudnessCorrection = new LoudnessCorrectionProcessor();
+    self->balance = new BalanceProcessor();
     self->dynamicEq = new dynamicEq_t();
     dynamicEq_init(self->dynamicEq);
     self->lufsNormalizer = new lufs_normalizer_t();
@@ -186,6 +188,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_free(JNIEnv *en
 
     delete wrapper->loudnessCorrection;
     wrapper->loudnessCorrection = nullptr;
+
+    delete wrapper->balance;
+    wrapper->balance = nullptr;
 
     dynamicEq_destroy(wrapper->dynamicEq);
     delete wrapper->dynamicEq;
@@ -336,7 +341,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
         const bool extrasOn = extrasActive(wrapper);
         /* Tape is called while enabled and while draining its fade-out. */
         const bool tapeOn = wrapper->tape && tape_is_active(wrapper->tape);
-        if (peqEnabled || deqActive || loudEnabled || lufsEnabled || extrasOn || tapeOn)
+        const bool balanceOn = wrapper->balance && wrapper->balance->isEnabled();
+        if (peqEnabled || balanceOn || deqActive || loudEnabled || lufsEnabled || extrasOn || tapeOn)
         {
             size_t frames = inputLength / 2;
             if (wrapper->pcm16Scratch.size() < frames * 2)
@@ -346,6 +352,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
                 tmp[i] = (float)(input[offset + i]) / 32768.0f;
             if (peqEnabled)
                 wrapper->parametricEq->processInterleaved(tmp.data(), frames);
+            if (balanceOn)
+                wrapper->balance->processInterleaved(tmp.data(), frames);
             if (deqActive)
                 dynamicEq_process_interleaved(wrapper->dynamicEq, tmp.data(), frames);
             if (extrasOn)
@@ -392,7 +400,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
     const bool extrasOn = extrasActive(wrapper);
     /* Tape is called while enabled and while draining its fade-out. */
     const bool tapeOn = wrapper->tape && tape_is_active(wrapper->tape);
-    if (peqEnabled || deqActive || loudEnabled || lufsEnabled || extrasOn || tapeOn)
+    const bool balanceOn = wrapper->balance && wrapper->balance->isEnabled();
+    if (peqEnabled || balanceOn || deqActive || loudEnabled || lufsEnabled || extrasOn || tapeOn)
     {
         size_t frames = inputLength / 2;
         if (wrapper->pcm16Scratch.size() < frames * 2)
@@ -402,6 +411,8 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processInt16(JN
             tmp[i] = (float)(output[i]) / 32768.0f;
         if (peqEnabled)
             wrapper->parametricEq->processInterleaved(tmp.data(), frames);
+        if (balanceOn)
+            wrapper->balance->processInterleaved(tmp.data(), frames);
         if (deqActive)
             dynamicEq_process_interleaved(wrapper->dynamicEq, tmp.data(), frames);
         if (extrasOn)
@@ -549,6 +560,9 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
         if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
             wrapper->parametricEq->processInterleaved(input + offset, inputLength / 2);
 
+        if (wrapper->balance && wrapper->balance->isEnabled())
+            wrapper->balance->processInterleaved(input + offset, inputLength / 2);
+
         if (wrapper->dynamicEq)
             dynamicEq_process_interleaved(wrapper->dynamicEq, input + offset, inputLength / 2);
 
@@ -589,6 +603,11 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_processFloat(JN
     if (wrapper->parametricEq && wrapper->parametricEq->isEnabled())
     {
         wrapper->parametricEq->processInterleaved(output, inputLength / 2);
+    }
+
+    if (wrapper->balance && wrapper->balance->isEnabled())
+    {
+        wrapper->balance->processInterleaved(output, inputLength / 2);
     }
 
     if (wrapper->dynamicEq)
@@ -1294,6 +1313,33 @@ Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setParametricEq
 
     LOGD("JamesDspWrapper::setParametricEq: configured %d bands, preamp=%.1f dB, sr=%.0f",
          count, preampDb, sampleRate);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setBalance(JNIEnv *env, jobject obj,
+    jlong self, jboolean enable, jfloat balance)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->balance == nullptr)
+        return false;
+
+    wrapper->balance->setBalance(balance);
+    wrapper->balance->setEnabled(enable == JNI_TRUE);
+    LOGD("JamesDspWrapper::setBalance: enable=%d balance=%f", (int)enable, (double)balance);
+    return true;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_timschneeberger_rootlessjamesdsp_interop_JamesDspWrapper_setParametricEqPhaseMode(JNIEnv *env, jobject obj,
+    jlong self, jboolean linearPhase)
+{
+    DECLARE_WRAPPER_B
+    if (wrapper->parametricEq == nullptr)
+        return false;
+
+    wrapper->parametricEq->setLinearPhase(linearPhase == JNI_TRUE);
+    LOGD("JamesDspWrapper::setParametricEqPhaseMode: %d", (int)linearPhase);
     return true;
 }
 

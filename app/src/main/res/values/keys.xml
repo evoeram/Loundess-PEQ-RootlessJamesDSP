@@ -124,6 +124,10 @@
     <string name="key_peq_enable" translatable="false">peq_enable</string>
     <string name="key_peq_bands" translatable="false">peq_bands</string>
     <string name="key_peq_preamp" translatable="false">peq_preamp</string>
+    <string name="key_peq_linear_phase" translatable="false">peq_linear_phase</string>
+
+    <string name="key_balance_enable" translatable="false">balance_enable</string>
+    <string name="key_balance_value" translatable="false">balance_value</string>
 
     <string name="key_dynamiceq_enable" translatable="false">dynamiceq_enable</string>
     <string name="key_dynamiceq_bands" translatable="false">dynamiceq_bands</string>

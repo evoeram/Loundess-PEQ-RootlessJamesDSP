@@ -13,5 +13,11 @@
             android:dialogTitle="@string/peq_bands"
             android:title="@string/peq_bands"
             app:iconSpaceReserved="false"/>
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            android:key="@string/key_peq_linear_phase"
+            android:title="@string/peq_linear_phase"
+            android:summary="@string/peq_linear_phase_summary"
+            android:defaultValue="@bool/default_peq_linear_phase"
+            app:iconSpaceReserved="false"/>
     </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

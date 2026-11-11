@@ -152,6 +152,16 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             R.xml.dsp_agc_preferences -> setupExtrasLabels()
             R.xml.dsp_cure_preferences -> setupExtrasLabels()
             R.xml.dsp_tape_preferences -> setupTapeLabels()
+            R.xml.dsp_balance_preferences -> {
+                findPreference<MaterialSeekbarPreference>(getString(R.string.key_balance_value))?.valueLabelOverride =
+                    fun(it: Float): String {
+                        return when {
+                            it.roundToInt() == 0 -> getString(R.string.balance_label_center)
+                            it > 0 -> getString(R.string.balance_label_right, it.roundToInt())
+                            else -> getString(R.string.balance_label_left, -it.roundToInt())
+                        }
+                    }
+            }
             R.xml.dsp_voice_isolation_preferences -> setupVoiceIsolation()
             R.xml.dsp_compander_preferences -> {
                 findPreference<MaterialSeekbarPreference>(getString(R.string.key_compander_granularity))?.valueLabelOverride =

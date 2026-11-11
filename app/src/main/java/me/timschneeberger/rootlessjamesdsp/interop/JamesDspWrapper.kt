@@ -70,6 +70,12 @@ object JamesDspWrapper {
         channelMode: IntArray
     ): Boolean
 
+    /** PEQ phase mode for the next setParametricEq: false = minimum-phase biquads, true = linear-phase FIR. */
+    external fun setParametricEqPhaseMode(self: JamesDspHandle, linearPhase: Boolean): Boolean
+
+    /** L/R balance: balance in [-1, +1], 0 = center; positive dims the left channel. */
+    external fun setBalance(self: JamesDspHandle, enable: Boolean, balance: Float): Boolean
+
     // Dynamic EQ (frequency-dependent dynamics, biquad sidechain per band)
     // config: [frequency, q, thresholdDb, ratio, attackMs, releaseMs, rangeDb, mode] * N
     // mode: 0 = compressor, 1 = expander; msMode: 0 = stereo, 1 = mid, 2 = side

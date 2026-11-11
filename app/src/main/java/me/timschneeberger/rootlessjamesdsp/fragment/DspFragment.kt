@@ -65,6 +65,7 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
         Triple(R.id.card_cure, Constants.PREF_CURE, R.string.key_cure_enable),
         Triple(R.id.card_tape, Constants.PREF_TAPE, R.string.key_tape_enable),
         Triple(R.id.card_voice_isolation, Constants.PREF_VOICE_ISOLATION, R.string.key_voice_isolation_enable),
+        Triple(R.id.card_balance, Constants.PREF_BALANCE, R.string.key_balance_enable),
     )
 
     private data class EffectCard(
@@ -226,6 +227,10 @@ class DspFragment : Fragment(), SharedPreferences.OnSharedPreferenceChangeListen
             .replace(
                 R.id.card_voice_isolation, PreferenceGroupFragment.newInstance(Constants.PREF_VOICE_ISOLATION,
                     R.xml.dsp_voice_isolation_preferences
+                ))
+            .replace(
+                R.id.card_balance, PreferenceGroupFragment.newInstance(Constants.PREF_BALANCE,
+                    R.xml.dsp_balance_preferences
                 ))
             .commit()
 

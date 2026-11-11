@@ -8,14 +8,114 @@
 #include <algorithm>
 #include <cstring>
 
+// Hartley FHT from the JamesDSP core (linked into jamesdsp-wrapper via the
+// jamesdsp library; the same routines the GEQ uses in ArbFIRGen.c).
+extern "C" {
+void LLbitReversalTbl(unsigned *dst, unsigned int n);
+void fhtsinHalfTblFloat(float *dst, unsigned int n);
+void LLdiscreteHartleyFloat(float *A, const int nPoints, const float *sinTab);
+}
+
 ParametricEqProcessor::ParametricEqProcessor()
     : enabled(false)
+    , linearPhase(false)
     , sampleRate(48000.0)
 {
 }
 
 ParametricEqProcessor::~ParametricEqProcessor()
 {
+}
+
+void ParametricEqProcessor::setLinearPhase(bool en)
+{
+    linearPhase.store(en, std::memory_order_release);
+}
+
+// Magnitude of one normalized biquad at digital frequency w
+static double peqBiquadMagAt(const BiQuad& bq, double w)
+{
+    double coeffs[4];
+    double b0;
+    bq.getCoefficients(coeffs, b0);
+    const double b1 = coeffs[0], b2 = coeffs[1];
+    const double a1 = coeffs[2], a2 = coeffs[3];
+
+    const double c1 = std::cos(w), s1 = std::sin(w);
+    const double c2 = std::cos(2.0 * w), s2 = std::sin(2.0 * w);
+    const double nre = b0 + b1 * c1 + b2 * c2;
+    const double nim = -(b1 * s1 + b2 * s2);
+    const double dre = 1.0 + a1 * c1 + a2 * c2;
+    const double dim = -(a1 * s1 + a2 * s2);
+    const double num = nre * nre + nim * nim;
+    const double den = dre * dre + dim * dim;
+    return (den > 1e-30) ? std::sqrt(num / den) : 0.0;
+}
+
+// Samples the cascade magnitude on the 16384-point grid (bins 0..8192),
+// inverse-transforms it into a zero-phase impulse and mirrors it around
+// tap 8191 — the same recipe as the GEQ ArbitraryEqLinearPhase, with the
+// biquad cascade evaluated analytically. Per-band channel routing is
+// preserved by building a separate kernel per ear.
+void ParametricEqProcessor::peqFirBuild(ChainConfig& chain)
+{
+    chain.irL.assign(PEQ_FIR_TAPS, 0.0f);
+    chain.irR.assign(PEQ_FIR_TAPS, 0.0f);
+
+    std::vector<unsigned int> bitRev(PEQ_FFT_SIZE);
+    std::vector<float> sineTab(PEQ_FFT_SIZE);
+    std::vector<float> specL(PEQ_FFT_SIZE, 0.0f), specR(PEQ_FFT_SIZE, 0.0f);
+    LLbitReversalTbl(bitRev.data(), PEQ_FFT_SIZE);
+    fhtsinHalfTblFloat(sineTab.data(), PEQ_FFT_SIZE);
+
+    const int K = PEQ_FFT_SIZE / 2;
+    for (int k = 0; k <= K; k++)
+    {
+        const double w = 2.0 * M_PI * (double)k / (double)PEQ_FFT_SIZE;
+        double magL = chain.preampLinear;
+        double magR = chain.preampLinear;
+
+        for (const auto& band : chain.bands)
+        {
+            if (!band.enabled)
+                continue;
+            const double g = band.isPreamp ? band.preampLinear
+                                           : peqBiquadMagAt(band.bqL, w);
+            if (band.channelMode != PEQ_CHAN_RIGHT)
+                magL *= g;
+            if (band.channelMode != PEQ_CHAN_LEFT)
+                magR *= g;
+        }
+
+        // LLdiscreteHartleyFloat consumes bit-reversed input
+        specL[bitRev[k]] = (float)magL;
+        specR[bitRev[k]] = (float)magR;
+        if (k > 0 && k < K)
+        {
+            const unsigned int mi = bitRev[PEQ_FFT_SIZE - k];
+            specL[mi] = (float)magL;
+            specR[mi] = (float)magR;
+        }
+    }
+
+    LLdiscreteHartleyFloat(specL.data(), PEQ_FFT_SIZE, sineTab.data());
+    LLdiscreteHartleyFloat(specR.data(), PEQ_FFT_SIZE, sineTab.data());
+
+    for (int i = 0; i < K; i++)
+    {
+        const float l = specL[i] * (1.0f / (float)PEQ_FFT_SIZE);
+        const float r = specR[i] * (1.0f / (float)PEQ_FFT_SIZE);
+        chain.irL[PEQ_FIR_CENTER - i] = chain.irL[PEQ_FIR_CENTER + i] = l;
+        chain.irR[PEQ_FIR_CENTER - i] = chain.irR[PEQ_FIR_CENTER + i] = r;
+    }
+
+    chain.linearPhase = true;
+    FFTConvolver2x2Init(&chain.conv);
+    // 1024-sample partitions: the wrapper sees variable block sizes, and the
+    // convolver accumulates internally, so any partition works. 16383 taps /
+    // 1024 = 16 segments per channel — cheap and low-latency.
+    FFTConvolver2x2LoadImpulseResponse(&chain.conv, 1024,
+        chain.irL.data(), chain.irR.data(), PEQ_FIR_TAPS);
 }
 
 void ParametricEqProcessor::configure(double sr, const ParametricEqBandConfig* bands, size_t count, double preampDb)
@@ -27,6 +127,7 @@ void ParametricEqProcessor::configure(double sr, const ParametricEqBandConfig* b
     // block finishes, so reconfiguring during playback is safe.
     auto next = std::make_shared<ChainConfig>();
     next->preampLinear = std::pow(10.0, preampDb / 20.0);
+    next->linearPhase = linearPhase.load(std::memory_order_acquire);
     next->bands.reserve(count);
 
     for (size_t i = 0; i < count; ++i)
@@ -112,6 +213,12 @@ void ParametricEqProcessor::configure(double sr, const ParametricEqBandConfig* b
         }
     }
 
+    // Linear phase: sample the finished biquad cascade's magnitude and swap
+    // the whole chain over to the FFT convolver. The biquad list stays in the
+    // chain (it defines the response and is cheap to keep).
+    if (next->linearPhase)
+        peqFirBuild(*next);
+
     std::atomic_store(&publishedChain, std::shared_ptr<ChainConfig>(std::move(next)));
 }
 
@@ -163,6 +270,16 @@ void ParametricEqProcessor::processDeinterleaved(float* left, float* right, size
     std::shared_ptr<ChainConfig> chain = std::atomic_load(&publishedChain);
     if (!chain || chain->bands.empty())
         return;
+
+    // Linear-phase FIR path: partitioned FFT convolution with the symmetric
+    // kernels built at configure time. Adds PEQ_FIR_CENTER samples of
+    // constant latency by design (same as GEQ linear phase).
+    if (chain->linearPhase)
+    {
+        FFTConvolver2x2Process(&chain->conv, left, right, left, right,
+                               (unsigned int)numFrames);
+        return;
+    }
 
     std::vector<BandState>& bandStates = chain->bands;
 

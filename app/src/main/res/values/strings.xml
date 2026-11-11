@@ -344,6 +344,16 @@
     <string name="geq_linear_phase">Linear phase</string>
     <string name="geq_linear_phase_summary">Symmetric filters with constant group delay. Off uses minimum phase, which adds no latency and is usually the better choice for listening.</string>
 
+    <string name="peq_linear_phase">Linear phase</string>
+    <string name="peq_linear_phase_summary">Renders the EQ as a symmetric FIR filter with constant group delay (no phase distortion, adds ~171 ms latency at 48 kHz). Off uses minimum-phase biquads, which add no latency.</string>
+
+    <string name="balance_enable">L/R balance</string>
+    <string name="balance_enable_summary">Shifts the stereo image left or right by attenuating the opposite channel. Center is bypass.</string>
+    <string name="balance_value">Balance</string>
+    <string name="balance_label_center">Center</string>
+    <string name="balance_label_left">L %d%%</string>
+    <string name="balance_label_right">R %d%%</string>
+
     <string name="bass_enable">Dynamic bass boost</string>
     <string name="bass_max_gain">Maximum gain</string>
 

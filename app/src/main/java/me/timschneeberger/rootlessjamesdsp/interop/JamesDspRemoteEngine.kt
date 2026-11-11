@@ -403,6 +403,24 @@ class JamesDspRemoteEngine(
         return configResult && enableResult
     }
 
+    /**
+     * PEQ phase mode (cmd 1229): selects how the next cmd-1300 config is
+     * rendered by the system effect. The cascade config itself has no CRC,
+     * it is re-sent in full on every commit, so no forced re-upload is
+     * needed after switching.
+     */
+    override fun setPeqPhaseMode(linearPhase: Boolean): Boolean =
+        effect.setParameter(1229, linearPhase.toShort()) == AudioEffect.SUCCESS
+
+    /**
+     * L/R balance: cmd 1316 = config (1 float, [-1, +1]), cmd 1230 = enable.
+     */
+    override fun setBalance(enable: Boolean, balance: Float): Boolean {
+        val configResult = effect.setParameterFloatArray(1316, floatArrayOf(balance)) == AudioEffect.SUCCESS
+        val enableResult = effect.setParameter(1230, enable.toShort()) == AudioEffect.SUCCESS
+        return configResult && enableResult
+    }
+
     // Dynamic EQ via AudioEffect parameter API (jamesdsp.c).
     // Payload: [mix, msMode, bandCount, band0(8 floats), ...], max 8 bands.
     override fun setDynamicEq(

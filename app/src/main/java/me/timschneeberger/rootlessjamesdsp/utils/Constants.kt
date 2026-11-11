@@ -35,6 +35,7 @@ object Constants {
     const val PREF_NOSR2R = "dsp_nosr2r"
     const val PREF_MEASUREMENT = "dsp_measurement"
     const val PREF_SQUIG = "dsp_squig"
+    const val PREF_BALANCE = "dsp_balance"
 
     // Default string values
     const val DEFAULT_CONVOLVER_ADVIMP = "-80;-100;0;0;0;0"
